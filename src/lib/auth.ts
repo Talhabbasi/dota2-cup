@@ -5,10 +5,14 @@ import { isAdminDiscordId } from "./constants";
 import { prisma } from "./prisma";
 
 export const authOptions: NextAuthOptions = {
+  secret: process.env.NEXTAUTH_SECRET,
   providers: [
     DiscordProvider({
-      clientId: process.env.DISCORD_CLIENT_ID || "missing",
-      clientSecret: process.env.DISCORD_CLIENT_SECRET || "missing",
+      clientId: process.env.DISCORD_CLIENT_ID ?? "",
+      clientSecret: process.env.DISCORD_CLIENT_SECRET ?? "",
+      client: {
+        token_endpoint_auth_method: "client_secret_post",
+      },
     }),
   ],
   callbacks: {

@@ -17,7 +17,12 @@ import { getActiveWeekendBundle } from "@/lib/schedule";
 
 export const dynamic = "force-dynamic";
 
-export default async function Home() {
+export default async function Home({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>;
+}) {
+  const { error } = await searchParams;
   const [table, matches, teams, upcoming, weekend] = await Promise.all([
     getStandings(),
     getMatches(),
@@ -48,6 +53,12 @@ export default async function Home() {
       </section>
 
       <div className="page home-body">
+        {error === "discord" || error === "OAuthCallback" ? (
+          <p className="lede" role="alert">
+            Discord login failed. Check the OAuth2 Client Secret and redirect URL,
+            then try Sign in again.
+          </p>
+        ) : null}
         <div className="home-stats">
           <div className="home-stat">
             <span className="home-stat-label">Teams registered</span>
