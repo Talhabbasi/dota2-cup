@@ -7,7 +7,7 @@ import {
   type TeamPlayerView,
 } from "@/components/team-profile";
 import { getStandings, getTeam, formatRoles } from "@/lib/data";
-import { parseRolesJson, sortTeamRoster } from "@/lib/roles";
+import { isRosterSub, parseRolesJson, sortTeamRoster } from "@/lib/roles";
 
 export const dynamic = "force-dynamic";
 

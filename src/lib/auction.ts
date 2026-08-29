@@ -355,7 +355,7 @@ export async function skipLot() {
   return viewFromLive();
 }
 
-export async function undoLastSale() {
+export async function undoLastSale(): Promise<never> {
   throw new Error(
     "Undo is paused during live testing. Skip or restart the role if needed.",
   );
