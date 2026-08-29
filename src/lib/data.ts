@@ -132,6 +132,8 @@ export type FixturePreview = {
   radiantTeam: { id: string; name: string };
   direTeam: { id: string; name: string };
   scheduledAt?: Date;
+  bestOf?: number;
+  kind?: string;
 };
 
 export async function getUpcomingFixture(): Promise<FixturePreview | null> {
@@ -148,6 +150,8 @@ export async function getUpcomingFixture(): Promise<FixturePreview | null> {
         name: scheduled.direTeam.name,
       },
       scheduledAt: scheduled.scheduledAt,
+      bestOf: scheduled.bestOf,
+      kind: scheduled.kind,
     };
   } catch {
     return null;

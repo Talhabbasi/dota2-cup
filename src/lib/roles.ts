@@ -12,11 +12,17 @@ export function isRosterSub(rosterRole: string | null): boolean {
 }
 
 /** First 5 on a team are starters; players 6–7 are subs. */
-export function rosterRoleForTeamJoin(
-  players: { rosterRole: string | null }[],
-): string | null {
-  const starters = players.filter((p) => !isRosterSub(p.rosterRole)).length;
-  return starters >= MIN_ROSTER ? "sub" : null;
+export function rosterRoleForTeamJoin(currentSize: number): string | null {
+  return currentSize >= MIN_ROSTER ? "sub" : null;
+}
+
+export function sortTeamRoster<T extends { isCaptain: boolean; createdAt: Date }>(
+  players: T[],
+): T[] {
+  return [...players].sort((a, b) => {
+    if (a.isCaptain !== b.isCaptain) return a.isCaptain ? -1 : 1;
+    return a.createdAt.getTime() - b.createdAt.getTime();
+  });
 }
 
 export function parseRolesJson(json: string): PlayerRole[] {

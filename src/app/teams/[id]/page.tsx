@@ -7,7 +7,7 @@ import {
   type TeamPlayerView,
 } from "@/components/team-profile";
 import { getStandings, getTeam, formatRoles } from "@/lib/data";
-import { isRosterSub, parseRolesJson } from "@/lib/roles";
+import { parseRolesJson, sortTeamRoster } from "@/lib/roles";
 
 export const dynamic = "force-dynamic";
 
@@ -39,8 +39,9 @@ export default async function TeamPage({
   if (!team) notFound();
 
   const captain = team.players.find((p) => p.isCaptain);
-  const starters = team.players.filter((p) => !isRosterSub(p.rosterRole));
-  const subs = team.players.filter((p) => isRosterSub(p.rosterRole));
+  const ordered = sortTeamRoster(team.players);
+  const starters = ordered.filter((_, i) => i < 5);
+  const subs = ordered.filter((_, i) => i >= 5);
   const record = standings.find((row) => row.id === team.id);
 
   const history = [...team.radiantMatches, ...team.direMatches]
@@ -64,8 +65,8 @@ export default async function TeamPage({
       />
 
       <TeamRosterBoard
-        starters={starters.map(toPlayerView)}
-        subs={subs.map(toPlayerView)}
+        starters={starters.map((p) => ({ ...toPlayerView(p), isSub: false }))}
+        subs={subs.map((p) => ({ ...toPlayerView(p), isSub: true }))}
       />
 
       <section className="team-matches-panel">

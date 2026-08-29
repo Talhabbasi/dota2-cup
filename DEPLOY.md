@@ -94,7 +94,7 @@ The bot cannot run on Vercel. Use **Railway**, **Render**, **Fly.io**, or a VPS.
 | `REMINDER_MINUTES_BEFORE` | `60` |
 | `REMINDER_CHANNEL_NAME` | `general` |
 | `RULES_CHANNEL_NAME` | `general` |
-| `AUTO_POST_CHANNEL_RULES` | `true` |
+| `AUTO_POST_CHANNEL_RULES` | `false` |
 
 `DIRECT_URL` is optional on the bot host unless you run `db:push` from there.
 
@@ -117,7 +117,8 @@ pm2 save && pm2 startup
 4. Invite bot with `applications.commands` + `bot` scopes; grant **Manage Messages** for pinned rules.
 5. In Discord as admin:
    - `/rules post` — pins rules in `#general`
-   - `/schedule generate` — after rosters are full
+   - `/schedule generate` — after rosters are full (regular season is best of 1)
+   - `/schedule final` — top 2 play a best-of-3 grand final
 
 Restart the bot after env or slash-command changes.
 

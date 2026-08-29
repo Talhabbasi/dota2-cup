@@ -119,6 +119,7 @@ export async function ingestMatch(input: {
     await completeScheduledFixture({
       radiantTeamId: match.radiantTeamId,
       direTeamId: match.direTeamId,
+      winnerTeamId: match.winnerTeamId,
       matchId: match.id,
     });
   } catch {

@@ -19,6 +19,7 @@ export const HELP_COMMANDS = `**Anyone**
 \`/player delete user:@x\` — delete registration (unsigned only)
 \`/player resync user:@x\` — fix roster slot from registration
 \`/schedule generate\` — round-robin Fri/Sat/Sun after all teams have 5+ players
+\`/schedule final\` — BO3 grand final for the top 2
 \`/schedule clear\`
 \`/auction start role:<mid|safelane|offlane|soft_support|hard_support|sub>\`
 \`/auction pause\` · \`/auction skip\` · \`/auction undo\`
@@ -35,7 +36,7 @@ export const HELP_GUIDE = `## How to run the cup
 
 **Auction night.** Admin runs one pool at a time in #auction. Captains buy any players within budget — no position limits. Roster is 5 starters + 2 subs (captain counts as a starter).
 
-**Schedule.** When every team has 5+ players, admin runs \`/schedule generate\`. Matches spread across **Fri / Sat / Sun at 11:30 PM Pakistan time**. Max **2 games per team** per weekend. **2 wins** in a weekend = weekend champion. Every pairing happens once.
+**Schedule.** When every team has 5+ players, admin runs \`/schedule generate\`. Matches spread across **Fri / Sat / Sun at 11:30 PM Pakistan time**. Regular games are **best of 1**. Max **2 games per team** per weekend. After the table is set, the **top 2** play a **best of 3** grand final (\`/schedule final\`).
 
 **Reminders.** The bot pings captains in #general about **1 hour** before a scheduled match (configurable).
 

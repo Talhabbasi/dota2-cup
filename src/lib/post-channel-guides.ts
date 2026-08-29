@@ -51,14 +51,15 @@ async function postAndPin(
   try {
     await sent.pin();
     return "posted";
-  } catch {
+  } catch (error) {
+    console.warn(`pin failed in #${channel.name}:`, error);
     return "pin_failed";
   }
 }
 
 export function autoPostChannelRulesEnabled(): boolean {
   const value = process.env.AUTO_POST_CHANNEL_RULES?.trim().toLowerCase();
-  return value !== "false" && value !== "0" && value !== "no";
+  return value === "true" || value === "1" || value === "yes";
 }
 
 export async function postChannelGuides(

@@ -18,8 +18,8 @@ async function main() {
     prisma.match.count(),
   ]);
 
-  console.log("This wipes cup registrations from the database.");
-  console.log("Discord members are not kicked — they can /register again.\n");
+  console.log("This wipes cup registrations, teams, matches, and fixtures.");
+  console.log("Hero catalog is kept. Discord members are not kicked.\n");
   console.log(`  players:   ${players}`);
   console.log(`  teams:     ${teams}`);
   console.log(`  bids:      ${bids}`);

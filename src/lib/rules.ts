@@ -1,6 +1,6 @@
 import { EmbedBuilder } from "discord.js";
 import { MAX_ROSTER, MIN_ROSTER, STARTING_PURSE } from "./constants";
-import { MATCHES_PER_WEEKEND, WINS_FOR_WEEKEND_CROWN } from "./schedule";
+import { FINAL_BEST_OF, MATCHES_PER_WEEKEND, REGULAR_BEST_OF } from "./schedule";
 
 export const CHANNEL_GUIDE_NAMES = [
   "register",
@@ -63,15 +63,17 @@ export const CUP_RULES = {
         "Admin runs `/schedule generate` when every team has 5+ players.",
         `Each weekend has **${MATCHES_PER_WEEKEND}** matches (Friday, Saturday, Sunday at **11:30 PM Pakistan time**).`,
         "A team plays at most **2** games per weekend.",
-        `**${WINS_FOR_WEEKEND_CROWN} wins** in a weekend crowns that weekend's champion.`,
-        "Every team pairing happens **once** in the season — no duplicate fixtures.",
+        `Every regular-season game is **best of ${REGULAR_BEST_OF}** — one lobby, one winner.`,
+        `After the regular season, the **top 2** teams play a **best of ${FINAL_BEST_OF}** grand final (first to 2).`,
+        "Every team pairing happens **once** in the regular season — no duplicate fixtures.",
       ],
     },
     {
       name: "Match night",
       body: [
         "Name your Dota lobby with the **exact franchise names** from the schedule.",
-        "Post `!result <match id>` in **#results** after the game (screenshot optional).",
+        "Regular games are **best of 1**. The grand final is **best of 3** — post each game's match ID.",
+        "Post `!result <match id>` in **#results** after each game (screenshot optional).",
         "Stats sync from OpenDota — the website updates standings automatically.",
       ],
     },
@@ -211,8 +213,9 @@ export function getChannelGuides(): { channelName: ChannelGuideName; embed: Embe
         [
           "Everyone: `/schedule list` — upcoming Fri / Sat / Sun fixtures.",
           `Matches at **11:30 PM Pakistan time** (website shows UK, EU, US times).`,
-          `Max **2 games per team** per weekend · **${WINS_FOR_WEEKEND_CROWN} wins** = weekend champion.`,
-          "Every team pairing happens **once** — no rematches in the regular season.",
+          `Regular season is **best of ${REGULAR_BEST_OF}**. Max **2 games per team** per weekend.`,
+          `Grand final: **top 2** play **best of ${FINAL_BEST_OF}** (admin: \`/schedule final\`).`,
+          "Every team pairing happens **once** in the regular season.",
           "Admin: `/schedule generate` when rosters are full · `/schedule clear` to reset.",
           "Captains get a reminder in **#general** ~1 hour before each game.",
         ],

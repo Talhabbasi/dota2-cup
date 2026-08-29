@@ -27,6 +27,7 @@ import {
   adminRoleName,
   BID_INCREMENT,
   FLEX,
+  MAX_ROSTER,
   isAdminDiscordId,
   MEDAL_LABELS,
   MEDALS,
@@ -44,7 +45,9 @@ import {
   rosterSummary,
 } from "../src/lib/captains";
 import {
+  clearAuctionMessage,
   getAuctionView,
+  markAuctionAnnounced,
   pauseAuction,
   placeBid,
   saveAuctionMessage,
@@ -52,12 +55,14 @@ import {
   startAuction,
   tickAuction,
   undoLastSale,
+  hydrateAuctionClock,
 } from "../src/lib/auction";
 import { assignUnknown, ingestMatch } from "../src/lib/results";
 import {
   clearScheduledFixtures,
   formatScheduleSummary,
   formatScheduleWhen,
+  generateGrandFinal,
   generateWeekendSchedule,
   listScheduledFixtures,
 } from "../src/lib/schedule";
@@ -71,6 +76,10 @@ import {
 } from "../src/lib/post-channel-guides";
 import {
   adminAddPlayerToTeam,
+  adminClearDummyPlayers,
+  adminClearDummyTeams,
+  adminCreateDummyPlayers,
+  adminCreateDummyTeams,
   adminDeletePlayer,
   adminRemovePlayerFromTeam,
   adminResyncRosterRole,
@@ -78,6 +87,7 @@ import {
 import { parseRolesJson } from "../src/lib/roles";
 import { prisma } from "../src/lib/prisma";
 import { formatRoles } from "../src/lib/data";
+import { publicErrorMessage } from "../src/lib/public-error";
 import { steamProfileUrl } from "../src/lib/steam";
 
 const token = process.env.DISCORD_TOKEN;
@@ -198,6 +208,41 @@ const commands = [
         .addUserOption((o) =>
           o.setName("user").setDescription("Player").setRequired(true),
         ),
+    )
+    .addSubcommand((s) =>
+      s
+        .setName("dummy")
+        .setDescription("TEST: create unsigned dummy players for auction")
+        .addIntegerOption((o) =>
+          o
+            .setName("count")
+            .setDescription("How many dummy players")
+            .setRequired(true)
+            .setMinValue(1)
+            .setMaxValue(20),
+        ),
+    )
+    .addSubcommand((s) =>
+      s
+        .setName("dummy-clear")
+        .setDescription("TEST: delete unsigned dummy players"),
+    )
+    .addSubcommand((s) =>
+      s
+        .setName("dummy-teams")
+        .setDescription("TEST: create dummy teams with full rosters for schedule")
+        .addIntegerOption((o) =>
+          o
+            .setName("count")
+            .setDescription("How many dummy teams (default 2)")
+            .setMinValue(1)
+            .setMaxValue(4),
+        ),
+    )
+    .addSubcommand((s) =>
+      s
+        .setName("dummy-teams-clear")
+        .setDescription("TEST: delete dummy teams and their players"),
     ),
   new SlashCommandBuilder()
     .setName("rules")
@@ -285,6 +330,21 @@ const commands = [
       s.setName("list").setDescription("Show upcoming scheduled matches"),
     )
     .addSubcommand((s) =>
+      s
+        .setName("final")
+        .setDescription("Admin: schedule a BO3 grand final for the top 2")
+        .addStringOption((o) =>
+          o
+            .setName("friday")
+            .setDescription("Final Friday as YYYY-MM-DD (default: next Friday)"),
+        )
+        .addBooleanOption((o) =>
+          o
+            .setName("force")
+            .setDescription("Replace a final that is still scheduled"),
+        ),
+    )
+    .addSubcommand((s) =>
       s.setName("clear").setDescription("Admin: delete pending scheduled matches"),
     ),
   new SlashCommandBuilder()
@@ -325,7 +385,8 @@ function isOrganizer(member: GuildMember | null, discordId: string): boolean {
 }
 
 function fail(error: unknown): string {
-  return error instanceof Error ? error.message : "Something went wrong.";
+  console.error(error);
+  return publicErrorMessage(error);
 }
 
 const pendingRegister = new Map<string, { steam: string; medal: string }>();
@@ -377,12 +438,12 @@ function findTextChannel(
   return found?.type === ChannelType.GuildText ? found : null;
 }
 
-function lotEmbed(view: Awaited<ReturnType<typeof getAuctionView>>) {
+function lotEmbed(view: ReturnType<typeof getAuctionView>) {
   const embed = new EmbedBuilder()
     .setColor(view.status === "running" ? 0xd4a24c : 0x6b7280)
     .setTitle(
       view.role
-        ? `Auction — ${ROLE_LABELS[view.role]}`
+        ? `ON THE BLOCK — ${ROLE_LABELS[view.role].toUpperCase()}`
         : "Auction idle",
     );
 
@@ -390,8 +451,8 @@ function lotEmbed(view: Awaited<ReturnType<typeof getAuctionView>>) {
     const roles = formatRoles(parseRolesJson(view.currentPlayer.rolesJson));
     embed.addFields(
       {
-        name: "Steam name",
-        value: view.currentPlayer.steamName,
+        name: "Player",
+        value: `**${view.currentPlayer.steamName}**`,
         inline: true,
       },
       {
@@ -400,34 +461,111 @@ function lotEmbed(view: Awaited<ReturnType<typeof getAuctionView>>) {
         inline: true,
       },
       {
-        name: "Role (this lot)",
+        name: "Role",
         value: ROLE_LABELS[view.role],
         inline: true,
       },
       {
-        name: "Bid price",
+        name: "Current bid",
         value: `**${view.currentBid}**`,
         inline: true,
       },
       {
         name: "High bidder",
-        value: view.highBidder?.name ?? "— none yet —",
+        value: view.highBidder?.name ?? "— waiting —",
         inline: true,
       },
       {
         name: "Clock",
-        value: view.status === "paused" ? "paused" : `${view.secondsLeft}s`,
+        value:
+          view.status === "paused"
+            ? "paused"
+            : view.status === "running" && view.endsAt && view.secondsLeft > 0
+              ? `<t:${Math.floor(view.endsAt.getTime() / 1000)}:R>`
+              : "Ended",
         inline: true,
       },
       { name: "Listed roles", value: roles, inline: false },
     );
     embed.setFooter({
-      text: `${view.remainingInRole} still in this ${ROLE_LABELS[view.role]} queue · flex players appear in every role until sold`,
+      text: `${view.remainingInRole} still in the ${ROLE_LABELS[view.role]} queue`,
     });
   } else {
     embed.setDescription("No player on the block. Admin: `/auction start`.");
   }
   return embed;
+}
+
+function purseLines(
+  balances: { name: string; purse: number; rosterCount: number }[],
+) {
+  if (balances.length === 0) return "No teams yet.";
+  return balances
+    .map((t) => {
+      const slots = `${t.rosterCount}/${MAX_ROSTER}`;
+      const full = t.rosterCount >= MAX_ROSTER ? " · FULL" : "";
+      return `**${t.name}** — **${t.purse}** left · ${slots}${full}`;
+    })
+    .join("\n");
+}
+
+function saleEmbed(view: ReturnType<typeof getAuctionView>) {
+  const sale = view.lastSale;
+  const balances = sale?.balances ?? view.teamBalances;
+  if (!sale) {
+    return new EmbedBuilder().setColor(0x6b7280).setTitle("Lot closed");
+  }
+  if (sale.teamName && sale.price != null) {
+    return new EmbedBuilder()
+      .setColor(0x22c55e)
+      .setTitle("SOLD")
+      .setDescription(
+        `**${sale.playerName}** joins **${sale.teamName}** for **${sale.price}**`,
+      )
+      .addFields(
+        {
+          name: "Rank",
+          value: MEDAL_LABELS[sale.medal as keyof typeof MEDAL_LABELS] ?? sale.medal,
+          inline: true,
+        },
+        {
+          name: "Role",
+          value: ROLE_LABELS[sale.role],
+          inline: true,
+        },
+        {
+          name: "Team purses",
+          value: purseLines(balances),
+        },
+      );
+  }
+  return new EmbedBuilder()
+    .setColor(0x9ca3af)
+    .setTitle("UNSOLD")
+    .setDescription(`**${sale.playerName}** goes back to the pool.`)
+    .addFields(
+      {
+        name: "Role",
+        value: ROLE_LABELS[sale.role],
+        inline: true,
+      },
+      {
+        name: "Team purses",
+        value: purseLines(balances),
+      },
+    );
+}
+
+function doneEmbed(view: ReturnType<typeof getAuctionView>) {
+  const role = view.lastSale?.role ?? view.role;
+  return new EmbedBuilder()
+    .setColor(0x6366f1)
+    .setTitle("Auction complete")
+    .setDescription(
+      role
+        ? `The **${ROLE_LABELS[role]}** queue is finished.`
+        : "This role queue is finished.",
+    );
 }
 
 function lotButtons() {
@@ -447,22 +585,75 @@ function lotButtons() {
   );
 }
 
-async function publishLot(channel: TextChannel, view: Awaited<ReturnType<typeof getAuctionView>>) {
-  const payload = {
+async function closeLotMessage(
+  channel: TextChannel,
+  messageId: string | null,
+  clockLabel = "Ended",
+) {
+  if (!messageId) return;
+  try {
+    const existing = await channel.messages.fetch(messageId);
+    const previous = existing.embeds[0];
+    if (!previous) {
+      await existing.edit({ components: [] });
+      return;
+    }
+    const embed = EmbedBuilder.from(previous);
+    embed.setColor(0x6b7280);
+    const fields = (embed.data.fields ?? []).map((field) =>
+      field.name === "Clock" ? { ...field, value: clockLabel } : field,
+    );
+    if (fields.length > 0) embed.setFields(fields);
+    await existing.edit({ embeds: [embed], components: [] });
+  } catch {
+    /* old message gone */
+  }
+}
+
+async function postNewLot(channel: TextChannel, view: ReturnType<typeof getAuctionView>) {
+  const sent = await channel.send({
     embeds: [lotEmbed(view)],
     components: view.status === "running" && view.currentPlayer ? [lotButtons()] : [],
-  };
-  if (view.messageId && view.channelId === channel.id) {
-    try {
-      const existing = await channel.messages.fetch(view.messageId);
-      await existing.edit(payload);
+  });
+  saveAuctionMessage(channel.id, sent.id);
+}
+
+async function publishLot(channel: TextChannel, view: ReturnType<typeof getAuctionView>) {
+  if (view.event === "sold" || view.event === "unsold" || view.event === "done") {
+    await closeLotMessage(
+      channel,
+      view.messageId,
+      view.event === "sold" ? "Sold" : view.event === "unsold" ? "Unsold" : "Ended",
+    );
+    clearAuctionMessage();
+    await channel.send({ embeds: [saleEmbed(view)] });
+    if (view.event === "done" || !view.currentPlayer) {
+      await channel.send({ embeds: [doneEmbed(view)] });
+      markAuctionAnnounced();
       return;
-    } catch {
-      /* fall through */
     }
+    await postNewLot(channel, view);
+    markAuctionAnnounced();
+    return;
   }
-  const sent = await channel.send(payload);
-  await saveAuctionMessage(channel.id, sent.id);
+
+  if (view.event === "lot" || !view.messageId || view.channelId !== channel.id) {
+    await closeLotMessage(channel, view.messageId);
+    clearAuctionMessage();
+    await postNewLot(channel, view);
+    markAuctionAnnounced();
+    return;
+  }
+
+  try {
+    const existing = await channel.messages.fetch(view.messageId);
+    await existing.edit({
+      embeds: [lotEmbed(view)],
+      components: view.status === "running" && view.currentPlayer ? [lotButtons()] : [],
+    });
+  } catch {
+    await postNewLot(channel, view);
+  }
 }
 
 const client = new Client({
@@ -509,15 +700,13 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
     }
 
     if (name === "me") {
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       const player = await prisma.player.findUnique({
         where: { discordId },
         include: { team: true },
       });
       if (!player) {
-        await interaction.reply({
-          content: "You are not registered. Use `/register`.",
-          flags: MessageFlags.Ephemeral,
-        });
+        await interaction.editReply("You are not registered. Use `/register`.");
         return;
       }
       const roles = formatRoles(parseRolesJson(player.rolesJson));
@@ -525,10 +714,9 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
       const team = player.team
         ? `Team **${player.team.name}**${player.isCaptain ? " · captain" : ""}${sub}`
         : "Unsigned — you will appear in the auction";
-      await interaction.reply({
-        content: `**${player.steamName}** · ${player.medal} · ${roles}\nProfile: ${steamProfileUrl(player.steam32)}\nSteam32 \`${player.steam32}\`\n${team}`,
-        flags: MessageFlags.Ephemeral,
-      });
+      await interaction.editReply(
+        `**${player.steamName}** · ${player.medal} · ${roles}\nProfile: ${steamProfileUrl(player.steam32)}\nSteam32 \`${player.steam32}\`\n${team}`,
+      );
       return;
     }
 
@@ -548,6 +736,7 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
         });
         return;
       }
+      await interaction.deferReply();
       const sub = interaction.options.getSubcommand();
       if (sub === "add") {
         const user = interaction.options.getUser("user", true);
@@ -555,14 +744,14 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
           discordId: user.id,
           teamName: interaction.options.getString("team", true),
         });
-        await interaction.reply(
+        await interaction.editReply(
           `${user} is now captain of **${team.name}** (${STARTING_PURSE} points).`,
         );
         return;
       }
       const user = interaction.options.getUser("user", true);
       const removed = await adminRemoveCaptain(user.id);
-      await interaction.reply(
+      await interaction.editReply(
         `Removed captain ${user}. **${removed.teamName}** is dissolved; players are unsigned again.`,
       );
       return;
@@ -576,11 +765,49 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
         });
         return;
       }
+      await interaction.deferReply();
       const sub = interaction.options.getSubcommand();
+      if (sub === "dummy") {
+        const count = interaction.options.getInteger("count", true);
+        const result = await adminCreateDummyPlayers(count);
+        await interaction.editReply(
+          `Created **${result.created.length}** dummy players:\n${result.created.map((n) => `• ${n}`).join("\n")}\nThey appear on the site and in \`/auction start\`.`,
+        );
+        return;
+      }
+      if (sub === "dummy-clear") {
+        const result = await adminClearDummyPlayers();
+        await interaction.editReply(
+          result.removed === 0
+            ? "No unsigned dummy players to delete."
+            : `Deleted **${result.removed}** dummy players.`,
+        );
+        return;
+      }
+      if (sub === "dummy-teams") {
+        const count = interaction.options.getInteger("count") ?? 2;
+        const result = await adminCreateDummyTeams(count);
+        const body = result.created
+          .map((t) => `• **${t.name}** — ${t.players.length}/7`)
+          .join("\n");
+        await interaction.editReply(
+          `Created **${result.created.length}** dummy teams:\n${body}\nNext: \`/schedule generate\` when every team has 5+ players.`,
+        );
+        return;
+      }
+      if (sub === "dummy-teams-clear") {
+        const result = await adminClearDummyTeams();
+        await interaction.editReply(
+          result.teams === 0
+            ? "No dummy teams to delete."
+            : `Deleted **${result.teams}** dummy teams and **${result.players}** dummy players.`,
+        );
+        return;
+      }
       const user = interaction.options.getUser("user", true);
       if (sub === "delete") {
         const removed = await adminDeletePlayer(user.id);
-        await interaction.reply(
+        await interaction.editReply(
           `Deleted registration for **${removed.name}**. They can /register again.`,
         );
         return;
@@ -590,31 +817,32 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
           discordId: user.id,
           teamName: interaction.options.getString("team", true),
         });
-        await interaction.reply(
+        await interaction.editReply(
           `Added **${result.player.steamName}** to **${result.team.name}**.`,
         );
         return;
       }
       if (sub === "remove") {
         const removed = await adminRemovePlayerFromTeam(user.id);
-        await interaction.reply(
+        await interaction.editReply(
           `Removed **${removed.name}** from **${removed.teamName}**.`,
         );
         return;
       }
       const synced = await adminResyncRosterRole(user.id);
-      await interaction.reply(
+      await interaction.editReply(
         `Rebalanced **${synced.name}**'s team roster (5 starters + up to 2 subs).`,
       );
       return;
     }
 
     if (name === "bid") {
+      await interaction.deferReply();
       const view = await placeBid({
         discordId,
         amount: interaction.options.getInteger("amount", true),
       });
-      await interaction.reply({
+      await interaction.editReply({
         content: `Bid **${view.currentBid}** from ${view.highBidder?.name ?? "?"} on **${view.currentPlayer?.steamName}**.`,
       });
       if (interaction.channel?.type === ChannelType.GuildText) {
@@ -662,6 +890,7 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
         });
         return;
       }
+      await interaction.deferReply();
       const sub = interaction.options.getSubcommand();
       let view;
       if (sub === "start") {
@@ -673,7 +902,7 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
       } else {
         view = await undoLastSale();
       }
-      await interaction.reply({
+      await interaction.editReply({
         content:
           sub === "start"
             ? `Started **${ROLE_LABELS[view.role as Role]}** auction.`
@@ -782,6 +1011,21 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
         );
         return;
       }
+      if (sub === "final") {
+        await interaction.deferReply();
+        const result = await generateGrandFinal({
+          friday: interaction.options.getString("friday") ?? undefined,
+          force: interaction.options.getBoolean("force") ?? false,
+        });
+        await interaction.editReply({
+          content: [
+            `🏆 Grand final booked — **best of ${result.bestOf}** (first to 2).`,
+            `**${result.radiantName}** vs **${result.direName}**`,
+            formatScheduleWhen(result.scheduledAt),
+          ].join("\n"),
+        });
+        return;
+      }
       await interaction.deferReply();
       const result = await generateWeekendSchedule({
         friday: interaction.options.getString("friday") ?? undefined,
@@ -800,7 +1044,7 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
           : "";
       await interaction.editReply({
         content: [
-          `✅ Scheduled **${result.matchCount}** matches for **${result.teamCount}** teams (every pair once).`,
+          `✅ Scheduled **${result.matchCount}** best-of-1 matches for **${result.teamCount}** teams (every pair once).`,
           `First weekend starts **${formatScheduleWhen(result.firstFriday)}**.`,
           preview + more,
         ].join("\n"),
@@ -943,6 +1187,7 @@ client.on("interactionCreate", async (interaction: Interaction) => {
   }
   if (interaction.isButton() && interaction.customId.startsWith("bid:")) {
     try {
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       const spec = interaction.customId.slice(4);
       const view =
         spec === "open"
@@ -951,17 +1196,23 @@ client.on("interactionCreate", async (interaction: Interaction) => {
               discordId: interaction.user.id,
               bump: Number(spec),
             });
-      await interaction.reply({
-        content: `Bid **${view.currentBid}** — ${view.highBidder?.name ?? "?"}`,
-      });
+      await interaction.editReply(
+        `Bid **${view.currentBid}** — ${view.highBidder?.name ?? "?"}`,
+      );
       if (interaction.channel?.type === ChannelType.GuildText) {
         await publishLot(interaction.channel, view);
       }
     } catch (error) {
-      await interaction.reply({
-        content: fail(error),
-        flags: MessageFlags.Ephemeral,
-      });
+      const text = fail(error);
+      try {
+        if (interaction.deferred) {
+          await interaction.editReply(text);
+        } else {
+          await interaction.reply({ content: text, flags: MessageFlags.Ephemeral });
+        }
+      } catch {
+        /* interaction expired */
+      }
     }
     return;
   }
@@ -994,6 +1245,7 @@ async function refreshPostedLot() {
 
 client.once(Events.ClientReady, async () => {
   console.log(`Bot online as ${client.user?.tag}`);
+  await hydrateAuctionClock().catch(() => undefined);
   if (autoPostChannelRulesEnabled() && client.user) {
     for (const guild of client.guilds.cache.values()) {
       try {
@@ -1024,6 +1276,9 @@ client.once(Events.ClientReady, async () => {
       console.error("match reminders", error);
     }
   }, 60_000);
+  setInterval(() => {
+    prisma.$queryRaw`SELECT 1`.catch(() => undefined);
+  }, 120_000);
 });
 
 async function main() {

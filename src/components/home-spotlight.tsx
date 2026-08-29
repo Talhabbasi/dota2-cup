@@ -81,7 +81,13 @@ export function UpcomingMatchSpotlight({
   fixture,
   teamCount,
 }: {
-  fixture: { radiantTeam: TeamRef; direTeam: TeamRef; scheduledAt?: Date } | null;
+  fixture: {
+    radiantTeam: TeamRef;
+    direTeam: TeamRef;
+    scheduledAt?: Date;
+    bestOf?: number;
+    kind?: string;
+  } | null;
   teamCount: number;
 }) {
   return (
@@ -102,7 +108,11 @@ export function UpcomingMatchSpotlight({
             mid={
               <>
                 <span className="spotlight-mid-label">vs</span>
-                <span className="spotlight-mid-meta">Weekend fixture</span>
+                <span className="spotlight-mid-meta">
+                  {fixture.kind === "final"
+                    ? `Grand Final · BO${fixture.bestOf ?? 3}`
+                    : `Best of ${fixture.bestOf ?? 1}`}
+                </span>
               </>
             }
           />

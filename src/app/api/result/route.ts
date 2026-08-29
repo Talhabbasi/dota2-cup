@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { authSession } from "@/lib/auth";
 import { isAdminDiscordId } from "@/lib/constants";
+import { publicErrorMessage } from "@/lib/public-error";
 import { ingestMatch } from "@/lib/results";
 
 export async function POST(request: Request) {
@@ -19,7 +20,10 @@ export async function POST(request: Request) {
     const match = await ingestMatch({ raw: body.match });
     return NextResponse.json({ id: match.id, openDotaId: match.openDotaId });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Import failed";
-    return NextResponse.json({ error: message }, { status: 400 });
+    console.error(error);
+    return NextResponse.json(
+      { error: publicErrorMessage(error, "Import failed.") },
+      { status: 400 },
+    );
   }
 }

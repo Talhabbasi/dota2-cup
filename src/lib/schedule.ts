@@ -5,7 +5,9 @@ import { hasScheduleTable, safeScheduleQuery } from "./schedule-db";
 
 export const MAX_GAMES_PER_TEAM_PER_WEEKEND = 2;
 export const MATCHES_PER_WEEKEND = 3;
-export const WINS_FOR_WEEKEND_CROWN = 2;
+export const REGULAR_BEST_OF = 1;
+export const FINAL_BEST_OF = 3;
+export const SERIES_WINS_FOR_FINAL = 2;
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 const MONTH_NAMES = [
@@ -115,6 +117,8 @@ export type PlannedFixture = {
   direName: string;
   weekendIndex: number;
   slotIndex: number;
+  kind?: "regular" | "final";
+  bestOf?: number;
 };
 
 function pairKey(a: string, b: string) {
@@ -319,6 +323,8 @@ export async function generateWeekendSchedule(input?: {
         scheduledAt: f.scheduledAt,
         weekendIndex: f.weekendIndex,
         slotIndex: f.slotIndex,
+        kind: "regular",
+        bestOf: REGULAR_BEST_OF,
         status: "scheduled",
       })),
     });
@@ -407,15 +413,99 @@ export async function getWeekendChampion(weekendIndex: number) {
     const ranked = [...wins.values()].sort((a, b) => b.count - a.count);
     const top = ranked[0];
     if (!top) return null;
-    if (top.count >= WINS_FOR_WEEKEND_CROWN) return top;
+    if (top.count >= SERIES_WINS_FOR_FINAL) return top;
     if (ranked[1] && top.count === ranked[1].count) return null;
     return top.count > 0 ? top : null;
   });
 }
 
+export async function generateGrandFinal(input?: {
+  friday?: string;
+  force?: boolean;
+}) {
+  const pendingRegular = await prisma.scheduledFixture.count({
+    where: { status: "scheduled", kind: "regular" },
+  });
+  if (pendingRegular > 0 && !input?.force) {
+    throw new Error(
+      `${pendingRegular} regular fixtures are still open. Finish the season or pass force:true.`,
+    );
+  }
+
+  const existingFinal = await prisma.scheduledFixture.findFirst({
+    where: { kind: "final", status: "scheduled" },
+  });
+  if (existingFinal && !input?.force) {
+    throw new Error(
+      "A grand final is already scheduled. Run `/schedule clear` or `/schedule final force:true`.",
+    );
+  }
+
+  const { getStandings } = await import("./data");
+  const table = await getStandings();
+  if (table.length < 2) {
+    throw new Error("Need at least 2 teams to schedule a grand final.");
+  }
+  if (table[0].played === 0 && table[1].played === 0) {
+    throw new Error("Need regular-season results before seeding the top 2.");
+  }
+
+  const first = table[0];
+  const second = table[1];
+  const offsetH = scheduleUtcOffsetHours();
+  const friday = input?.friday
+    ? parseFridayInput(input.friday, offsetH)
+    : resolveWeekendFriday(new Date(), offsetH);
+  const start = localParts(friday, offsetH);
+  const scheduledAt = localToUtc(
+    start.year,
+    start.month,
+    start.day,
+    scheduleMatchHourLocal(),
+    scheduleMatchMinuteLocal(),
+    offsetH,
+  );
+  const lastWeekend = await prisma.scheduledFixture.aggregate({
+    _max: { weekendIndex: true },
+  });
+  const weekendIndex = (lastWeekend._max.weekendIndex ?? -1) + 1;
+  const oriented =
+    first.name.localeCompare(second.name) <= 0
+      ? { radiant: first, dire: second }
+      : { radiant: second, dire: first };
+
+  if (existingFinal && input?.force) {
+    await prisma.scheduledFixture.deleteMany({
+      where: { kind: "final", status: "scheduled" },
+    });
+  }
+
+  const fixture = await prisma.scheduledFixture.create({
+    data: {
+      radiantTeamId: oriented.radiant.id,
+      direTeamId: oriented.dire.id,
+      scheduledAt,
+      weekendIndex,
+      slotIndex: 0,
+      kind: "final",
+      bestOf: FINAL_BEST_OF,
+      status: "scheduled",
+    },
+    include: { radiantTeam: true, direTeam: true },
+  });
+
+  return {
+    radiantName: fixture.radiantTeam.name,
+    direName: fixture.direTeam.name,
+    scheduledAt: fixture.scheduledAt,
+    bestOf: FINAL_BEST_OF,
+  };
+}
+
 export async function completeScheduledFixture(input: {
   radiantTeamId: string | null;
   direTeamId: string | null;
+  winnerTeamId: string | null;
   matchId: string;
 }) {
   if (!input.radiantTeamId || !input.direTeamId || !hasScheduleTable()) return;
@@ -430,14 +520,26 @@ export async function completeScheduledFixture(input: {
           { radiantTeamId: keyA[1], direTeamId: keyA[0] },
         ],
       },
-      orderBy: { scheduledAt: "asc" },
+      orderBy: [{ kind: "asc" }, { scheduledAt: "asc" }],
     });
 
     if (!fixture) return;
 
+    const radiantWins =
+      fixture.radiantWins + (input.winnerTeamId === fixture.radiantTeamId ? 1 : 0);
+    const direWins =
+      fixture.direWins + (input.winnerTeamId === fixture.direTeamId ? 1 : 0);
+    const needed = Math.ceil((fixture.bestOf || REGULAR_BEST_OF) / 2);
+    const seriesOver = radiantWins >= needed || direWins >= needed;
+
     await prisma.scheduledFixture.update({
       where: { id: fixture.id },
-      data: { status: "completed", matchId: input.matchId },
+      data: {
+        matchId: input.matchId,
+        radiantWins,
+        direWins,
+        status: seriesOver ? "completed" : "scheduled",
+      },
     });
   } catch {
     /* schedule optional until admin runs /schedule generate */
@@ -454,12 +556,18 @@ export function formatScheduleSummary(
   for (const f of fixtures) {
     if (f.weekendIndex !== lastWeekend) {
       lastWeekend = f.weekendIndex;
-      lines.push(`\n**Weekend ${f.weekendIndex + 1}** (Fri / Sat / Sun · max 2 games per team)`);
+      lines.push(
+        f.kind === "final"
+          ? `\n**Grand Final** (best of ${f.bestOf} · first to ${Math.ceil(f.bestOf / 2)})`
+          : `\n**Weekend ${f.weekendIndex + 1}** (Fri / Sat / Sun · best of 1 · max 2 games per team)`,
+      );
     }
-    const day = weekendSlotLabel(f.slotIndex);
+    const day = f.kind === "final" ? "Final" : weekendSlotLabel(f.slotIndex);
     const pkt = formatScheduleWhen(f.scheduledAt);
+    const series =
+      f.bestOf > 1 ? ` · BO${f.bestOf} ${f.radiantWins}–${f.direWins}` : " · BO1";
     lines.push(
-      `${day} — **${f.radiantTeam.name}** vs **${f.direTeam.name}** · ${pkt}`,
+      `${day} — **${f.radiantTeam.name}** vs **${f.direTeam.name}**${series} · ${pkt}`,
     );
   }
   return lines.join("\n").trim();
