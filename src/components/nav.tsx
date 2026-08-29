@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { AuthButtons } from "./auth-buttons";
 
 const LINKS = [
   ["/", "Home"],
@@ -45,6 +46,7 @@ export function Nav() {
           );
         })}
       </nav>
+      <AuthButtons />
     </header>
   );
 }
