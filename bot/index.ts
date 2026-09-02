@@ -40,6 +40,7 @@ import {
   type Role,
 } from "../src/lib/constants";
 import { registerPlayer, setPlayerPlayWindow } from "../src/lib/register";
+import { moderateCommandOnlyChannel } from "../src/lib/channel-moderation";
 import {
   adminAddCaptain,
   adminRemoveCaptain,
@@ -1457,6 +1458,7 @@ client.on("error", (error) => {
 
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
+  if (await moderateCommandOnlyChannel(message)) return;
   await handlePrefixResult(message);
 });
 

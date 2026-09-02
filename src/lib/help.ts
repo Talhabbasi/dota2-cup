@@ -30,7 +30,9 @@ export const HELP_COMMANDS = `**Anyone**
 
 export const HELP_GUIDE = `## How to run the cup
 
-**Register.** Steam app → profile → **Share → Copy Page URL** (must be a full link). In Discord run \`/register\` with that URL, your medal, **one role**, and **when** you can play on weekends: 8pm–12am, after 12am, or either. Change later with \`/when\`. One Discord account + one Steam account — you cannot swap Steam later without an admin reset.
+**Register.** Steam app → profile → **Share → Copy Page URL** (must be a full link). In Discord run \`/register\` in **#register** with that URL, your medal, **one role**, and **when** you can play on weekends. **If the bot is offline**, register at the website **Register** page (sign in with Discord) — same rules. Change availability later with \`/when\`. One Discord account + one Steam account — you cannot swap Steam later without an admin reset.
+
+**Channels.** **#register**, **#captains**, and **#auction** are **commands only** — hello, game chat, and memes are auto-deleted. Use **#general** for conversation.
 
 **Captains.** Only admins assign captains with \`/captain add user:@player team:<name>\`. Players cannot self-claim. Captains get **20,000** auction points in Discord.
 

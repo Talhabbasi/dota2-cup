@@ -1,5 +1,6 @@
 import { EmbedBuilder } from "discord.js";
 import { MAX_ROSTER, MIN_ROSTER, STARTING_PURSE } from "./constants";
+import { cupSiteUrl } from "./channel-moderation";
 import { FINAL_BEST_OF, MATCHES_PER_WEEKEND, REGULAR_BEST_OF } from "./schedule";
 
 export const CHANNEL_GUIDE_NAMES = [
@@ -19,12 +20,26 @@ export const CUP_RULES = {
     {
       name: "Registration",
       body: [
-        "Use `/register` **only in #register**, or register on the website while signed in with Discord.",
+        `Use \`/register\` **only in #register** — same Steam, rank, role, and weekend availability rules as the website.`,
+        `**Bot offline?** Open **${cupSiteUrl()}/register**, sign in with Discord, and submit your Steam profile URL there.`,
         "Pick your **main role** from the dropdown (Safelane, Mid, Offlane, supports, Sub, or **Flex / any role**).",
-        "Pick your **weekend window**: 8pm–12am, after 12am, or either. Change later with `/when`.",
+        "Pick your **weekend availability**: 8pm–12am, after 12am, or either. Change later with `/when` or the website Register page.",
+        "**#register is commands only** — no hello/chat/game talk. The bot deletes off-topic messages; use **#general** for conversation.",
         "You must queue on the **same Steam account** you registered.",
         "One Discord account ↔ one Steam account. You cannot link a second Steam to the same Discord — ask an admin for `/player delete` to reset.",
         "Duplicates (same Steam on another Discord) are rejected.",
+      ],
+    },
+    {
+      name: "Discord channels",
+      body: [
+        "**#general** — chat, questions, announcements, match reminders.",
+        "**#register** — `/register`, `/when`, `/me` only (or use the website if the bot is down).",
+        "**#captains** — captain/admin commands only (`/roster`, `/purse`, `/schedule`, etc.).",
+        "**#auction** — auction commands and bids only (`/bid`, buttons). Everyone can watch.",
+        "**#results** — post `!result <match id>` after games.",
+        "**#schedule** — `/schedule list` for fixtures.",
+        "Casual messages in command channels are **auto-deleted**. Keep banter in **#general**.",
       ],
     },
     {
@@ -138,12 +153,13 @@ export function getChannelGuides(): { channelName: ChannelGuideName; embed: Embe
       channelName: "register",
       embed: guideEmbed(
         "#register — Player sign-up",
-        "Every player starts here. One Steam account per person.",
+        "Every player starts here. One Steam account per person. **Commands only** — no casual chat.",
         [
           "Steam app → profile → **Share → Copy Page URL** (full link only, no raw ID numbers).",
-          "`/register` works **only in this channel** — not in #general. If the bot is offline, use the website Register page.",
-          "`/register steam:<url> rank:ancient role:safelane when:evening` — role + weekend window (8pm–12am, after 12am, or both).",
-          "Change your window anytime with `/when`. `/me` shows what is saved.",
+          `Run \`/register\` in this channel with Steam URL, rank, role, and weekend availability.`,
+          `**Bot offline or not responding?** Register on the website: **${cupSiteUrl()}/register** — sign in with Discord, same rules.`,
+          "`/when` updates weekend availability · `/me` shows your saved profile.",
+          "Off-topic messages (hello, game chat, memes) are **deleted** — talk in **#general**.",
           "One Discord + one Steam — you cannot change Steam without admin `/player delete`.",
           "After you join a team, **medal and role lock** for you — register honestly. Admin: `/player edit`.",
           "Queue on this exact Steam account in every cup game.",
@@ -160,6 +176,7 @@ export function getChannelGuides(): { channelName: ChannelGuideName; embed: Embe
           "Website shows standings, teams, and matches (no login needed).",
           "Captains get **match reminders** here ~1 hour before scheduled games.",
           "Keep sign-ups in **#register**, bids in **#auction**, scores in **#results**.",
+          "**#register**, **#captains**, and **#auction** are commands-only — the bot deletes casual chat.",
           "Questions? Ask here or run `/help` for every command.",
         ],
       ),
@@ -168,14 +185,15 @@ export function getChannelGuides(): { channelName: ChannelGuideName; embed: Embe
       channelName: "captains",
       embed: guideEmbed(
         "#captains — Franchise owners only",
-        "This channel is private. Only captains and admins can see it.",
+        "Private channel for captains and admins. **Slash commands only** — no casual chat.",
         [
           "Admin: `/captain add user:@player team:Wolves`",
           `Captain receives **${STARTING_PURSE.toLocaleString()}** auction points.`,
-          "Admin: `/player add` to place unsigned players on a team.",
           "Captain checks roster: `/roster` and `/purse`",
+          "Schedule: `/schedule list` · fixtures also on the website.",
           `Roster must reach **${MIN_ROSTER}–${MAX_ROSTER}** players after the auction.`,
           "Lobby name in Dota must match your **franchise name** exactly.",
+          "Questions and banter → **#general**. Off-topic messages here are deleted.",
         ],
       ),
     },
@@ -183,7 +201,7 @@ export function getChannelGuides(): { channelName: ChannelGuideName; embed: Embe
       channelName: "auction",
       embed: guideEmbed(
         "#auction — Draft night",
-        "Everyone can watch. Only captains and admins can send messages.",
+        "Everyone can watch. Captains and admins bid with commands or buttons. **No casual chat.**",
         [
           "Admin: `/auction start role:mid` (then safelane, offlane, supports, sub).",
           "Captains bid: `/bid amount:3200` or use the **+100 / +500** buttons.",
@@ -192,7 +210,7 @@ export function getChannelGuides(): { channelName: ChannelGuideName; embed: Embe
           "30-second clock resets after each bid.",
           "Players 6 and 7 on your roster auto-become **Sub**.",
           "Admin: `/auction pause` · `/auction skip` · `/auction undo`",
-          "Auction runs here only — the website is read-only stats.",
+          "Reactions and hello messages are removed — discuss in **#general**.",
         ],
       ),
     },
