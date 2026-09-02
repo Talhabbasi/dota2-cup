@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { Pagination, usePagedList } from "@/components/pagination";
 import { MatchCard, type MatchCardMatch } from "@/components/match-card";
 import { matchKillTotals } from "@/lib/match-score";
 
@@ -40,6 +41,8 @@ export function MatchesGrid({ matches }: { matches: MatchListView[] }) {
     }
     return list;
   }, [matches, sort]);
+
+  const { page, pageCount, slice, setPage } = usePagedList(sorted, 8);
 
   const withScore = matches.filter((m) =>
     matchKillTotals(m.players).hasScore,
@@ -89,10 +92,11 @@ export function MatchesGrid({ matches }: { matches: MatchListView[] }) {
       </div>
 
       <div className="matches-grid-stack">
-        {sorted.map((match) => (
+        {slice.map((match) => (
           <MatchCard key={match.id} match={match} showDate />
         ))}
       </div>
+      <Pagination page={page} pageCount={pageCount} onPage={setPage} />
     </>
   );
 }

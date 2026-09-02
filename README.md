@@ -18,6 +18,6 @@ npm run bot    # Discord bot (separate terminal)
 1. Create Postgres (Neon or Vercel Postgres).
 2. Run `npm run db:push` once with production `DIRECT_URL`.
 3. Deploy the repo to **Vercel** (website) — see [DEPLOY.md](./DEPLOY.md).
-4. Deploy the bot to **Railway** / Render / VPS with the **same** `DATABASE_URL`.
+4. Deploy the bot 24/7 on **Oracle Cloud Always Free** (`deploy/oracle/`) or Railway / Render / a VPS — same `DATABASE_URL` as Vercel.
 
 Full step-by-step: **[DEPLOY.md](./DEPLOY.md)**

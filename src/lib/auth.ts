@@ -37,8 +37,13 @@ export async function currentPlayer() {
   const session = await authSession();
   const discordId = session?.user?.discordId;
   if (!discordId) return { session, player: null };
-  const player = await prisma.player.findUnique({
-    where: { discordId },
+  const player = await prisma.player.findFirst({
+    where: {
+      OR: [
+        { discordId },
+        { discordId: { startsWith: `${discordId}:` } },
+      ],
+    },
     include: { team: true },
   });
   return { session, player };

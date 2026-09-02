@@ -73,7 +73,65 @@ Add the domain in Vercel → Settings → Domains, then set `NEXTAUTH_URL` to `h
 
 ## 3. Deploy Discord bot (24/7)
 
-The bot cannot run on Vercel. Use **Railway**, **Render**, **Fly.io**, or a VPS.
+The bot cannot run on Vercel — it needs a process that stays online. **Oracle Cloud Always Free** is the $0 option (files in `deploy/oracle/`). Railway / Render / a paid VPS also work.
+
+### Oracle Cloud Always Free (recommended for $0)
+
+Oracle cannot be created from this repo. You create a free VM in their console, then run the installer.
+
+1. Sign up at [cloud.oracle.com](https://cloud.oracle.com) (card is used to verify the account; stay on **Always Free** shapes to avoid bills). Pick a region close to you (e.g. Mumbai, Jeddah, or Dubai). You cannot change home region later.
+2. **Compute → Instances → Create instance**
+   - Name: `dota-cup-bot`
+   - Image: **Canonical Ubuntu 24.04**
+   - Shape: **VM.Standard.A1.Flex** (Ampere), **1 OCPU** and **6 GB RAM** (Always Free)
+   - Networking: assign a **public IPv4** address
+   - SSH: generate a key pair (download the private key) or paste your existing public key
+3. Wait until the instance is **Running**, copy the public IP, then from your laptop:
+
+```bash
+chmod 600 /path/to/oracle-key.key
+ssh -i /path/to/oracle-key.key ubuntu@PUBLIC_IP
+```
+
+(Oracle Linux images use user `opc` instead of `ubuntu`.)
+
+4. On the VM:
+
+```bash
+sudo apt-get update && sudo apt-get install -y git
+git clone https://github.com/Talhabbasi/dota2-cup.git ~/dota-cup
+cd ~/dota-cup
+```
+
+5. Copy secrets from your laptop (same `DATABASE_URL` as Vercel):
+
+```bash
+scp -i /path/to/oracle-key.key .env ubuntu@PUBLIC_IP:~/dota-cup/.env
+```
+
+6. Install Node, systemd, and start the bot:
+
+```bash
+cd ~/dota-cup
+bash deploy/oracle/setup.sh
+```
+
+7. Confirm in Discord with `/help`. Logs:
+
+```bash
+journalctl -u dota-cup-bot -f
+```
+
+Later updates:
+
+```bash
+cd ~/dota-cup
+bash deploy/oracle/update.sh
+```
+
+Optional: Docker instead of systemd — `docker compose -f deploy/oracle/docker-compose.yml up -d --build`.
+
+The bot only needs **outbound** HTTPS (Discord + Postgres). You do not need to open ports 80/443 on the VM.
 
 ### Railway / Render example
 
@@ -89,8 +147,10 @@ The bot cannot run on Vercel. Use **Railway**, **Render**, **Fly.io**, or a VPS.
 | `DISCORD_CLIENT_ID` | Application ID |
 | `DISCORD_GUILD_ID` | Your server ID |
 | `SCHEDULE_UTC_OFFSET_HOURS` | `5` for Pakistan |
-| `SCHEDULE_MATCH_HOUR_LOCAL` | `23` |
+| `SCHEDULE_MATCH_HOUR_LOCAL` | `23` (evening window 11:30 PM) |
 | `SCHEDULE_MATCH_MINUTE_LOCAL` | `30` |
+| `SCHEDULE_LATE_HOUR_LOCAL` | `0` (late window 12:30 AM) |
+| `SCHEDULE_LATE_MINUTE_LOCAL` | `30` |
 | `REMINDER_MINUTES_BEFORE` | `60` |
 | `REMINDER_CHANNEL_NAME` | `general` |
 | `RULES_CHANNEL_NAME` | `general` |

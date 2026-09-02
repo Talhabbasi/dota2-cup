@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Oxanium, Sora } from "next/font/google";
 import { Nav } from "@/components/nav";
 import { Providers } from "@/components/providers";
@@ -17,6 +17,12 @@ const sora = Sora({
 export const metadata: Metadata = {
   title: "MM Dota Cup",
   description: "Auction, teams, and standings for MM Dota Cup.",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

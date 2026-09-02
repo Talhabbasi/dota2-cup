@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import type { HeroTournamentStat } from "@/lib/heroes";
+import { Pagination, usePagedList } from "@/components/pagination";
 
 type Filter = "all" | "played" | "unplayed";
 type SortKey = "plays" | "name";
@@ -79,6 +80,8 @@ export function HeroesGrid({ heroes }: { heroes: HeroTournamentStat[] }) {
     }
     return list;
   }, [heroes, query, filter, sort]);
+
+  const { page, pageCount, slice, setPage } = usePagedList(filtered, 24);
 
   return (
     <div className="heroes-board">
@@ -169,7 +172,8 @@ export function HeroesGrid({ heroes }: { heroes: HeroTournamentStat[] }) {
         </div>
 
         <p className="muted heroes-result-count">
-          Showing <strong>{filtered.length}</strong> heroes
+          Showing <strong>{slice.length}</strong> of {filtered.length} heroes
+          {pageCount > 1 ? ` · page ${page} of ${pageCount}` : ""}
           {totalPicks > 0 ? (
             <>
               {" "}
@@ -181,11 +185,14 @@ export function HeroesGrid({ heroes }: { heroes: HeroTournamentStat[] }) {
         {filtered.length === 0 ? (
           <div className="heroes-board-empty muted">No heroes match that search.</div>
         ) : (
-          <div className="heroes-grid-enhanced">
-            {filtered.map((hero) => (
-              <HeroTile key={hero.id} hero={hero} />
-            ))}
-          </div>
+          <>
+            <div className="heroes-grid-enhanced">
+              {slice.map((hero) => (
+                <HeroTile key={hero.id} hero={hero} />
+              ))}
+            </div>
+            <Pagination page={page} pageCount={pageCount} onPage={setPage} />
+          </>
         )}
       </div>
     </div>

@@ -3,9 +3,10 @@ import {
   MAX_ROSTER,
   STARTING_PURSE,
 } from "./constants";
+import { formatRoles } from "./data";
+import { PLAY_WINDOW_SHORT, playWindowOrBoth } from "./play-window";
 import { prisma } from "./prisma";
 import { parseRolesJson } from "./roles";
-import { formatRoles } from "./data";
 
 async function requirePlayer(discordId: string) {
   const player = await prisma.player.findUnique({
@@ -136,6 +137,7 @@ export function rosterSummary(
     steamName: string;
     isCaptain: boolean;
     discordName: string;
+    playWindow?: string | null;
   }[],
 ) {
   if (players.length > MAX_ROSTER) {
@@ -146,7 +148,8 @@ export function rosterSummary(
       const tag = p.isCaptain ? " (C)" : "";
       const sub = p.rosterRole === "sub" ? " · Sub" : "";
       const roles = formatRoles(parseRolesJson(p.rolesJson));
-      return `${roles}${sub} — ${p.steamName} / ${p.discordName}${tag}`;
+      const window = PLAY_WINDOW_SHORT[playWindowOrBoth(p.playWindow)];
+      return `${roles}${sub} — ${p.steamName} / ${p.discordName}${tag} · ${window}`;
     })
     .join("\n");
 }

@@ -14,6 +14,7 @@ export type TeamPlayerView = {
   steamName: string;
   medal: string;
   rolesLabel: string;
+  playWindowLabel: string;
   isCaptain: boolean;
   isSub: boolean;
 };
@@ -61,6 +62,7 @@ function PlayerCard({ player }: { player: TeamPlayerView }) {
           {MEDAL_LABELS[medal] ?? player.medal}
         </span>
         <span className="team-role-pill">{player.rolesLabel}</span>
+        <span className="team-window-pill">{player.playWindowLabel}</span>
       </p>
       <span className="team-player-cta">View profile →</span>
     </Link>
@@ -87,6 +89,7 @@ export function TeamProfileHero({
   subCount,
   wins,
   losses,
+  playWindowLabel,
 }: {
   teamName: string;
   captainName: string | null;
@@ -95,6 +98,7 @@ export function TeamProfileHero({
   subCount: number;
   wins: number;
   losses: number;
+  playWindowLabel?: string | null;
 }) {
   const pct = Math.round((playerCount / MAX_ROSTER) * 100);
   const rosterReady = starterCount >= MIN_ROSTER;
@@ -113,6 +117,12 @@ export function TeamProfileHero({
           ) : (
             "No captain assigned"
           )}
+          {playWindowLabel ? (
+            <>
+              {" "}
+              · Weekends <strong>{playWindowLabel}</strong>
+            </>
+          ) : null}
         </p>
 
         <div className="team-hero-stats">

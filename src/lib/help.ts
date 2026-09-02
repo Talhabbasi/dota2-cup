@@ -1,6 +1,7 @@
 export const HELP_COMMANDS = `**Anyone**
-\`/register steam:<profile URL> rank:<medal> role:<dropdown>\` — link the Steam account you will play on (full profile URL only — no raw IDs)
-\`/me\` — your registration, team, role
+\`/register steam:<profile URL> rank:<medal> role:<dropdown> when:<evening|late|both>\` — **only in #register**. If the bot is offline, use the website **Register** page.
+\`/when window:<evening|late|both>\` — weekend play window (8pm–12am, after 12am, or either)
+\`/me\` — your registration, team, role, and weekend window
 \`/help\` — this list
 \`/schedule list\` — upcoming fixtures
 
@@ -17,6 +18,7 @@ export const HELP_COMMANDS = `**Anyone**
 \`/player add user:@x team:<name>\` — add unsigned player to a team
 \`/player remove user:@x\` — remove player from team
 \`/player delete user:@x\` — delete registration (unsigned only)
+\`/player edit user:@x rank:<medal> role:<role> when:<evening|late|both>\` — fix rank, role, and/or weekend window (or \`discord_id:<id>\`)
 \`/player resync user:@x\` — fix roster slot from registration
 \`/schedule generate\` — round-robin Fri/Sat/Sun after all teams have 5+ players
 \`/schedule final\` — BO3 grand final for the top 2
@@ -28,7 +30,7 @@ export const HELP_COMMANDS = `**Anyone**
 
 export const HELP_GUIDE = `## How to run the cup
 
-**Register.** Steam app → profile → **Share → Copy Page URL** (must be a full link). In Discord run \`/register\` with that URL, your medal, and **one role** from the dropdown (or **Flex / any role**). One Discord account + one Steam account — you cannot swap Steam later without an admin reset.
+**Register.** Steam app → profile → **Share → Copy Page URL** (must be a full link). In Discord run \`/register\` with that URL, your medal, **one role**, and **when** you can play on weekends: 8pm–12am, after 12am, or either. Change later with \`/when\`. One Discord account + one Steam account — you cannot swap Steam later without an admin reset.
 
 **Captains.** Only admins assign captains with \`/captain add user:@player team:<name>\`. Players cannot self-claim. Captains get **20,000** auction points in Discord.
 
@@ -36,7 +38,7 @@ export const HELP_GUIDE = `## How to run the cup
 
 **Auction night.** Admin runs one pool at a time in #auction. Captains buy any players within budget — no position limits. Roster is 5 starters + 2 subs (captain counts as a starter).
 
-**Schedule.** When every team has 5+ players, admin runs \`/schedule generate\`. Matches spread across **Fri / Sat / Sun at 11:30 PM Pakistan time**. Regular games are **best of 1**. Max **2 games per team** per weekend. After the table is set, the **top 2** play a **best of 3** grand final (\`/schedule final\`).
+**Schedule.** When every team has 5+ players, admin runs \`/schedule generate\`. Matches spread across **Fri / Sat / Sun**. Kickoff is **11:30 PM PKT** when both teams can play 8pm–12am, or **12:30 AM PKT** when they only overlap after midnight. Regular games are **best of 1**. Max **2 games per team** per weekend. After the table is set, the **top 2** play a **best of 3** grand final (\`/schedule final\`).
 
 **Reminders.** The bot pings captains in #general about **1 hour** before a scheduled match (configurable).
 

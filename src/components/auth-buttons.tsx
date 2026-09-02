@@ -19,7 +19,7 @@ export function AuthButtons() {
 
   return (
     <span className="auth-chip">
-      <span>{data.user.name}</span>
+      <span className="auth-name">{data.user.name}</span>
       <button type="button" className="btn btn-ghost" onClick={() => signOut()}>
         Sign out
       </button>

@@ -42,7 +42,7 @@ export function publicErrorMessage(
     if (error.name.startsWith("Prisma") || LEAKS_INTERNALS.test(error.message)) {
       return fallback;
     }
-    return error.message;
+    return error.message.replace(/\*\*/g, "");
   }
 
   return fallback;

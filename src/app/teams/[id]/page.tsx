@@ -7,6 +7,11 @@ import {
   type TeamPlayerView,
 } from "@/components/team-profile";
 import { getStandings, getTeam, formatRoles } from "@/lib/data";
+import {
+  PLAY_WINDOW_SHORT,
+  deriveTeamPlayWindow,
+  playWindowOrBoth,
+} from "@/lib/play-window";
 import { isRosterSub, parseRolesJson, sortTeamRoster } from "@/lib/roles";
 
 export const dynamic = "force-dynamic";
@@ -16,6 +21,7 @@ function toPlayerView(player: {
   steamName: string;
   medal: string;
   rolesJson: string;
+  playWindow: string;
   isCaptain: boolean;
   rosterRole: string | null;
 }): TeamPlayerView {
@@ -24,6 +30,7 @@ function toPlayerView(player: {
     steamName: player.steamName,
     medal: player.medal,
     rolesLabel: formatRoles(parseRolesJson(player.rolesJson)),
+    playWindowLabel: PLAY_WINDOW_SHORT[playWindowOrBoth(player.playWindow)],
     isCaptain: player.isCaptain,
     isSub: isRosterSub(player.rosterRole),
   };
@@ -43,6 +50,9 @@ export default async function TeamPage({
   const starters = ordered.filter((_, i) => i < 5);
   const subs = ordered.filter((_, i) => i >= 5);
   const record = standings.find((row) => row.id === team.id);
+  const teamWindow = deriveTeamPlayWindow(
+    team.players.map((p) => playWindowOrBoth(p.playWindow)),
+  );
 
   const history = [...team.radiantMatches, ...team.direMatches]
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
@@ -62,6 +72,7 @@ export default async function TeamPage({
         subCount={subs.length}
         wins={record?.wins ?? 0}
         losses={record?.losses ?? 0}
+        playWindowLabel={PLAY_WINDOW_SHORT[teamWindow]}
       />
 
       <TeamRosterBoard

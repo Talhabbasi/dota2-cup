@@ -447,6 +447,28 @@ export function clearAuctionMessage() {
   if (live) live.messageId = null;
 }
 
+export function patchLivePlayer(
+  playerId: string,
+  patch: { medal?: string; rolesJson?: string },
+) {
+  if (!live) return { patched: false, bidReset: false };
+  const player = live.players.get(playerId);
+  if (!player) return { patched: false, bidReset: false };
+  if (patch.medal) player.medal = patch.medal;
+  if (patch.rolesJson) player.rolesJson = patch.rolesJson;
+
+  let bidReset = false;
+  if (
+    patch.medal &&
+    live.currentPlayerId === playerId &&
+    !live.currentBidderTeamId
+  ) {
+    live.currentBid = basePriceFor(player.medal);
+    bidReset = true;
+  }
+  return { patched: true, bidReset };
+}
+
 export function getAuctionView() {
   return viewFromLive();
 }

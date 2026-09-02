@@ -1,5 +1,13 @@
 import { MIN_ROSTER } from "./constants";
 import { formatMatchTimesAllZones, weekendSlotLabel } from "./match-times";
+import {
+  deriveTeamPlayWindow,
+  matchKickoffWindow,
+  playWindowOrBoth,
+  type KickoffWindow,
+  type PlayWindow,
+  windowsOverlap,
+} from "./play-window";
 import { prisma } from "./prisma";
 import { hasScheduleTable, safeScheduleQuery } from "./schedule-db";
 
@@ -29,6 +37,18 @@ export function scheduleMatchHourLocal(): number {
 
 export function scheduleMatchMinuteLocal(): number {
   const raw = process.env.SCHEDULE_MATCH_MINUTE_LOCAL;
+  const n = raw ? Number(raw) : 30;
+  return Number.isFinite(n) ? Math.min(59, Math.max(0, n)) : 30;
+}
+
+export function scheduleLateHourLocal(): number {
+  const raw = process.env.SCHEDULE_LATE_HOUR_LOCAL;
+  const n = raw ? Number(raw) : 0;
+  return Number.isFinite(n) ? Math.min(23, Math.max(0, n)) : 0;
+}
+
+export function scheduleLateMinuteLocal(): number {
+  const raw = process.env.SCHEDULE_LATE_MINUTE_LOCAL;
   const n = raw ? Number(raw) : 30;
   return Number.isFinite(n) ? Math.min(59, Math.max(0, n)) : 30;
 }
@@ -105,7 +125,12 @@ export function formatScheduleWhen(date: Date | string | null | undefined): stri
   return `${dow}, ${month} ${day} · ${hr}:${min} ${ampm} PKT`;
 }
 
-type TeamRow = { id: string; name: string; players: unknown[] };
+type TeamRow = {
+  id: string;
+  name: string;
+  players: unknown[];
+  playWindow: PlayWindow;
+};
 
 type OrientedPair = { radiant: TeamRow; dire: TeamRow };
 
@@ -171,7 +196,47 @@ function scorePairForWeekend(
   if (rc >= MAX_GAMES_PER_TEAM_PER_WEEKEND || dc >= MAX_GAMES_PER_TEAM_PER_WEEKEND) {
     return null;
   }
-  return (rc === 0 ? 30 : 0) + (dc === 0 ? 30 : 0) - (rc + dc) * 8;
+  let score = (rc === 0 ? 30 : 0) + (dc === 0 ? 30 : 0) - (rc + dc) * 8;
+  if (windowsOverlap(pair.radiant.playWindow, pair.dire.playWindow)) {
+    score += 24;
+  } else {
+    score -= 40;
+  }
+  return score;
+}
+
+function kickoffAt(
+  start: { year: number; month: number; day: number },
+  weekendIndex: number,
+  slot: number,
+  window: KickoffWindow,
+  offsetH: number,
+): Date {
+  const dayOffset = weekendIndex * 7 + slot;
+  if (window === "late") {
+    return localToUtc(
+      start.year,
+      start.month,
+      start.day + dayOffset + 1,
+      scheduleLateHourLocal(),
+      scheduleLateMinuteLocal(),
+      offsetH,
+    );
+  }
+  return localToUtc(
+    start.year,
+    start.month,
+    start.day + dayOffset,
+    scheduleMatchHourLocal(),
+    scheduleMatchMinuteLocal(),
+    offsetH,
+  );
+}
+
+export function kickoffWindowFromDate(date: Date): KickoffWindow {
+  const offsetH = scheduleUtcOffsetHours();
+  const shifted = new Date(date.getTime() + offsetH * 3_600_000);
+  return shifted.getUTCHours() < 12 ? "late" : "evening";
 }
 
 function distributeWeekendSlots(
@@ -181,8 +246,6 @@ function distributeWeekendSlots(
   const remaining = [...pairs];
   const result: PlannedFixture[] = [];
   const offsetH = scheduleUtcOffsetHours();
-  const hour = scheduleMatchHourLocal();
-  const minute = scheduleMatchMinuteLocal();
   const start = localParts(firstFriday, offsetH);
   let weekendIndex = 0;
 
@@ -206,13 +269,11 @@ function distributeWeekendSlots(
       if (bestIdx === -1) break;
 
       const pair = remaining.splice(bestIdx, 1)[0];
-      const totalDayOffset = weekendIndex * 7 + slot;
-      const scheduledAt = localToUtc(
-        start.year,
-        start.month,
-        start.day + totalDayOffset,
-        hour,
-        minute,
+      const scheduledAt = kickoffAt(
+        start,
+        weekendIndex,
+        slot,
+        matchKickoffWindow(pair.radiant.playWindow, pair.dire.playWindow),
         offsetH,
       );
 
@@ -233,12 +294,11 @@ function distributeWeekendSlots(
 
     if (scheduledThisWeekend === 0) {
       const pair = remaining.shift()!;
-      const scheduledAt = localToUtc(
-        start.year,
-        start.month,
-        start.day + weekendIndex * 7,
-        hour,
-        minute,
+      const scheduledAt = kickoffAt(
+        start,
+        weekendIndex,
+        0,
+        matchKickoffWindow(pair.radiant.playWindow, pair.dire.playWindow),
         offsetH,
       );
       result.push({
@@ -256,6 +316,21 @@ function distributeWeekendSlots(
   }
 
   return result;
+}
+
+function teamRowFromRoster(team: {
+  id: string;
+  name: string;
+  players: { playWindow: string }[];
+}): TeamRow {
+  return {
+    id: team.id,
+    name: team.name,
+    players: team.players,
+    playWindow: deriveTeamPlayWindow(
+      team.players.map((p) => playWindowOrBoth(p.playWindow)),
+    ),
+  };
 }
 
 export async function validateTeamsForSchedule() {
@@ -302,7 +377,7 @@ export async function generateWeekendSchedule(input?: {
     : resolveWeekendFriday(new Date(), offsetH);
 
   const played = await completedPairKeys();
-  const pairs = roundRobinPairs(teams).filter(
+  const pairs = roundRobinPairs(teams.map(teamRowFromRoster)).filter(
     (pair) => !played.has(pairKey(pair.radiant.id, pair.dire.id)),
   );
 
@@ -457,12 +532,21 @@ export async function generateGrandFinal(input?: {
     ? parseFridayInput(input.friday, offsetH)
     : resolveWeekendFriday(new Date(), offsetH);
   const start = localParts(friday, offsetH);
-  const scheduledAt = localToUtc(
-    start.year,
-    start.month,
-    start.day,
-    scheduleMatchHourLocal(),
-    scheduleMatchMinuteLocal(),
+  const rosterWindows = await prisma.team.findMany({
+    where: { id: { in: [first.id, second.id] } },
+    include: { players: { select: { playWindow: true } } },
+  });
+  const windowByTeam = new Map(
+    rosterWindows.map((t) => [t.id, teamRowFromRoster(t).playWindow]),
+  );
+  const scheduledAt = kickoffAt(
+    start,
+    0,
+    0,
+    matchKickoffWindow(
+      windowByTeam.get(first.id) ?? "both",
+      windowByTeam.get(second.id) ?? "both",
+    ),
     offsetH,
   );
   const lastWeekend = await prisma.scheduledFixture.aggregate({
@@ -559,15 +643,19 @@ export function formatScheduleSummary(
       lines.push(
         f.kind === "final"
           ? `\n**Grand Final** (best of ${f.bestOf} · first to ${Math.ceil(f.bestOf / 2)})`
-          : `\n**Weekend ${f.weekendIndex + 1}** (Fri / Sat / Sun · best of 1 · max 2 games per team)`,
+          : `\n**Weekend ${f.weekendIndex + 1}** (Fri / Sat / Sun · BO1 · 11:30 PM or 12:30 AM PKT · max 2 games per team)`,
       );
     }
     const day = f.kind === "final" ? "Final" : weekendSlotLabel(f.slotIndex);
     const pkt = formatScheduleWhen(f.scheduledAt);
+    const window =
+      kickoffWindowFromDate(f.scheduledAt) === "late"
+        ? " · after 12am"
+        : " · 8pm–12am";
     const series =
       f.bestOf > 1 ? ` · BO${f.bestOf} ${f.radiantWins}–${f.direWins}` : " · BO1";
     lines.push(
-      `${day} — **${f.radiantTeam.name}** vs **${f.direTeam.name}**${series} · ${pkt}`,
+      `${day} — **${f.radiantTeam.name}** vs **${f.direTeam.name}**${series}${window} · ${pkt}`,
     );
   }
   return lines.join("\n").trim();

@@ -35,9 +35,11 @@ import {
   ROLES,
   STARTING_ROLES,
   STARTING_PURSE,
+  basePriceFor,
+  type Medal,
   type Role,
 } from "../src/lib/constants";
-import { registerPlayer } from "../src/lib/register";
+import { registerPlayer, setPlayerPlayWindow } from "../src/lib/register";
 import {
   adminAddCaptain,
   adminRemoveCaptain,
@@ -48,6 +50,7 @@ import {
   clearAuctionMessage,
   getAuctionView,
   markAuctionAnnounced,
+  patchLivePlayer,
   pauseAuction,
   placeBid,
   saveAuctionMessage,
@@ -68,12 +71,23 @@ import {
 } from "../src/lib/schedule";
 import { HELP_COMMANDS, HELP_GUIDE } from "../src/lib/help";
 import { tickMatchReminders } from "../src/lib/reminders";
-import { buildRulesEmbed, rulesChannelName } from "../src/lib/rules";
+import {
+  buildRulesEmbed,
+  registerChannelName,
+  rulesChannelName,
+} from "../src/lib/rules";
 import {
   autoPostChannelRulesEnabled,
   formatGuideResults,
   postChannelGuides,
 } from "../src/lib/post-channel-guides";
+import {
+  describeChannelAccess,
+  setMemberCaptainRole,
+  syncCaptainRolesFromDb,
+  syncCupChannelAccess,
+  trySetPlayWindowRoles,
+} from "../src/lib/discord-access";
 import {
   adminAddPlayerToTeam,
   adminClearDummyPlayers,
@@ -83,12 +97,19 @@ import {
   adminDeletePlayer,
   adminRemovePlayerFromTeam,
   adminResyncRosterRole,
+  adminUpdatePlayerProfile,
 } from "../src/lib/players-admin";
 import { parseRolesJson } from "../src/lib/roles";
 import { prisma } from "../src/lib/prisma";
 import { formatRoles } from "../src/lib/data";
 import { publicErrorMessage } from "../src/lib/public-error";
 import { steamProfileUrl } from "../src/lib/steam";
+import {
+  PLAY_WINDOW_DISCORD_CHOICES,
+  PLAY_WINDOW_LABELS,
+  PLAY_WINDOW_SHORT,
+  playWindowOrBoth,
+} from "../src/lib/play-window";
 
 const token = process.env.DISCORD_TOKEN;
 const clientId = process.env.DISCORD_CLIENT_ID;
@@ -122,7 +143,7 @@ const registerRoleChoices = [
 const commands = [
   new SlashCommandBuilder()
     .setName("register")
-    .setDescription("Link the Steam account you will play on")
+    .setDescription("Link one Steam account to this Discord (one per person)")
     .addStringOption((o) =>
       o
         .setName("steam")
@@ -142,10 +163,27 @@ const commands = [
         .setDescription("Your main role — pick from the dropdown")
         .setRequired(true)
         .addChoices(...registerRoleChoices),
+    )
+    .addStringOption((o) =>
+      o
+        .setName("when")
+        .setDescription("Weekend play window (Pakistan time)")
+        .setRequired(true)
+        .addChoices(...PLAY_WINDOW_DISCORD_CHOICES),
     ),
   new SlashCommandBuilder()
     .setName("me")
     .setDescription("Show your registration and team"),
+  new SlashCommandBuilder()
+    .setName("when")
+    .setDescription("Set when you can play on weekends (Pakistan time)")
+    .addStringOption((o) =>
+      o
+        .setName("window")
+        .setDescription("8pm–12am, after 12am, or either")
+        .setRequired(true)
+        .addChoices(...PLAY_WINDOW_DISCORD_CHOICES),
+    ),
   new SlashCommandBuilder()
     .setName("help")
     .setDescription("Commands and how to run the cup"),
@@ -207,6 +245,37 @@ const commands = [
         .setDescription("Admin: fix roster slot from their /register role")
         .addUserOption((o) =>
           o.setName("user").setDescription("Player").setRequired(true),
+        ),
+    )
+    .addSubcommand((s) =>
+      s
+        .setName("edit")
+        .setDescription("Admin: change a player's rank, role, and/or weekend window")
+        .addUserOption((o) =>
+          o.setName("user").setDescription("Player (mention)"),
+        )
+        .addStringOption((o) =>
+          o
+            .setName("discord_id")
+            .setDescription("Discord user ID if you cannot mention them"),
+        )
+        .addStringOption((o) =>
+          o
+            .setName("rank")
+            .setDescription("New medal / rank")
+            .addChoices(...medalChoices),
+        )
+        .addStringOption((o) =>
+          o
+            .setName("role")
+            .setDescription("New main role")
+            .addChoices(...registerRoleChoices),
+        )
+        .addStringOption((o) =>
+          o
+            .setName("when")
+            .setDescription("Weekend play window")
+            .addChoices(...PLAY_WINDOW_DISCORD_CHOICES),
         ),
     )
     .addSubcommand((s) =>
@@ -389,7 +458,38 @@ function fail(error: unknown): string {
   return publicErrorMessage(error);
 }
 
-const pendingRegister = new Map<string, { steam: string; medal: string }>();
+function parseDiscordSnowflake(raw: string): string {
+  const trimmed = raw.trim();
+  const mention = trimmed.match(/^<@!?(\d{17,20})>$/);
+  if (mention) return mention[1];
+  if (/^\d{17,20}$/.test(trimmed)) return trimmed;
+  throw new Error(
+    "discord_id must be a Discord user ID (the numbers) or a mention.",
+  );
+}
+
+function playerDiscordIdFromEdit(interaction: ChatInputCommandInteraction): string {
+  const rawId = interaction.options.getString("discord_id");
+  const user = interaction.options.getUser("user");
+  if (rawId) {
+    const id = parseDiscordSnowflake(rawId);
+    if (user && user.id !== id) {
+      throw new Error("**user** and **discord_id** do not match. Use one of them.");
+    }
+    return id;
+  }
+  if (user) return user.id;
+  throw new Error("Provide **user** (@mention) or **discord_id**.");
+}
+
+function medalLabel(medal: string): string {
+  return MEDAL_LABELS[medal as Medal] ?? medal;
+}
+
+const pendingRegister = new Map<
+  string,
+  { steam: string; medal: string; playWindow: string }
+>();
 
 function roleSelectRow() {
   return new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
@@ -405,18 +505,45 @@ function roleSelectRow() {
   );
 }
 
+function siteUrl() {
+  return (process.env.NEXTAUTH_URL || "https://dota2-cup.vercel.app").replace(
+    /\/+$/,
+    "",
+  );
+}
+
+function playerPageUrl(playerId: string) {
+  return `${siteUrl()}/players/${playerId}`;
+}
+
 function registerReplyLines(
   result: Awaited<ReturnType<typeof registerPlayer>>,
 ): string[] {
   const roles = formatRoles(parseRolesJson(result.player.rolesJson));
   return [
     `${result.created ? "✅ Registered" : "✅ Updated"} **${result.player.steamName}**`,
-    `Profile: ${result.profileUrl}`,
+    `Website profile: ${playerPageUrl(result.player.id)}`,
+    `Steam: ${result.profileUrl}`,
     `Steam32: \`${result.player.steam32}\` · ${result.player.medal} · ${roles}`,
+    `Weekends: **${PLAY_WINDOW_LABELS[playWindowOrBoth(result.player.playWindow)]}** — change anytime with \`/when\``,
+    `If the bot is down next time, register at ${siteUrl()}/register`,
     result.openDotaLinked
       ? "OpenDota recognizes this account — match stats will import automatically."
       : "⚠️ OpenDota has no Dota 2 history yet for this account. Queue on this exact Steam account or stats will not count.",
   ];
+}
+
+function isRegisterChannel(interaction: { channel: unknown }) {
+  const channel = interaction.channel;
+  const name =
+    channel && typeof channel === "object" && "name" in channel
+      ? String((channel as { name?: unknown }).name ?? "")
+      : "";
+  return name.toLowerCase() === registerChannelName().toLowerCase();
+}
+
+function registerOnlyHereMessage() {
+  return `Registration is only allowed in **#${registerChannelName()}**. Go there and run \`/register\` again.`;
 }
 
 function registerRoleOption(interaction: ChatInputCommandInteraction): string | null {
@@ -674,12 +801,20 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
 
   try {
     if (name === "register") {
+      if (!isRegisterChannel(interaction)) {
+        await interaction.reply({
+          content: registerOnlyHereMessage(),
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
       await interaction.deferReply();
       const steam = interaction.options.getString("steam", true);
       const medal = interaction.options.getString("rank", true);
+      const playWindow = interaction.options.getString("when", true);
       const role = registerRoleOption(interaction);
       if (!role) {
-        pendingRegister.set(discordId, { steam, medal });
+        pendingRegister.set(discordId, { steam, medal, playWindow });
         await interaction.editReply({
           content: "Select your **main role** from the dropdown below.",
           components: [roleSelectRow()],
@@ -692,17 +827,40 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
         steam,
         medal,
         role,
+        playWindow,
       });
+      await trySetPlayWindowRoles(
+        interaction.guild,
+        discordId,
+        playWindowOrBoth(result.player.playWindow),
+      );
       await interaction.editReply({
         content: registerReplyLines(result).join("\n"),
       });
       return;
     }
 
+    if (name === "when") {
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      const window = interaction.options.getString("window", true);
+      const result = await setPlayerPlayWindow(discordId, window);
+      await trySetPlayWindowRoles(
+        interaction.guild,
+        discordId,
+        result.playWindow,
+      );
+      await interaction.editReply(
+        `Weekend window for **${result.steamName}** is now **${PLAY_WINDOW_LABELS[result.playWindow]}**.\nThe website and next \`/schedule generate\` will use this.`,
+      );
+      return;
+    }
+
     if (name === "me") {
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-      const player = await prisma.player.findUnique({
-        where: { discordId },
+      const player = await prisma.player.findFirst({
+        where: {
+          OR: [{ discordId }, { discordId: { startsWith: `${discordId}:` } }],
+        },
         include: { team: true },
       });
       if (!player) {
@@ -711,11 +869,12 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
       }
       const roles = formatRoles(parseRolesJson(player.rolesJson));
       const sub = player.rosterRole === "sub" ? " · Sub" : "";
+      const window = PLAY_WINDOW_LABELS[playWindowOrBoth(player.playWindow)];
       const team = player.team
         ? `Team **${player.team.name}**${player.isCaptain ? " · captain" : ""}${sub}`
         : "Unsigned — you will appear in the auction";
       await interaction.editReply(
-        `**${player.steamName}** · ${player.medal} · ${roles}\nProfile: ${steamProfileUrl(player.steam32)}\nSteam32 \`${player.steam32}\`\n${team}`,
+        `**${player.steamName}** · ${player.medal} · ${roles}\nWeekends: **${window}** (change with \`/when\`)\nWebsite: ${playerPageUrl(player.id)}\nSteam: ${steamProfileUrl(player.steam32)}\nSteam32 \`${player.steam32}\`\n${team}`,
       );
       return;
     }
@@ -744,13 +903,20 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
           discordId: user.id,
           teamName: interaction.options.getString("team", true),
         });
+        if (interaction.guild) {
+          await setMemberCaptainRole(interaction.guild, user.id, true);
+          await syncCupChannelAccess(interaction.guild);
+        }
         await interaction.editReply(
-          `${user} is now captain of **${team.name}** (${STARTING_PURSE} points).`,
+          `${user} is now captain of **${team.name}** (${STARTING_PURSE} points). They can use **#captains** and chat in **#auction**.`,
         );
         return;
       }
       const user = interaction.options.getUser("user", true);
       const removed = await adminRemoveCaptain(user.id);
+      if (interaction.guild) {
+        await setMemberCaptainRole(interaction.guild, user.id, false);
+      }
       await interaction.editReply(
         `Removed captain ${user}. **${removed.teamName}** is dissolved; players are unsigned again.`,
       );
@@ -802,6 +968,43 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
             ? "No dummy teams to delete."
             : `Deleted **${result.teams}** dummy teams and **${result.players}** dummy players.`,
         );
+        return;
+      }
+      if (sub === "edit") {
+        const targetId = playerDiscordIdFromEdit(interaction);
+        const result = await adminUpdatePlayerProfile({
+          discordId: targetId,
+          medal: interaction.options.getString("rank"),
+          role: interaction.options.getString("role"),
+          playWindow: interaction.options.getString("when"),
+        });
+        const live = patchLivePlayer(result.player.id, {
+          medal: result.player.medal,
+          rolesJson: result.player.rolesJson,
+        });
+        const lines = [
+          `Updated **${result.player.steamName}** (\`${targetId}\`)`,
+          `Rank: ${medalLabel(result.previousMedal)} → **${medalLabel(result.player.medal)}** (start price ${basePriceFor(result.player.medal).toLocaleString()})`,
+          `Role: ${formatRoles(parseRolesJson(result.previousRolesJson))} → **${formatRoles(parseRolesJson(result.player.rolesJson))}**`,
+          `Weekends: ${PLAY_WINDOW_SHORT[playWindowOrBoth(result.previousPlayWindow)]} → **${PLAY_WINDOW_LABELS[playWindowOrBoth(result.player.playWindow)]}**`,
+        ];
+        await trySetPlayWindowRoles(
+          interaction.guild,
+          targetId,
+          playWindowOrBoth(result.player.playWindow),
+        );
+        if (result.teamName) {
+          lines.push(
+            `On team **${result.teamName}** — auction purse / sold price were not changed.`,
+          );
+        } else if (!live.patched) {
+          lines.push(
+            "If this role's auction is already running, `/auction start` that pool again so they appear in the right queue.",
+          );
+        } else if (live.bidReset) {
+          lines.push("Live auction start price was updated (no bid yet).");
+        }
+        await interaction.editReply(lines.join("\n"));
         return;
       }
       const user = interaction.options.getUser("user", true);
@@ -939,7 +1142,17 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
           client.user!.id,
           { force },
         );
-        await interaction.editReply(formatGuideResults(results).join("\n"));
+        let access = "";
+        try {
+          await syncCupChannelAccess(interaction.guild);
+          access = `\n\n${describeChannelAccess()}`;
+        } catch (error) {
+          access = `\n\n⚠️ Could not lock #captains / #auction. Give the bot **Manage Channels** and **Manage Roles**.`;
+          console.error("channel access", error);
+        }
+        await interaction.editReply(
+          `${formatGuideResults(results).join("\n")}${access}`,
+        );
         return;
       }
 
@@ -1144,6 +1357,13 @@ async function handlePrefixResult(message: Message) {
 
 client.on("interactionCreate", async (interaction: Interaction) => {
   if (interaction.isStringSelectMenu() && interaction.customId === "register:role") {
+    if (!isRegisterChannel(interaction)) {
+      await interaction.reply({
+        content: registerOnlyHereMessage(),
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
     const discordId = interaction.user.id;
     const pending = pendingRegister.get(discordId);
     if (!pending) {
@@ -1171,7 +1391,13 @@ client.on("interactionCreate", async (interaction: Interaction) => {
         steam: pending.steam,
         medal: pending.medal,
         role,
+        playWindow: pending.playWindow,
       });
+      await trySetPlayWindowRoles(
+        interaction.guild,
+        discordId,
+        playWindowOrBoth(result.player.playWindow),
+      );
       await interaction.editReply({
         content: registerReplyLines(result).join("\n"),
         components: [],
@@ -1246,6 +1472,15 @@ async function refreshPostedLot() {
 client.once(Events.ClientReady, async () => {
   console.log(`Bot online as ${client.user?.tag}`);
   await hydrateAuctionClock().catch(() => undefined);
+  for (const guild of client.guilds.cache.values()) {
+    try {
+      await syncCupChannelAccess(guild);
+      await syncCaptainRolesFromDb(guild);
+      console.log(`Locked #captains and #auction in ${guild.name}`);
+    } catch (error) {
+      console.error(`channel access (${guild.name})`, error);
+    }
+  }
   if (autoPostChannelRulesEnabled() && client.user) {
     for (const guild of client.guilds.cache.values()) {
       try {

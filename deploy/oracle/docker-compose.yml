@@ -1,0 +1,10 @@
+services:
+  bot:
+    build:
+      context: ../..
+      dockerfile: deploy/oracle/Dockerfile
+    restart: always
+    env_file:
+      - ../../.env
+    volumes:
+      - ../../public/uploads/matches:/app/public/uploads/matches

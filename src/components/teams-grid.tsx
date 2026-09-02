@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { Pagination, usePagedList } from "@/components/pagination";
 import { MAX_ROSTER, MIN_ROSTER } from "@/lib/constants";
 
 export type TeamCardView = {
@@ -130,6 +131,8 @@ export function TeamsGrid({ teams }: { teams: TeamCardView[] }) {
     return list;
   }, [teams, sort]);
 
+  const { page, pageCount, slice, setPage } = usePagedList(sorted, 9);
+
   return (
     <>
       <div className="teams-list-toolbar">
@@ -168,10 +171,11 @@ export function TeamsGrid({ teams }: { teams: TeamCardView[] }) {
       </div>
 
       <div className="teams-grid-enhanced">
-        {sorted.map((team) => (
+        {slice.map((team) => (
           <TeamCard key={team.id} team={team} />
         ))}
       </div>
+      <Pagination page={page} pageCount={pageCount} onPage={setPage} />
     </>
   );
 }

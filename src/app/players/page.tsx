@@ -1,5 +1,7 @@
+import Link from "next/link";
 import { PlayersGrid, type PlayerCardView } from "@/components/players-grid";
 import { getPlayers, formatRoles } from "@/lib/data";
+import { PLAY_WINDOW_SHORT, playWindowOrBoth } from "@/lib/play-window";
 import { isRosterSub } from "@/lib/roles";
 
 export const dynamic = "force-dynamic";
@@ -19,6 +21,7 @@ export default async function PlayersPage() {
     isCaptain: p.isCaptain,
     isSub: isRosterSub(p.rosterRole),
     basePrice: p.basePrice,
+    playWindowLabel: PLAY_WINDOW_SHORT[playWindowOrBoth(p.playWindow)],
   }));
 
   const unsigned = views.filter((p) => !p.teamId).length;
@@ -32,8 +35,8 @@ export default async function PlayersPage() {
           <p className="eyebrow">Pool</p>
           <h1>Players</h1>
           <p className="lede">
-            Registered players for the auction. Open a profile for heroes, KDA,
-            items, and match history.
+            Registered players for the auction. Each card shows weekend
+            availability (8pm–12am, after 12am, or both).
           </p>
           {views.length > 0 ? (
             <div className="teams-list-hero-pills">
@@ -57,7 +60,8 @@ export default async function PlayersPage() {
             👤
           </span>
           <p className="muted" style={{ margin: 0 }}>
-            Nobody registered yet. Use <code>/register</code> in Discord.
+            Nobody registered yet. Use <Link href="/register">Register</Link> on
+            this site, or <code>/register</code> in Discord #register.
           </p>
         </div>
       ) : (

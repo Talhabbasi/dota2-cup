@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { MatchTimeZones } from "@/components/match-timezones";
+import { PLAY_WINDOW_SHORT } from "@/lib/play-window";
 import { weekendSlotLabel } from "@/lib/match-times";
-import { MATCHES_PER_WEEKEND, formatScheduleWhen } from "@/lib/schedule";
+import { MATCHES_PER_WEEKEND, formatScheduleWhen, kickoffWindowFromDate } from "@/lib/schedule";
 
 type Fixture = {
   id: string;
@@ -43,7 +44,7 @@ export function WeekendScheduleBlock({
         <p className="weekend-rule muted">
           {isFinal
             ? "Top 2 from the table play a best of 3. Regular season games stay best of 1."
-            : "Three best-of-1 matches Fri / Sat / Sun. The top 2 teams meet in a best-of-3 final."}
+            : "Three best-of-1 matches Fri / Sat / Sun. Kickoff is 11:30 PM PKT for the evening window, or 12:30 AM for after-midnight teams. The top 2 meet in a best-of-3 final."}
         </p>
 
         <div className="weekend-grid">
@@ -61,6 +62,8 @@ export function WeekendScheduleBlock({
                     {fixture.kind === "final"
                       ? "Final"
                       : weekendSlotLabel(fixture.slotIndex)}
+                    {" · "}
+                    {PLAY_WINDOW_SHORT[kickoffWindowFromDate(fixture.scheduledAt)]}
                   </span>
                   {winner && fixture.status === "completed" ? (
                     <span className="weekend-status weekend-status-won">Won</span>

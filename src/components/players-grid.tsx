@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { Pagination, usePagedList } from "@/components/pagination";
 import {
   MEDAL_LABELS,
   MEDALS,
@@ -20,6 +21,7 @@ export type PlayerCardView = {
   isCaptain: boolean;
   isSub: boolean;
   basePrice: number;
+  playWindowLabel: string;
 };
 
 const MEDAL_ACCENT: Partial<Record<Medal, string>> = {
@@ -82,6 +84,7 @@ function PlayerCard({ player }: { player: PlayerCardView }) {
           {MEDAL_LABELS[medal] ?? player.medal}
         </span>
         <span className="team-role-pill">{player.rolesLabel}</span>
+        <span className="team-window-pill">{player.playWindowLabel}</span>
       </div>
 
       <div className="players-grid-foot">
@@ -114,7 +117,8 @@ export function PlayersGrid({ players }: { players: PlayerCardView[] }) {
         p.steamName.toLowerCase().includes(q) ||
         p.discordName.toLowerCase().includes(q) ||
         (p.teamName?.toLowerCase().includes(q) ?? false) ||
-        p.rolesLabel.toLowerCase().includes(q)
+        p.rolesLabel.toLowerCase().includes(q) ||
+        p.playWindowLabel.toLowerCase().includes(q)
       );
     });
 
@@ -137,6 +141,7 @@ export function PlayersGrid({ players }: { players: PlayerCardView[] }) {
   }, [players, query, filter, sort]);
 
   const unsigned = players.filter((p) => !p.teamId).length;
+  const { page, pageCount, slice, setPage } = usePagedList(filtered, 12);
 
   return (
     <>
@@ -145,7 +150,7 @@ export function PlayersGrid({ players }: { players: PlayerCardView[] }) {
           <span className="sr-only">Search players</span>
           <input
             type="search"
-            placeholder="Search name, role, team…"
+            placeholder="Search name, role, team, window…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
@@ -198,7 +203,9 @@ export function PlayersGrid({ players }: { players: PlayerCardView[] }) {
       </div>
 
       <p className="muted players-result-count">
-        Showing <strong>{filtered.length}</strong> of {players.length}
+        Showing <strong>{slice.length}</strong> of {filtered.length}
+        {filtered.length !== players.length ? ` (filtered from ${players.length})` : ""}
+        {pageCount > 1 ? ` · page ${page} of ${pageCount}` : ""}
       </p>
 
       {filtered.length === 0 ? (
@@ -208,11 +215,14 @@ export function PlayersGrid({ players }: { players: PlayerCardView[] }) {
           </p>
         </div>
       ) : (
-        <div className="players-grid-enhanced">
-          {filtered.map((player) => (
-            <PlayerCard key={player.id} player={player} />
-          ))}
-        </div>
+        <>
+          <div className="players-grid-enhanced">
+            {slice.map((player) => (
+              <PlayerCard key={player.id} player={player} />
+            ))}
+          </div>
+          <Pagination page={page} pageCount={pageCount} onPage={setPage} />
+        </>
       )}
     </>
   );

@@ -5,9 +5,15 @@ import {
   MIN_ROSTER,
   STARTING_PURSE,
   STARTING_ROLES,
+  parseMedal,
 } from "./constants";
+import { parsePlayWindow } from "./play-window";
 import { prisma } from "./prisma";
-import { rosterRoleForTeamJoin, stringifyRoles } from "./roles";
+import {
+  parseRegistrationRole,
+  rosterRoleForTeamJoin,
+  stringifyRoles,
+} from "./roles";
 
 const DUMMY_PREFIX = "test-dummy-";
 const DUMMY_TEAM_PREFIX = "test-dummy-team-";
@@ -319,6 +325,42 @@ export async function adminClearDummyPlayers() {
   });
   await prisma.player.deleteMany({ where: { id: { in: ids } } });
   return { removed: removable.length };
+}
+
+export async function adminUpdatePlayerProfile(input: {
+  discordId: string;
+  medal?: string | null;
+  role?: string | null;
+  playWindow?: string | null;
+}) {
+  const medalInput = input.medal?.trim() || undefined;
+  const roleInput = input.role?.trim() || undefined;
+  const windowInput = input.playWindow?.trim() || undefined;
+  if (!medalInput && !roleInput && !windowInput) {
+    throw new Error("Provide **rank**, **role**, and/or **when** to change.");
+  }
+
+  const player = await requirePlayer(input.discordId);
+  const medal = medalInput ? parseMedal(medalInput) : undefined;
+  const roles = roleInput ? parseRegistrationRole(roleInput) : undefined;
+  const playWindow = windowInput ? parsePlayWindow(windowInput) : undefined;
+
+  const updated = await prisma.player.update({
+    where: { id: player.id },
+    data: {
+      ...(medal ? { medal } : {}),
+      ...(roles ? { rolesJson: stringifyRoles(roles) } : {}),
+      ...(playWindow ? { playWindow } : {}),
+    },
+  });
+
+  return {
+    player: updated,
+    previousMedal: player.medal,
+    previousRolesJson: player.rolesJson,
+    previousPlayWindow: player.playWindow,
+    teamName: player.team?.name ?? null,
+  };
 }
 
 export async function adminResyncRosterRole(discordId: string) {

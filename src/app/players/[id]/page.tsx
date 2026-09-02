@@ -7,6 +7,7 @@ import {
   MEDAL_LABELS,
   type Medal,
 } from "@/lib/constants";
+import { PLAY_WINDOW_LABELS, playWindowOrBoth } from "@/lib/play-window";
 import {
   heroIconUrl,
   heroPortraitUrl,
@@ -95,6 +96,8 @@ export default async function PlayerPage({
         <p className="muted" style={{ margin: "0 0 0.8rem" }}>
           {formatRoles(player.roles)}
           {player.rosterRole === "sub" ? " · Sub" : ""}
+          {" · "}
+          {PLAY_WINDOW_LABELS[playWindowOrBoth(player.playWindow)]}
         </p>
         {player.team ? (
           <Link href={`/teams/${player.team.id}`} className="badge badge-gold">
