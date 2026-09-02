@@ -62,7 +62,9 @@ function PlayerCard({ player }: { player: TeamPlayerView }) {
           {MEDAL_LABELS[medal] ?? player.medal}
         </span>
         <span className="team-role-pill">{player.rolesLabel}</span>
-        <span className="team-window-pill">{player.playWindowLabel}</span>
+        <span className="team-window-pill" title="Weekend availability">
+          {player.playWindowLabel}
+        </span>
       </p>
       <span className="team-player-cta">View profile →</span>
     </Link>
@@ -120,7 +122,7 @@ export function TeamProfileHero({
           {playWindowLabel ? (
             <>
               {" "}
-              · Weekends <strong>{playWindowLabel}</strong>
+              · Availability <strong>{playWindowLabel}</strong>
             </>
           ) : null}
         </p>

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { MatchTimeZones } from "@/components/match-timezones";
-import { PLAY_WINDOW_SHORT } from "@/lib/play-window";
+import { KICKOFF_SHORT } from "@/lib/play-window";
 import { weekendSlotLabel } from "@/lib/match-times";
 import { MATCHES_PER_WEEKEND, formatScheduleWhen, kickoffWindowFromDate } from "@/lib/schedule";
 
@@ -63,7 +63,7 @@ export function WeekendScheduleBlock({
                       ? "Final"
                       : weekendSlotLabel(fixture.slotIndex)}
                     {" · "}
-                    {PLAY_WINDOW_SHORT[kickoffWindowFromDate(fixture.scheduledAt)]}
+                    {KICKOFF_SHORT[kickoffWindowFromDate(fixture.scheduledAt)]}
                   </span>
                   {winner && fixture.status === "completed" ? (
                     <span className="weekend-status weekend-status-won">Won</span>

@@ -3,21 +3,26 @@ export type PlayWindow = (typeof PLAY_WINDOWS)[number];
 export type KickoffWindow = "evening" | "late";
 
 export const PLAY_WINDOW_LABELS: Record<PlayWindow, string> = {
-  evening: "8:00 PM – 12:00 AM PKT",
-  late: "After 12:00 AM PKT",
-  both: "Either window",
+  evening: "Available 8:00 PM – 12:00 AM PKT",
+  late: "Available after 12:00 AM PKT",
+  both: "Available either window",
 };
 
 export const PLAY_WINDOW_SHORT: Record<PlayWindow, string> = {
+  evening: "Available 8pm–12am",
+  late: "Available after 12am",
+  both: "Available either",
+};
+
+export const KICKOFF_SHORT: Record<KickoffWindow, string> = {
   evening: "8pm–12am",
   late: "After 12am",
-  both: "Both",
 };
 
 export const PLAY_WINDOW_DISCORD_CHOICES = [
-  { name: "8pm–12am PKT", value: "evening" },
-  { name: "After 12am PKT", value: "late" },
-  { name: "Either window", value: "both" },
+  { name: "Available 8pm–12am PKT", value: "evening" },
+  { name: "Available after 12am PKT", value: "late" },
+  { name: "Available either window", value: "both" },
 ] as const;
 
 export const PLAY_WINDOW_ROLE_NAMES: Record<KickoffWindow, string> = {

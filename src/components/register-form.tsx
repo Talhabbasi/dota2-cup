@@ -117,7 +117,7 @@ export function RegisterForm({
       </div>
 
       <label className="register-field">
-        <span>Weekend play window (Pakistan time)</span>
+        <span>Weekend availability (Pakistan time)</span>
         <select
           value={playWindow}
           onChange={(e) => setPlayWindow(e.target.value as PlayWindow)}
@@ -131,7 +131,7 @@ export function RegisterForm({
         </select>
         <small>
           Evening games kick off at 11:30 PM. Late games kick off at 12:30 AM.
-          Pick <strong>Either window</strong> if you can do both.
+          Pick <strong>Available either window</strong> if you can play both.
         </small>
       </label>
 

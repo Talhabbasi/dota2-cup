@@ -84,7 +84,9 @@ function PlayerCard({ player }: { player: PlayerCardView }) {
           {MEDAL_LABELS[medal] ?? player.medal}
         </span>
         <span className="team-role-pill">{player.rolesLabel}</span>
-        <span className="team-window-pill">{player.playWindowLabel}</span>
+        <span className="team-window-pill" title="Weekend availability">
+          {player.playWindowLabel}
+        </span>
       </div>
 
       <div className="players-grid-foot">

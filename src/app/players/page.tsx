@@ -36,7 +36,7 @@ export default async function PlayersPage() {
           <h1>Players</h1>
           <p className="lede">
             Registered players for the auction. Each card shows weekend
-            availability (8pm–12am, after 12am, or both).
+            availability: 8pm–12am, after 12am, or either.
           </p>
           {views.length > 0 ? (
             <div className="teams-list-hero-pills">

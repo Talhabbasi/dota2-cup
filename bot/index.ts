@@ -167,7 +167,7 @@ const commands = [
     .addStringOption((o) =>
       o
         .setName("when")
-        .setDescription("Weekend play window (Pakistan time)")
+        .setDescription("Weekend availability (Pakistan time)")
         .setRequired(true)
         .addChoices(...PLAY_WINDOW_DISCORD_CHOICES),
     ),
@@ -180,7 +180,7 @@ const commands = [
     .addStringOption((o) =>
       o
         .setName("window")
-        .setDescription("8pm–12am, after 12am, or either")
+        .setDescription("When you can play on weekends (Pakistan time)")
         .setRequired(true)
         .addChoices(...PLAY_WINDOW_DISCORD_CHOICES),
     ),
@@ -274,7 +274,7 @@ const commands = [
         .addStringOption((o) =>
           o
             .setName("when")
-            .setDescription("Weekend play window")
+            .setDescription("Weekend availability")
             .addChoices(...PLAY_WINDOW_DISCORD_CHOICES),
         ),
     )
