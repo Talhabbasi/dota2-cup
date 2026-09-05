@@ -2454,6 +2454,13 @@ tr:last-child td {
   color: var(--muted);
 }
 
+.players-grid-registered {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--muted);
+  letter-spacing: 0.01em;
+}
+
 .players-grid-meta {
   display: flex;
   flex-wrap: wrap;

@@ -22,6 +22,7 @@ export type PlayerCardView = {
   isSub: boolean;
   basePrice: number;
   playWindowLabel: string;
+  createdAt: string;
 };
 
 const MEDAL_ACCENT: Partial<Record<Medal, string>> = {
@@ -35,8 +36,12 @@ const MEDAL_ACCENT: Partial<Record<Medal, string>> = {
   herald: "#a08070",
 };
 
+/** Cup schedule timezone — Pakistan Standard Time (UTC+5). */
+const CUP_UTC_OFFSET_HOURS = 5;
+
 type FilterKey = "all" | "unsigned" | "signed" | "captains";
-type SortKey = "name" | "medal" | "price";
+type TimeFilterKey = "all" | "today" | "week" | "month";
+type SortKey = "name" | "medal" | "price" | "newest" | "oldest";
 
 function initials(name: string) {
   const parts = name.replace(/[^\w\s]/g, " ").trim().split(/\s+/);
@@ -47,6 +52,59 @@ function initials(name: string) {
 function medalRank(medal: string) {
   const i = (MEDALS as readonly string[]).indexOf(medal);
   return i === -1 ? MEDALS.length : i;
+}
+
+function pktParts(date: Date) {
+  const shifted = new Date(date.getTime() + CUP_UTC_OFFSET_HOURS * 3_600_000);
+  return {
+    y: shifted.getUTCFullYear(),
+    m: shifted.getUTCMonth(),
+    d: shifted.getUTCDate(),
+    dow: shifted.getUTCDay(),
+  };
+}
+
+function startOfPktDay(now: Date) {
+  const { y, m, d } = pktParts(now);
+  return new Date(Date.UTC(y, m, d) - CUP_UTC_OFFSET_HOURS * 3_600_000);
+}
+
+function registeredInRange(iso: string, filter: TimeFilterKey, now: Date) {
+  if (filter === "all") return true;
+  const created = new Date(iso);
+  if (Number.isNaN(created.getTime())) return false;
+  const dayStart = startOfPktDay(now);
+
+  if (filter === "today") {
+    return created >= dayStart;
+  }
+  if (filter === "week") {
+    const { dow } = pktParts(now);
+    // Monday-based week in PKT (Mon=1 … Sun=0 → treat Sun as 6)
+    const daysFromMonday = dow === 0 ? 6 : dow - 1;
+    const weekStart = new Date(dayStart.getTime() - daysFromMonday * 86_400_000);
+    return created >= weekStart;
+  }
+  // month
+  const { y, m } = pktParts(now);
+  const monthStart = new Date(Date.UTC(y, m, 1) - CUP_UTC_OFFSET_HOURS * 3_600_000);
+  return created >= monthStart;
+}
+
+function formatRegistered(iso: string) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  const shifted = new Date(d.getTime() + CUP_UTC_OFFSET_HOURS * 3_600_000);
+  const month = shifted.toLocaleString("en-US", {
+    month: "short",
+    timeZone: "UTC",
+  });
+  const day = shifted.getUTCDate();
+  const hour = shifted.getUTCHours();
+  const minute = shifted.getUTCMinutes().toString().padStart(2, "0");
+  const ampm = hour >= 12 ? "PM" : "AM";
+  const hr = hour % 12 || 12;
+  return `${month} ${day} · ${hr}:${minute} ${ampm} PKT`;
 }
 
 function PlayerCard({ player }: { player: PlayerCardView }) {
@@ -89,6 +147,10 @@ function PlayerCard({ player }: { player: PlayerCardView }) {
         </span>
       </div>
 
+      <p className="players-grid-registered" title="Registration time">
+        Registered {formatRegistered(player.createdAt)}
+      </p>
+
       <div className="players-grid-foot">
         {player.teamName ? (
           <span className="players-grid-team">{player.teamName}</span>
@@ -106,14 +168,17 @@ function PlayerCard({ player }: { player: PlayerCardView }) {
 export function PlayersGrid({ players }: { players: PlayerCardView[] }) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<FilterKey>("all");
-  const [sort, setSort] = useState<SortKey>("name");
+  const [timeFilter, setTimeFilter] = useState<TimeFilterKey>("all");
+  const [sort, setSort] = useState<SortKey>("newest");
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
+    const now = new Date();
     let list = players.filter((p) => {
       if (filter === "unsigned" && p.teamId) return false;
       if (filter === "signed" && !p.teamId) return false;
       if (filter === "captains" && !p.isCaptain) return false;
+      if (!registeredInRange(p.createdAt, timeFilter, now)) return false;
       if (!q) return true;
       return (
         p.steamName.toLowerCase().includes(q) ||
@@ -136,11 +201,23 @@ export function PlayersGrid({ players }: { players: PlayerCardView[] }) {
         (a, b) =>
           b.basePrice - a.basePrice || a.steamName.localeCompare(b.steamName),
       );
+    } else if (sort === "newest") {
+      list.sort(
+        (a, b) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime() ||
+          a.steamName.localeCompare(b.steamName),
+      );
+    } else if (sort === "oldest") {
+      list.sort(
+        (a, b) =>
+          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime() ||
+          a.steamName.localeCompare(b.steamName),
+      );
     } else {
       list.sort((a, b) => a.steamName.localeCompare(b.steamName));
     }
     return list;
-  }, [players, query, filter, sort]);
+  }, [players, query, filter, timeFilter, sort]);
 
   const unsigned = players.filter((p) => !p.teamId).length;
   const { page, pageCount, slice, setPage } = usePagedList(filtered, 12);
@@ -181,9 +258,37 @@ export function PlayersGrid({ players }: { players: PlayerCardView[] }) {
             ))}
           </div>
 
+          <div
+            className="team-view-toggle"
+            role="tablist"
+            aria-label="Filter by registration time"
+          >
+            {(
+              [
+                ["all", "All time"],
+                ["today", "Today"],
+                ["week", "This week"],
+                ["month", "This month"],
+              ] as const
+            ).map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                role="tab"
+                aria-selected={timeFilter === key}
+                className={timeFilter === key ? "active" : ""}
+                onClick={() => setTimeFilter(key)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
           <div className="team-view-toggle" role="tablist" aria-label="Sort players">
             {(
               [
+                ["newest", "Newest"],
+                ["oldest", "Oldest"],
                 ["name", "A–Z"],
                 ["medal", "Medal"],
                 ["price", "Floor price"],

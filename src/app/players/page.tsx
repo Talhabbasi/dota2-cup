@@ -22,6 +22,7 @@ export default async function PlayersPage() {
     isSub: isRosterSub(p.rosterRole),
     basePrice: p.basePrice,
     playWindowLabel: PLAY_WINDOW_SHORT[playWindowOrBoth(p.playWindow)],
+    createdAt: p.createdAt.toISOString(),
   }));
 
   const unsigned = views.filter((p) => !p.teamId).length;
@@ -35,8 +36,8 @@ export default async function PlayersPage() {
           <p className="eyebrow">Pool</p>
           <h1>Players</h1>
           <p className="lede">
-            Registered players for the auction. Each card shows weekend
-            availability: 8pm–12am, after 12am, or either.
+            Registered players for the auction. Filter by when they signed up,
+            or by open / signed / captains. Cards also show weekend availability.
           </p>
           {views.length > 0 ? (
             <div className="teams-list-hero-pills">
