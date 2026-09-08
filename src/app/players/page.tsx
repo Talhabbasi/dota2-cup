@@ -4,7 +4,7 @@ import { getPlayers, formatRoles } from "@/lib/data";
 import { PLAY_WINDOW_SHORT, playWindowOrBoth } from "@/lib/play-window";
 import { isRosterSub } from "@/lib/roles";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 30;
 
 export default async function PlayersPage() {
   const players = await getPlayers();

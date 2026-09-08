@@ -38,21 +38,27 @@ export function parseStoredItems(json: string): StoredItem[] {
 }
 
 export async function getHeroTournamentStats(): Promise<HeroTournamentStat[]> {
-  const [catalog, rows] = await Promise.all([
+  const [catalog, grouped, unnamed] = await Promise.all([
     loadHeroCatalog(),
+    prisma.matchPlayer.groupBy({
+      by: ["heroId"],
+      where: { heroId: { gt: 0 } },
+      _count: { _all: true },
+    }),
     prisma.matchPlayer.findMany({
-      select: { heroId: true, hero: true },
+      where: { heroId: 0 },
+      select: { hero: true },
     }),
   ]);
 
   const counts = new Map<number, number>();
   const byName = new Map(catalog.map((h) => [h.name.toLowerCase(), h.id]));
 
-  for (const row of rows) {
-    let id = row.heroId;
-    if (!id) {
-      id = byName.get(row.hero.toLowerCase()) ?? 0;
-    }
+  for (const row of grouped) {
+    counts.set(row.heroId, (counts.get(row.heroId) ?? 0) + row._count._all);
+  }
+  for (const row of unnamed) {
+    const id = byName.get(row.hero.toLowerCase()) ?? 0;
     if (!id) continue;
     counts.set(id, (counts.get(id) ?? 0) + 1);
   }
@@ -76,12 +82,12 @@ export async function getHeroMatchAppearances(heroId: number, heroName: string) 
       OR: [{ heroId }, { hero: heroName, heroId: 0 }],
     },
     include: {
-      player: { include: { team: true } },
+      player: { include: { team: { select: { id: true, name: true } } } },
       match: {
         include: {
-          radiantTeam: true,
-          direTeam: true,
-          winnerTeam: true,
+          radiantTeam: { select: { id: true, name: true } },
+          direTeam: { select: { id: true, name: true } },
+          winnerTeam: { select: { id: true, name: true } },
         },
       },
     },

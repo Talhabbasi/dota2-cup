@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { authSession } from "@/lib/auth";
 import { isAdminDiscordId } from "@/lib/constants";
 import { publicErrorMessage } from "@/lib/public-error";
+import { revalidatePublicPages } from "@/lib/page-cache";
 import { ingestMatch } from "@/lib/results";
 
 export async function POST(request: Request) {
@@ -18,6 +19,7 @@ export async function POST(request: Request) {
 
   try {
     const match = await ingestMatch({ raw: body.match });
+    revalidatePublicPages();
     return NextResponse.json({ id: match.id, openDotaId: match.openDotaId });
   } catch (error) {
     console.error(error);

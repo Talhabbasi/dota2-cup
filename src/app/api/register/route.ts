@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { authSession } from "@/lib/auth";
 import { publicErrorMessage } from "@/lib/public-error";
+import { revalidatePublicPages } from "@/lib/page-cache";
 import { registerPlayer } from "@/lib/register";
 
 export async function POST(request: Request) {
@@ -35,6 +36,7 @@ export async function POST(request: Request) {
       role: body.role,
       playWindow: body.playWindow,
     });
+    revalidatePublicPages();
     return NextResponse.json({
       id: result.player.id,
       created: result.created,

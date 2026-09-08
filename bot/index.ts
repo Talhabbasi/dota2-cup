@@ -61,6 +61,7 @@ import {
   undoLastSale,
   hydrateAuctionClock,
 } from "../src/lib/auction";
+import { notifySiteRefresh } from "../src/lib/notify-site";
 import { assignUnknown, ingestMatch } from "../src/lib/results";
 import {
   clearScheduledFixtures,
@@ -830,6 +831,7 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
         role,
         playWindow,
       });
+      void notifySiteRefresh();
       await trySetPlayWindowRoles(
         interaction.guild,
         discordId,
@@ -1289,6 +1291,7 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
       const match = await ingestMatch({
         raw: interaction.options.getString("match_id", true),
       });
+      void notifySiteRefresh();
       await interaction.editReply(formatMatchReply(match));
     }
   } catch (error) {
@@ -1350,6 +1353,7 @@ async function handlePrefixResult(message: Message) {
     const hint = raw.match(/\d{8,12}/)?.[0] ?? `shot-${Date.now()}`;
     const screenshotPath = await saveProof(message, hint);
     const match = await ingestMatch({ raw, screenshotPath });
+    void notifySiteRefresh();
     await message.reply(formatMatchReply(match));
   } catch (error) {
     await message.reply(fail(error));
@@ -1394,6 +1398,7 @@ client.on("interactionCreate", async (interaction: Interaction) => {
         role,
         playWindow: pending.playWindow,
       });
+      void notifySiteRefresh();
       await trySetPlayWindowRoles(
         interaction.guild,
         discordId,

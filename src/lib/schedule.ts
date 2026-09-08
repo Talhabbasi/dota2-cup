@@ -435,7 +435,10 @@ export async function getNextScheduledFixture() {
   return safeScheduleQuery(null, () =>
     prisma.scheduledFixture.findFirst({
       where: { status: "scheduled" },
-      include: { radiantTeam: true, direTeam: true },
+      include: {
+        radiantTeam: { select: { id: true, name: true } },
+        direTeam: { select: { id: true, name: true } },
+      },
       orderBy: { scheduledAt: "asc" },
     }),
   );
@@ -446,13 +449,36 @@ export async function getWeekendFixtures(weekendIndex: number) {
     prisma.scheduledFixture.findMany({
       where: { weekendIndex },
       include: {
-        radiantTeam: true,
-        direTeam: true,
-        match: { include: { winnerTeam: true } },
+        radiantTeam: { select: { id: true, name: true } },
+        direTeam: { select: { id: true, name: true } },
+        match: { include: { winnerTeam: { select: { id: true, name: true } } } },
       },
       orderBy: { slotIndex: "asc" },
     }),
   );
+}
+
+function weekendChampionFromFixtures(
+  fixtures: Awaited<ReturnType<typeof getWeekendFixtures>>,
+) {
+  const completed = fixtures.filter((fixture) => fixture.status === "completed");
+  if (completed.length < MATCHES_PER_WEEKEND) return null;
+
+  const wins = new Map<string, { id: string; name: string; count: number }>();
+  for (const fixture of completed) {
+    const winner = fixture.match?.winnerTeam;
+    if (!winner) return null;
+    const row = wins.get(winner.id) ?? { id: winner.id, name: winner.name, count: 0 };
+    row.count += 1;
+    wins.set(winner.id, row);
+  }
+
+  const ranked = [...wins.values()].sort((a, b) => b.count - a.count);
+  const top = ranked[0];
+  if (!top) return null;
+  if (top.count >= SERIES_WINS_FOR_FINAL) return top;
+  if (ranked[1] && top.count === ranked[1].count) return null;
+  return top.count > 0 ? top : null;
 }
 
 export async function getActiveWeekendBundle() {
@@ -461,8 +487,11 @@ export async function getActiveWeekendBundle() {
     if (!next) return null;
 
     const fixtures = await getWeekendFixtures(next.weekendIndex);
-    const champion = await getWeekendChampion(next.weekendIndex);
-    return { weekendIndex: next.weekendIndex, fixtures, champion };
+    return {
+      weekendIndex: next.weekendIndex,
+      fixtures,
+      champion: weekendChampionFromFixtures(fixtures),
+    };
   });
 }
 

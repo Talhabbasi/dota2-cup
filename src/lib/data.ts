@@ -3,9 +3,35 @@ import { getNextScheduledFixture } from "./schedule";
 import { parseRolesJson } from "./roles";
 import { ROLE_LABELS, basePriceFor, type PlayerRole } from "./constants";
 
+const matchListSelect = {
+  id: true,
+  openDotaId: true,
+  duration: true,
+  radiantWin: true,
+  createdAt: true,
+  radiantTeam: { select: { id: true, name: true } },
+  direTeam: { select: { id: true, name: true } },
+  winnerTeam: { select: { id: true, name: true } },
+  players: { select: { side: true, kills: true } },
+} as const;
+
+const teamRefSelect = { select: { id: true, name: true } } as const;
+
 export async function getPlayers() {
   const players = await prisma.player.findMany({
-    include: { team: true },
+    select: {
+      id: true,
+      steamName: true,
+      discordName: true,
+      medal: true,
+      rolesJson: true,
+      teamId: true,
+      isCaptain: true,
+      rosterRole: true,
+      playWindow: true,
+      createdAt: true,
+      team: { select: { id: true, name: true } },
+    },
     orderBy: [{ teamId: "asc" }, { steamName: "asc" }],
   });
   return players.map((p) => ({
@@ -18,7 +44,7 @@ export async function getPlayers() {
 export async function getPlayer(id: string) {
   const player = await prisma.player.findUnique({
     where: { id },
-    include: { team: true },
+    include: { team: { select: { id: true, name: true } } },
   });
   if (!player) return null;
 
@@ -29,9 +55,9 @@ export async function getPlayer(id: string) {
     include: {
       match: {
         include: {
-          radiantTeam: true,
-          direTeam: true,
-          winnerTeam: true,
+          radiantTeam: teamRefSelect,
+          direTeam: teamRefSelect,
+          winnerTeam: teamRefSelect,
         },
       },
     },
@@ -48,25 +74,61 @@ export async function getPlayer(id: string) {
 
 export async function getTeams() {
   return prisma.team.findMany({
-    include: { players: true },
+    select: {
+      id: true,
+      name: true,
+      purse: true,
+      players: {
+        select: {
+          id: true,
+          steamName: true,
+          isCaptain: true,
+          rosterRole: true,
+        },
+      },
+    },
     orderBy: { name: "asc" },
   });
+}
+
+export async function getTeamCount() {
+  return prisma.team.count();
 }
 
 export async function getTeam(id: string) {
   return prisma.team.findUnique({
     where: { id },
     include: {
-      players: { orderBy: [{ isCaptain: "desc" }, { steamName: "asc" }] },
+      players: {
+        select: {
+          id: true,
+          steamName: true,
+          medal: true,
+          rolesJson: true,
+          playWindow: true,
+          isCaptain: true,
+          rosterRole: true,
+          createdAt: true,
+        },
+        orderBy: [{ isCaptain: "desc" }, { steamName: "asc" }],
+      },
       radiantMatches: {
-        include: { radiantTeam: true, direTeam: true, winnerTeam: true },
+        include: {
+          radiantTeam: teamRefSelect,
+          direTeam: teamRefSelect,
+          winnerTeam: teamRefSelect,
+        },
         orderBy: { createdAt: "desc" },
-        take: 12,
+        take: 8,
       },
       direMatches: {
-        include: { radiantTeam: true, direTeam: true, winnerTeam: true },
+        include: {
+          radiantTeam: teamRefSelect,
+          direTeam: teamRefSelect,
+          winnerTeam: teamRefSelect,
+        },
         orderBy: { createdAt: "desc" },
-        take: 12,
+        take: 8,
       },
     },
   });
@@ -74,58 +136,89 @@ export async function getTeam(id: string) {
 
 export async function getMatches() {
   return prisma.match.findMany({
-    include: {
-      radiantTeam: true,
-      direTeam: true,
-      winnerTeam: true,
-      players: { include: { player: true } },
-    },
+    select: matchListSelect,
     orderBy: { createdAt: "desc" },
   });
+}
+
+export async function getRecentMatches(take = 5) {
+  return prisma.match.findMany({
+    select: matchListSelect,
+    orderBy: { createdAt: "desc" },
+    take,
+  });
+}
+
+export async function getMatchCount() {
+  return prisma.match.count();
 }
 
 export async function getMatch(id: string) {
   return prisma.match.findUnique({
     where: { id },
     include: {
-      radiantTeam: true,
-      direTeam: true,
-      winnerTeam: true,
-      players: { include: { player: true } },
+      radiantTeam: teamRefSelect,
+      direTeam: teamRefSelect,
+      winnerTeam: teamRefSelect,
+      players: { include: { player: { select: { id: true, steamName: true } } } },
     },
   });
 }
 
 export async function getStandings() {
-  const teams = await prisma.team.findMany({
-    include: {
-      radiantMatches: true,
-      direMatches: true,
-      wonMatches: true,
-    },
-    orderBy: { name: "asc" },
-  });
+  const [teams, decided] = await Promise.all([
+    prisma.team.findMany({
+      select: { id: true, name: true, purse: true },
+      orderBy: { name: "asc" },
+    }),
+    prisma.match.findMany({
+      where: { winnerTeamId: { not: null } },
+      select: {
+        id: true,
+        radiantTeamId: true,
+        direTeamId: true,
+        winnerTeamId: true,
+      },
+    }),
+  ]);
+
+  const played = new Map<string, Set<string>>();
+  const wins = new Map<string, number>();
+
+  for (const match of decided) {
+    if (match.radiantTeamId) {
+      const set = played.get(match.radiantTeamId) ?? new Set();
+      set.add(match.id);
+      played.set(match.radiantTeamId, set);
+    }
+    if (match.direTeamId) {
+      const set = played.get(match.direTeamId) ?? new Set();
+      set.add(match.id);
+      played.set(match.direTeamId, set);
+    }
+    if (match.winnerTeamId) {
+      wins.set(match.winnerTeamId, (wins.get(match.winnerTeamId) ?? 0) + 1);
+    }
+  }
 
   return teams
     .map((team) => {
-      const played = new Set(
-        [...team.radiantMatches, ...team.direMatches]
-          .filter((m) => m.winnerTeamId)
-          .map((m) => m.id),
-      ).size;
-      const wins = team.wonMatches.length;
-      const losses = played - wins;
+      const games = played.get(team.id)?.size ?? 0;
+      const teamWins = wins.get(team.id) ?? 0;
       return {
         id: team.id,
         name: team.name,
         purse: team.purse,
-        played,
-        wins,
-        losses,
-        points: wins * 3,
+        played: games,
+        wins: teamWins,
+        losses: games - teamWins,
+        points: teamWins * 3,
       };
     })
-    .sort((a, b) => b.wins - a.wins || b.points - a.points || a.name.localeCompare(b.name));
+    .sort(
+      (a, b) =>
+        b.wins - a.wins || b.points - a.points || a.name.localeCompare(b.name),
+    );
 }
 
 export type FixturePreview = {

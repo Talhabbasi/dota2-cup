@@ -6,7 +6,7 @@ import { formatKillScore, matchKillTotals } from "@/lib/match-score";
 import { parseStoredItems } from "@/lib/heroes";
 import { itemIconUrl, loadHeroCatalog, heroIconUrl } from "@/lib/opendota";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 30;
 
 export default async function MatchPage({
   params,

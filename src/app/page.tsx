@@ -1,35 +1,35 @@
 import Image from "next/image";
 import Link from "next/link";
+import { Suspense } from "react";
 import { MatchCard } from "@/components/match-card";
 import {
   LatestMatchSpotlight,
   UpcomingMatchSpotlight,
 } from "@/components/home-spotlight";
+import { LoginErrorBanner } from "@/components/login-error-banner";
 import { WeekendScheduleBlock } from "@/components/weekend-schedule";
 import { StandingsBoard } from "@/components/standings-board";
 import {
   getStandings,
-  getMatches,
-  getTeams,
+  getRecentMatches,
+  getTeamCount,
+  getMatchCount,
   getUpcomingFixture,
 } from "@/lib/data";
 import { getActiveWeekendBundle } from "@/lib/schedule";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 30;
 
-export default async function Home({
-  searchParams,
-}: {
-  searchParams: Promise<{ error?: string }>;
-}) {
-  const { error } = await searchParams;
-  const [table, matches, teams, upcoming, weekend] = await Promise.all([
-    getStandings(),
-    getMatches(),
-    getTeams(),
-    getUpcomingFixture(),
-    getActiveWeekendBundle(),
-  ]);
+export default async function Home() {
+  const [table, matches, teamCount, matchCount, upcoming, weekend] =
+    await Promise.all([
+      getStandings(),
+      getRecentMatches(5),
+      getTeamCount(),
+      getMatchCount(),
+      getUpcomingFixture(),
+      getActiveWeekendBundle(),
+    ]);
 
   const latest = matches[0] ?? null;
   const recent = latest ? matches.slice(1, 5) : matches.slice(0, 4);
@@ -53,20 +53,17 @@ export default async function Home({
       </section>
 
       <div className="page home-body">
-        {error === "discord" || error === "OAuthCallback" ? (
-          <p className="lede" role="alert">
-            Discord login failed. Check the OAuth2 Client Secret and redirect URL,
-            then try Sign in again.
-          </p>
-        ) : null}
+        <Suspense>
+          <LoginErrorBanner />
+        </Suspense>
         <div className="home-stats">
           <div className="home-stat">
             <span className="home-stat-label">Teams registered</span>
-            <strong>{teams.length}</strong>
+            <strong>{teamCount}</strong>
           </div>
           <div className="home-stat">
             <span className="home-stat-label">Matches played</span>
-            <strong>{matches.length}</strong>
+            <strong>{matchCount}</strong>
           </div>
           <div className="home-stat">
             <span className="home-stat-label">Leader</span>
@@ -87,7 +84,7 @@ export default async function Home({
               </div>
             </div>
           )}
-          <UpcomingMatchSpotlight fixture={upcoming} teamCount={teams.length} />
+          <UpcomingMatchSpotlight fixture={upcoming} teamCount={teamCount} />
         </section>
 
         {weekend ? (

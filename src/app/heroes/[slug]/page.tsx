@@ -8,7 +8,7 @@ import {
 import { formatDuration } from "@/lib/data";
 import { itemIconUrl, heroPortraitUrl } from "@/lib/opendota";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 30;
 
 export default async function HeroDetailPage({
   params,

@@ -1,7 +1,7 @@
 import { HeroesGrid } from "@/components/heroes-grid";
 import { getHeroTournamentStats } from "@/lib/heroes";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 30;
 
 export default async function HeroesPage() {
   const heroes = await getHeroTournamentStats();

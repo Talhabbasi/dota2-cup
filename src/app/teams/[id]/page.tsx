@@ -14,7 +14,7 @@ import {
 } from "@/lib/play-window";
 import { isRosterSub, parseRolesJson, sortTeamRoster } from "@/lib/roles";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 30;
 
 function toPlayerView(player: {
   id: string;

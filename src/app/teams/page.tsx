@@ -3,7 +3,7 @@ import { TeamsGrid, type TeamCardView } from "@/components/teams-grid";
 import { getStandings, getTeams } from "@/lib/data";
 import { isRosterSub } from "@/lib/roles";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 30;
 
 export default async function TeamsPage() {
   const [teams, table] = await Promise.all([getTeams(), getStandings()]);

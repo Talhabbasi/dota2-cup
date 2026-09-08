@@ -2,7 +2,7 @@ import { MatchesGrid, type MatchListView } from "@/components/matches-grid";
 import { getMatches } from "@/lib/data";
 import { matchKillTotals } from "@/lib/match-score";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 30;
 
 export default async function MatchesPage() {
   const matches = await getMatches();

@@ -15,7 +15,7 @@ import {
   loadHeroCatalog,
 } from "@/lib/opendota";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 30;
 
 function playerWon(side: string, radiantWin: boolean | null, winnerTeamId: string | null, teamId: string | null) {
   if (winnerTeamId && teamId) return winnerTeamId === teamId;
