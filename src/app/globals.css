@@ -3795,3 +3795,151 @@ tr:last-child td {
   color: var(--muted);
   padding: 0 0.15rem;
 }
+
+.route-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  z-index: 80;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+
+.route-progress.is-on {
+  opacity: 1;
+}
+
+.route-progress-bar {
+  height: 100%;
+  width: 0;
+  border-radius: 0 999px 999px 0;
+  background: linear-gradient(90deg, var(--ember), var(--gold), #ffe09a);
+  box-shadow: 0 0 16px rgba(224, 179, 74, 0.65);
+}
+
+.route-progress.is-on .route-progress-bar {
+  animation: route-progress-run 7.5s cubic-bezier(0.15, 0.65, 0.2, 1) forwards;
+}
+
+.route-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: grid;
+  place-items: center;
+  background: rgba(11, 12, 16, 0.62);
+  backdrop-filter: blur(10px) saturate(1.2);
+}
+
+.page-loading {
+  min-height: min(72vh, 640px);
+  display: grid;
+  place-items: center;
+}
+
+.page-loader {
+  display: grid;
+  justify-items: center;
+  gap: 0.45rem;
+  text-align: center;
+}
+
+.page-loader-mark {
+  position: relative;
+  width: 5.5rem;
+  height: 5.5rem;
+  margin-bottom: 0.55rem;
+}
+
+.page-loader-orbit,
+.page-loader-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+}
+
+.page-loader-orbit {
+  border: 1px dashed rgba(224, 179, 74, 0.35);
+  animation: page-loader-spin 8s linear infinite;
+}
+
+.page-loader-ring {
+  inset: 0.55rem;
+  border: 2px solid rgba(224, 179, 74, 0.16);
+  border-top-color: var(--gold);
+  border-right-color: var(--ember);
+  animation: page-loader-spin 0.9s linear infinite;
+  box-shadow: 0 0 24px rgba(224, 179, 74, 0.18);
+}
+
+.page-loader-gem {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--gold);
+  font-size: 1.35rem;
+  text-shadow: 0 0 18px rgba(224, 179, 74, 0.55);
+  animation: page-loader-pulse 1.6s ease-in-out infinite;
+}
+
+.page-loader-text {
+  margin: 0;
+  color: var(--muted);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-size: 0.72rem;
+  font-family: var(--font-oxanium), sans-serif;
+}
+
+@keyframes route-progress-run {
+  0% {
+    width: 0;
+  }
+  12% {
+    width: 32%;
+  }
+  40% {
+    width: 58%;
+  }
+  72% {
+    width: 82%;
+  }
+  100% {
+    width: 92%;
+  }
+}
+
+@keyframes page-loader-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes page-loader-pulse {
+  0%,
+  100% {
+    opacity: 0.7;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .route-progress.is-on .route-progress-bar,
+  .page-loader-orbit,
+  .page-loader-ring,
+  .page-loader-gem {
+    animation: none;
+  }
+
+  .route-progress.is-on .route-progress-bar {
+    width: 70%;
+  }
+}

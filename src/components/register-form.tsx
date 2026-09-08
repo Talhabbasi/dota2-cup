@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { startNavigation } from "@/components/navigation-loader";
 import { FLEX, MEDAL_LABELS, MEDALS, ROLE_LABELS, ROLES } from "@/lib/constants";
 import {
   PLAY_WINDOW_LABELS,
@@ -55,6 +56,7 @@ export function RegisterForm({
         setError(data.error ?? "Registration failed.");
         return;
       }
+      startNavigation();
       router.push(`/players/${data.id}`);
       router.refresh();
     } catch {

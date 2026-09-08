@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Oxanium, Sora } from "next/font/google";
 import { Nav } from "@/components/nav";
+import { NavigationLoader } from "@/components/navigation-loader";
 import { Providers } from "@/components/providers";
 import "./globals.css";
 
@@ -33,6 +34,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <body className="min-h-full flex flex-col">
         <Providers>
+          <NavigationLoader />
           <Nav />
           <main className="flex-1">{children}</main>
           <footer className="footer">
