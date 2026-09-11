@@ -2541,12 +2541,6 @@ tr:last-child td {
   line-height: 1.2;
 }
 
-.players-grid-discord {
-  margin: 0;
-  font-size: 0.8rem;
-  color: var(--muted);
-}
-
 .players-grid-registered {
   margin: 0;
   font-size: 0.72rem;

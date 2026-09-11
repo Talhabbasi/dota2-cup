@@ -11,7 +11,6 @@ export default async function PlayersPage() {
   const views: PlayerCardView[] = players.map((p) => ({
     id: p.id,
     steamName: p.steamName,
-    discordName: p.discordName,
     medal: p.medal,
     rolesLabel: formatRoles(p.roles),
     roleKeys: p.roles,

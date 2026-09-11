@@ -90,7 +90,7 @@ export default async function PlayerPage({
         <p className="eyebrow">Player</p>
         <h1>{player.steamName}</h1>
         <p className="lede">
-          {player.discordName} · {MEDAL_LABELS[player.medal as Medal] ?? player.medal}
+          {MEDAL_LABELS[player.medal as Medal] ?? player.medal}
           {player.isCaptain ? " · Captain" : ""}
         </p>
         <p className="muted" style={{ margin: "0 0 0.8rem" }}>

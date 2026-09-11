@@ -22,7 +22,6 @@ export async function getPlayers() {
     select: {
       id: true,
       steamName: true,
-      discordName: true,
       medal: true,
       rolesJson: true,
       teamId: true,
@@ -64,8 +63,11 @@ export async function getPlayer(id: string) {
     orderBy: { match: { createdAt: "desc" } },
   });
 
+  const { discordId: _discordId, discordName: _discordName, ...publicPlayer } =
+    player;
+
   return {
-    ...player,
+    ...publicPlayer,
     matchPlayers,
     roles: parseRolesJson(player.rolesJson),
     basePrice: basePriceFor(player.medal),

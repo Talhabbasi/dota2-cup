@@ -12,7 +12,6 @@ import {
 export type PlayerCardView = {
   id: string;
   steamName: string;
-  discordName: string;
   medal: string;
   rolesLabel: string;
   roleKeys: string[];
@@ -135,7 +134,6 @@ function PlayerCard({ player }: { player: PlayerCardView }) {
       </div>
 
       <h3 className="players-grid-name">{player.steamName}</h3>
-      <p className="players-grid-discord">{player.discordName}</p>
 
       <div className="players-grid-meta">
         <span className="team-medal-pill">
@@ -182,7 +180,6 @@ export function PlayersGrid({ players }: { players: PlayerCardView[] }) {
       if (!q) return true;
       return (
         p.steamName.toLowerCase().includes(q) ||
-        p.discordName.toLowerCase().includes(q) ||
         (p.teamName?.toLowerCase().includes(q) ?? false) ||
         p.rolesLabel.toLowerCase().includes(q) ||
         p.playWindowLabel.toLowerCase().includes(q)
