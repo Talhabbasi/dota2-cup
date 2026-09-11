@@ -15,9 +15,6 @@ export default async function HeroesPage() {
         <div className="teams-list-hero-body">
           <p className="eyebrow">Pool</p>
           <h1>Heroes</h1>
-          <p className="lede">
-            Every Dota hero — open one to see cup matches, players, and stats.
-          </p>
           <div className="teams-list-hero-pills">
             <span className="teams-list-hero-pill">
               <strong>{played}</strong> / {heroes.length} picked

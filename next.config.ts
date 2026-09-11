@@ -16,6 +16,11 @@ const nextConfig: NextConfig = {
       },
       {
         protocol: "https",
+        hostname: "cdn.cloudflare.steamstatic.com",
+        pathname: "/apps/dota2/videos/**",
+      },
+      {
+        protocol: "https",
         hostname: "cdn.dota2.com",
         pathname: "/**",
       },

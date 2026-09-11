@@ -9,8 +9,10 @@ import { prisma } from "./prisma";
 import { parseRolesJson } from "./roles";
 
 async function requirePlayer(discordId: string) {
-  const player = await prisma.player.findUnique({
-    where: { discordId },
+  const player = await prisma.player.findFirst({
+    where: {
+      OR: [{ discordId }, { discordId: { startsWith: `${discordId}:` } }],
+    },
     include: { team: true },
   });
   if (!player) {

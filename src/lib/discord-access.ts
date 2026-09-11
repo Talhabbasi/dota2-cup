@@ -6,6 +6,8 @@ import {
   type TextChannel,
 } from "discord.js";
 import { adminRoleName } from "./constants";
+import { ensurePaymentsChannel } from "./cup-announcements";
+import { formatEntryFee } from "./registration-status";
 import {
   PLAY_WINDOW_ROLE_NAMES,
   type KickoffWindow,
@@ -34,16 +36,25 @@ function findRole(guild: Guild, name: string): Role | null {
 }
 
 export async function ensureCaptainRole(guild: Guild): Promise<Role> {
+  await guild.roles.fetch();
   const name = captainRoleName();
   const existing = findRole(guild, name);
   if (existing) return existing;
-  return guild.roles.create({
-    name,
-    hoist: true,
-    mentionable: true,
-    color: 0xb07d1f,
-    reason: "MM Dota Cup captain role",
-  });
+  try {
+    return await guild.roles.create({
+      name,
+      hoist: true,
+      mentionable: true,
+      colors: { primaryColor: 0xb07d1f },
+      reason: "MM Dota Cup captain role",
+    });
+  } catch {
+    throw new Error(
+      `The bot cannot create the **${name}** Discord role (needs **Manage Roles**). ` +
+        `Server Settings → Roles → enable **Manage Roles** on **dota2-cup**, ` +
+        `and drag the bot role **above** ${name}. Or create a role named **${name}** yourself.`,
+    );
+  }
 }
 
 async function allowStaff(
@@ -66,43 +77,76 @@ export async function syncCupChannelAccess(guild: Guild) {
   await guild.channels.fetch();
   await guild.roles.fetch();
 
-  const captainRole = await ensureCaptainRole(guild);
+  let captainRole = findRole(guild, captainRoleName());
+  try {
+    captainRole = await ensureCaptainRole(guild);
+  } catch (error) {
+    console.warn(
+      "Could not create Captain role (need Manage Roles):",
+      error instanceof Error ? error.message : error,
+    );
+  }
   const adminRole = findRole(guild, adminRoleName());
   const botMember = guild.members.me;
 
   const captains = findTextChannel(guild, "captains");
-  if (captains) {
-    await captains.permissionOverwrites.edit(guild.roles.everyone, {
-      ViewChannel: false,
-      SendMessages: false,
-    });
-    await allowStaff(captains, captainRole);
-    if (adminRole) {
-      await allowStaff(captains, adminRole, { ManageMessages: true });
-    }
-    if (botMember) {
-      await allowStaff(captains, botMember, { ManageMessages: true });
+  if (captains && captainRole) {
+    try {
+      await captains.permissionOverwrites.edit(guild.roles.everyone, {
+        ViewChannel: false,
+        SendMessages: false,
+      });
+      await allowStaff(captains, captainRole);
+      if (adminRole) {
+        await allowStaff(captains, adminRole, { ManageMessages: true });
+      }
+      if (botMember) {
+        await allowStaff(captains, botMember, { ManageMessages: true });
+      }
+    } catch (error) {
+      console.warn(
+        "Could not lock #captains (need Manage Roles):",
+        error instanceof Error ? error.message : error,
+      );
     }
   }
 
   const auction = findTextChannel(guild, "auction");
   if (auction) {
-    await auction.permissionOverwrites.edit(guild.roles.everyone, {
-      ViewChannel: true,
-      ReadMessageHistory: true,
-      SendMessages: false,
-      SendMessagesInThreads: false,
-      CreatePublicThreads: false,
-      CreatePrivateThreads: false,
-      AddReactions: false,
-    });
-    await allowStaff(auction, captainRole);
-    if (adminRole) {
-      await allowStaff(auction, adminRole, { ManageMessages: true });
+    try {
+      await auction.permissionOverwrites.edit(guild.roles.everyone, {
+        ViewChannel: true,
+        ReadMessageHistory: true,
+        SendMessages: false,
+        SendMessagesInThreads: false,
+        CreatePublicThreads: false,
+        CreatePrivateThreads: false,
+        AddReactions: false,
+      });
+      if (captainRole) {
+        await allowStaff(auction, captainRole);
+      }
+      if (adminRole) {
+        await allowStaff(auction, adminRole, { ManageMessages: true });
+      }
+      if (botMember) {
+        await allowStaff(auction, botMember, { ManageMessages: true });
+      }
+    } catch (error) {
+      console.warn(
+        "Could not lock #auction (need Manage Roles):",
+        error instanceof Error ? error.message : error,
+      );
     }
-    if (botMember) {
-      await allowStaff(auction, botMember, { ManageMessages: true });
-    }
+  }
+
+  try {
+    await ensurePaymentsChannel(guild);
+  } catch (error) {
+    console.warn(
+      "Could not create or unhide #payments (bot needs Manage Channels):",
+      error instanceof Error ? error.message : error,
+    );
   }
 }
 
@@ -180,8 +224,46 @@ export async function setMemberCaptainRole(
   await member.roles.remove(role, "Removed as cup captain");
 }
 
+/** Assign the Discord Captain role without failing the cup DB update. */
+export async function trySetMemberCaptainRole(
+  guild: Guild | null,
+  discordId: string,
+  on: boolean,
+): Promise<string | null> {
+  if (!guild) return null;
+  try {
+    await setMemberCaptainRole(guild, discordId, on);
+    return null;
+  } catch (error) {
+    const name = captainRoleName();
+    const raw = error instanceof Error ? error.message : "Missing Permissions";
+    const needsManage =
+      /missing permissions/i.test(raw) ||
+      raw.includes("Manage Roles") ||
+      /cannot create the/i.test(raw);
+    const hint = needsManage
+      ? raw.includes("Manage Roles")
+        ? raw
+        : `The bot needs **Manage Roles**, and its role must sit **above** **${name}** in Server Settings → Roles.`
+      : raw;
+    console.warn("Captain Discord role:", raw);
+    return on
+      ? `They are captain in the cup, but Discord did not give them the **${name}** role. ${hint}`
+      : `Captain was removed in the cup, but Discord could not take the **${name}** role off them. ${hint}`;
+  }
+}
+
 export async function syncCaptainRolesFromDb(guild: Guild) {
-  const role = await ensureCaptainRole(guild);
+  let role: Role;
+  try {
+    role = await ensureCaptainRole(guild);
+  } catch (error) {
+    console.warn(
+      "Could not sync Captain Discord roles:",
+      error instanceof Error ? error.message : error,
+    );
+    return;
+  }
   const captains = await prisma.player.findMany({
     where: { isCaptain: true },
     select: { discordId: true },
@@ -199,5 +281,6 @@ export function describeChannelAccess() {
   return [
     `#captains — only **${captainRoleName()}** and **${adminRoleName()}** can see and chat.`,
     `#auction — everyone can watch; only **${captainRoleName()}** and **${adminRoleName()}** can send messages.`,
+    `#payments — post a screenshot; an **Admin** clicks ✅ to confirm ${formatEntryFee()}.`,
   ].join("\n");
 }

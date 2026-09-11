@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { PlayersGrid, type PlayerCardView } from "@/components/players-grid";
 import { getPlayers, formatRoles } from "@/lib/data";
 import { PLAY_WINDOW_SHORT, playWindowOrBoth } from "@/lib/play-window";
@@ -35,10 +34,6 @@ export default async function PlayersPage() {
         <div className="teams-list-hero-body">
           <p className="eyebrow">Pool</p>
           <h1>Players</h1>
-          <p className="lede">
-            Registered players for the auction. Filter by when they signed up,
-            or by open / signed / captains. Cards also show weekend availability.
-          </p>
           {views.length > 0 ? (
             <div className="teams-list-hero-pills">
               <span className="teams-list-hero-pill">
@@ -61,8 +56,7 @@ export default async function PlayersPage() {
             👤
           </span>
           <p className="muted" style={{ margin: 0 }}>
-            Nobody registered yet. Use <Link href="/register">Register</Link> on
-            this site, or <code>/register</code> in Discord #register.
+            No players registered.
           </p>
         </div>
       ) : (

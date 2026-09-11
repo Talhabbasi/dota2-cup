@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { authSession } from "@/lib/auth";
 import { publicErrorMessage } from "@/lib/public-error";
 import { revalidatePublicPages } from "@/lib/page-cache";
+import { isRegistrationOpen } from "@/lib/registration-status";
 import { registerPlayer } from "@/lib/register";
 
 export async function POST(request: Request) {
@@ -11,6 +12,12 @@ export async function POST(request: Request) {
     return NextResponse.json(
       { error: "Sign in with Discord first." },
       { status: 401 },
+    );
+  }
+  if (!(await isRegistrationOpen())) {
+    return NextResponse.json(
+      { error: "Registration is closed. Ask an admin if you need a late add." },
+      { status: 403 },
     );
   }
 

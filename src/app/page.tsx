@@ -1,4 +1,3 @@
-import Image from "next/image";
 import Link from "next/link";
 import { Suspense } from "react";
 import { MatchCard } from "@/components/match-card";
@@ -33,22 +32,14 @@ export default async function Home() {
 
   const latest = matches[0] ?? null;
   const recent = latest ? matches.slice(1, 5) : matches.slice(0, 4);
+  const showSpotlight = Boolean(latest || upcoming);
 
   return (
     <>
-      <section className="hero-bleed hero-bleed-compact">
-        <Image
-          src="/brand/hero-trophy.png"
-          alt="MM Dota Cup"
-          fill
-          priority
-          className="hero-bleed-image"
-          sizes="100vw"
-        />
+      <section className="hero-bleed hero-bleed-compact hero-bleed-dota">
         <div className="hero-bleed-shade" />
         <div className="hero-bleed-content">
           <p className="brand-hero animate-rise">MM Dota Cup</p>
-          <h1 className="animate-rise delay-1">Draft. Play. Dominate.</h1>
         </div>
       </section>
 
@@ -65,27 +56,16 @@ export default async function Home() {
             <span className="home-stat-label">Matches played</span>
             <strong>{matchCount}</strong>
           </div>
-          <div className="home-stat">
-            <span className="home-stat-label">Leader</span>
-            <strong>{table[0]?.name ?? "—"}</strong>
-          </div>
         </div>
 
-        <section className="home-spotlight">
-          {latest ? (
-            <LatestMatchSpotlight match={latest} />
-          ) : (
-            <div className="spotlight-card spotlight-latest spotlight-placeholder">
-              <div className="spotlight-head">
-                <span className="spotlight-badge">Latest match</span>
-              </div>
-              <div className="spotlight-empty">
-                <p>No matches posted yet. Results appear here after the first game.</p>
-              </div>
-            </div>
-          )}
-          <UpcomingMatchSpotlight fixture={upcoming} teamCount={teamCount} />
-        </section>
+        {showSpotlight ? (
+          <section className="home-spotlight">
+            {latest ? <LatestMatchSpotlight match={latest} /> : null}
+            {upcoming ? (
+              <UpcomingMatchSpotlight fixture={upcoming} />
+            ) : null}
+          </section>
+        ) : null}
 
         {weekend ? (
           <WeekendScheduleBlock
@@ -95,46 +75,44 @@ export default async function Home() {
           />
         ) : null}
 
-        <section className="home-standings">
-          <div className="section-head row">
-            <h2>Standings</h2>
-            <Link href="/table" className="text-link">
-              Full table
-            </Link>
-          </div>
-          <StandingsBoard
-            compact
-            limit={5}
-            rows={table.map((row) => ({
-              id: row.id,
-              name: row.name,
-              played: row.played,
-              wins: row.wins,
-              losses: row.losses,
-              points: row.points,
-            }))}
-          />
-        </section>
-
-        <section className="home-recent">
-          <div className="section-head row">
-            <h2>Recent matches</h2>
-            <Link href="/matches" className="text-link">
-              View all
-            </Link>
-          </div>
-          {recent.length === 0 ? (
-            <div className="empty-panel">
-              <p className="muted">More matches will show up here after they are posted.</p>
+        {table.length > 0 ? (
+          <section className="home-standings">
+            <div className="section-head row">
+              <h2>Standings</h2>
+              <Link href="/table" className="text-link">
+                Full table
+              </Link>
             </div>
-          ) : (
+            <StandingsBoard
+              compact
+              limit={5}
+              rows={table.map((row) => ({
+                id: row.id,
+                name: row.name,
+                played: row.played,
+                wins: row.wins,
+                losses: row.losses,
+                points: row.points,
+              }))}
+            />
+          </section>
+        ) : null}
+
+        {recent.length > 0 ? (
+          <section className="home-recent">
+            <div className="section-head row">
+              <h2>Recent matches</h2>
+              <Link href="/matches" className="text-link">
+                View all
+              </Link>
+            </div>
             <div className="vs-stack">
               {recent.map((m) => (
                 <MatchCard key={m.id} match={m} />
               ))}
             </div>
-          )}
-        </section>
+          </section>
+        ) : null}
       </div>
     </>
   );

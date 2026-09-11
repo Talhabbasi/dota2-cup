@@ -19,7 +19,11 @@ import {
   type GuildMember,
   type Interaction,
   type Message,
+  type MessageReaction,
+  type PartialMessageReaction,
+  type PartialUser,
   type TextChannel,
+  type User,
 } from "discord.js";
 import { writeFile, mkdir } from "node:fs/promises";
 import path from "node:path";
@@ -40,7 +44,30 @@ import {
   type Role,
 } from "../src/lib/constants";
 import { registerPlayer, setPlayerPlayWindow } from "../src/lib/register";
-import { moderateCommandOnlyChannel } from "../src/lib/channel-moderation";
+import {
+  formatEntryFee,
+  isPaymentsChannelName,
+  isRegistrationOpen,
+  paymentAccountNumber,
+  paymentsChannelName,
+  registrationClosedDiscordReply,
+  setRegistrationOpen,
+} from "../src/lib/registration-status";
+import {
+  adminChannelName,
+  botInviteUrl,
+  describeDiscordChannelError,
+  ensureAdminChannel,
+  postAdminCommandHelp,
+  postCupAnnouncements,
+  setupCupDiscord,
+  clearCupAnnouncements,
+} from "../src/lib/cup-announcements";
+import {
+  messageHasImage,
+  moderateCommandOnlyChannel,
+  moderatePaymentsChannel,
+} from "../src/lib/channel-moderation";
 import {
   adminAddCaptain,
   adminRemoveCaptain,
@@ -62,6 +89,18 @@ import {
   hydrateAuctionClock,
 } from "../src/lib/auction";
 import { notifySiteRefresh } from "../src/lib/notify-site";
+import {
+  adminMarkPaid,
+  findTeamPaymentsByName,
+  formatTeamPaymentDetail,
+  formatTeamPaymentLine,
+  formatTeamPaymentsList,
+  formatUnpaidList,
+  listTeamPayments,
+  listUnpaidPlayers,
+  playerMustPay,
+  recordPlayerPayment,
+} from "../src/lib/payments";
 import { assignUnknown, ingestMatch } from "../src/lib/results";
 import {
   clearScheduledFixtures,
@@ -71,7 +110,7 @@ import {
   generateWeekendSchedule,
   listScheduledFixtures,
 } from "../src/lib/schedule";
-import { HELP_COMMANDS, HELP_GUIDE } from "../src/lib/help";
+import { fullHelpText, splitDiscordChunks } from "../src/lib/help";
 import { tickMatchReminders } from "../src/lib/reminders";
 import {
   buildRulesEmbed,
@@ -85,9 +124,9 @@ import {
 } from "../src/lib/post-channel-guides";
 import {
   describeChannelAccess,
-  setMemberCaptainRole,
   syncCaptainRolesFromDb,
   syncCupChannelAccess,
+  trySetMemberCaptainRole,
   trySetPlayWindowRoles,
 } from "../src/lib/discord-access";
 import {
@@ -100,6 +139,8 @@ import {
   adminRemovePlayerFromTeam,
   adminResyncRosterRole,
   adminUpdatePlayerProfile,
+  formatPlayerDirectory,
+  listRegisteredPlayers,
 } from "../src/lib/players-admin";
 import { parseRolesJson } from "../src/lib/roles";
 import { prisma } from "../src/lib/prisma";
@@ -215,9 +256,47 @@ const commands = [
     .setName("player")
     .setDescription("Admin: manage registered players")
     .addSubcommand((s) =>
+      s.setName("list").setDescription("Admin: list every registered player"),
+    )
+    .addSubcommand((s) =>
+      s
+        .setName("register")
+        .setDescription("Admin: add a player after public registration closed")
+        .addUserOption((o) =>
+          o.setName("user").setDescription("Discord user").setRequired(true),
+        )
+        .addStringOption((o) =>
+          o
+            .setName("steam")
+            .setDescription("Full Steam profile URL")
+            .setRequired(true),
+        )
+        .addStringOption((o) =>
+          o
+            .setName("rank")
+            .setDescription("Medal")
+            .setRequired(true)
+            .addChoices(...medalChoices),
+        )
+        .addStringOption((o) =>
+          o
+            .setName("role")
+            .setDescription("Main role")
+            .setRequired(true)
+            .addChoices(...registerRoleChoices),
+        )
+        .addStringOption((o) =>
+          o
+            .setName("when")
+            .setDescription("Weekend availability")
+            .setRequired(true)
+            .addChoices(...PLAY_WINDOW_DISCORD_CHOICES),
+        ),
+    )
+    .addSubcommand((s) =>
       s
         .setName("delete")
-        .setDescription("Admin: delete a registration (unsigned players only)")
+        .setDescription("Admin: delete a player from the cup (also off their team)")
         .addUserOption((o) =>
           o.setName("user").setDescription("Player").setRequired(true),
         ),
@@ -332,13 +411,57 @@ const commands = [
       s
         .setName("channels")
         .setDescription(
-          "Admin: pin a guide in #register, #captains, #auction, #results, #schedule, #general",
+          "Admin: pin a guide in #register, #payments, #captains, #auction, #results, #schedule, #general",
         )
         .addBooleanOption((o) =>
           o
             .setName("force")
             .setDescription("Post again even if a guide is already pinned"),
         ),
+    )
+    .addSubcommand((s) =>
+      s
+        .setName("closed")
+        .setDescription(
+          "Admin: remove old copies, then post closed / indoor / payment announcements once",
+        ),
+    )
+    .addSubcommand((s) =>
+      s
+        .setName("clear")
+        .setDescription(
+          "Admin: delete old registration / indoor / payment announcement embeds",
+        ),
+    ),
+  new SlashCommandBuilder()
+    .setName("registration")
+    .setDescription("Admin: open or close public registration")
+    .addSubcommand((s) =>
+      s
+        .setName("close")
+        .setDescription("Close website + Discord public registration")
+        .addBooleanOption((o) =>
+          o
+            .setName("announce")
+            .setDescription("Also post the 3 announcements and create #payments (default: true)"),
+        ),
+    )
+    .addSubcommand((s) =>
+      s.setName("open").setDescription("Re-open website + Discord public registration"),
+    )
+    .addSubcommand((s) =>
+      s.setName("status").setDescription("Show whether registration is open or closed"),
+    ),
+  new SlashCommandBuilder()
+    .setName("admin")
+    .setDescription("Admin: payments channel, #admin help, cup setup")
+    .addSubcommand((s) =>
+      s
+        .setName("setup")
+        .setDescription("Create #payments (visible to everyone) and post commands in #admin"),
+    )
+    .addSubcommand((s) =>
+      s.setName("help").setDescription("Post all bot commands into #admin"),
     ),
   new SlashCommandBuilder()
     .setName("bid")
@@ -446,6 +569,35 @@ const commands = [
           o.setName("user").setDescription("Registered player").setRequired(true),
         ),
     ),
+  new SlashCommandBuilder()
+    .setName("pay")
+    .setDescription("Entry fees — unpaid players and team 5000 PKR status")
+    .addSubcommand((s) =>
+      s
+        .setName("unpaid")
+        .setDescription("List starters who have not paid (subs are free)"),
+    )
+    .addSubcommand((s) =>
+      s
+        .setName("teams")
+        .setDescription("Which teams have collected exactly 5000 PKR"),
+    )
+    .addSubcommand((s) =>
+      s
+        .setName("team")
+        .setDescription("Who on one team still owes (min/max 5000 PKR)")
+        .addStringOption((o) =>
+          o.setName("name").setDescription("Team name").setRequired(true),
+        ),
+    )
+    .addSubcommand((s) =>
+      s
+        .setName("mark")
+        .setDescription("Admin: mark paid without the ✅ screenshot tick")
+        .addUserOption((o) =>
+          o.setName("user").setDescription("Player").setRequired(true),
+        ),
+    ),
 ].map((c) => c.toJSON());
 
 function isOrganizer(member: GuildMember | null, discordId: string): boolean {
@@ -458,6 +610,38 @@ function isOrganizer(member: GuildMember | null, discordId: string): boolean {
 function fail(error: unknown): string {
   console.error(error);
   return publicErrorMessage(error);
+}
+
+async function editReplyChunks(
+  interaction: ChatInputCommandInteraction,
+  text: string,
+) {
+  const chunks = splitDiscordChunks(text);
+  await interaction.editReply({
+    content: chunks[0],
+    allowedMentions: { parse: [] },
+  });
+  for (const chunk of chunks.slice(1)) {
+    await interaction.followUp({
+      content: chunk,
+      flags: MessageFlags.Ephemeral,
+      allowedMentions: { parse: [] },
+    });
+  }
+}
+
+function paymentStatusLine(player: {
+  rosterRole: string | null;
+  paidAt: Date | null;
+  paymentAmount?: number | null;
+}) {
+  if (!playerMustPay(player.rosterRole)) {
+    return "Fee: **substitute — no payment required**";
+  }
+  if (player.paidAt) {
+    return `Fee: **paid** (${formatEntryFee()})`;
+  }
+  return `Fee: **unpaid** — ${formatEntryFee()} screenshot in **#${paymentsChannelName()}**, then wait for admin ✅`;
 }
 
 function parseDiscordSnowflake(raw: string): string {
@@ -789,9 +973,10 @@ const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.GuildMessageReactions,
     GatewayIntentBits.MessageContent,
   ],
-  partials: [Partials.Channel],
+  partials: [Partials.Channel, Partials.Message, Partials.Reaction, Partials.User],
 });
 
 async function handleSlash(interaction: ChatInputCommandInteraction) {
@@ -806,6 +991,13 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
       if (!isRegisterChannel(interaction)) {
         await interaction.reply({
           content: registerOnlyHereMessage(),
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+      if (!(await isRegistrationOpen()) && !isOrganizer(member, discordId)) {
+        await interaction.reply({
+          content: registrationClosedDiscordReply(),
           flags: MessageFlags.Ephemeral,
         });
         return;
@@ -867,7 +1059,11 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
         include: { team: true },
       });
       if (!player) {
-        await interaction.editReply("You are not registered. Use `/register`.");
+        await interaction.editReply(
+          (await isRegistrationOpen())
+            ? "You are not registered. Use `/register`."
+            : "You are not registered. Public sign-ups are closed — ask an admin to `/player register` you.",
+        );
         return;
       }
       const roles = formatRoles(parseRolesJson(player.rolesJson));
@@ -877,16 +1073,137 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
         ? `Team **${player.team.name}**${player.isCaptain ? " · captain" : ""}${sub}`
         : "Unsigned — you will appear in the auction";
       await interaction.editReply(
-        `**${player.steamName}** · ${player.medal} · ${roles}\nWeekends: **${window}** (change with \`/when\`)\nWebsite: ${playerPageUrl(player.id)}\nSteam: ${steamProfileUrl(player.steam32)}\nSteam32 \`${player.steam32}\`\n${team}`,
+        `**${player.steamName}** · ${player.medal} · ${roles}\nWeekends: **${window}** (change with \`/when\`)\nWebsite: ${playerPageUrl(player.id)}\nSteam: ${steamProfileUrl(player.steam32)}\nSteam32 \`${player.steam32}\`\n${team}\n${paymentStatusLine(player)}`,
       );
       return;
     }
 
     if (name === "help") {
+      const chunks = splitDiscordChunks(fullHelpText());
       await interaction.reply({
-        content: `${HELP_COMMANDS}\n\n${HELP_GUIDE}`,
+        content: chunks[0],
         flags: MessageFlags.Ephemeral,
       });
+      for (const chunk of chunks.slice(1)) {
+        await interaction.followUp({
+          content: chunk,
+          flags: MessageFlags.Ephemeral,
+        });
+      }
+      return;
+    }
+
+    if (name === "registration") {
+      if (!isOrganizer(member, discordId)) {
+        await interaction.reply({
+          content: `Only **${adminRoleName()}** can open or close registration.`,
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+      const sub = interaction.options.getSubcommand();
+      if (sub === "status") {
+        const open = await isRegistrationOpen();
+        await interaction.reply({
+          content: open
+            ? "Public registration is **open** (website + `/register`)."
+            : "Public registration is **closed**. Late add: `/player register`. Re-open: `/registration open`.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      if (sub === "open") {
+        await setRegistrationOpen(true);
+        void notifySiteRefresh();
+        await interaction.editReply(
+          "Public registration is **open** on the website and `/register`.",
+        );
+        return;
+      }
+      await setRegistrationOpen(false);
+      void notifySiteRefresh();
+      const announce = interaction.options.getBoolean("announce") ?? true;
+      let extra = "";
+      if (announce && interaction.guild) {
+        const cleared = await clearCupAnnouncements(
+          interaction.guild,
+          client.user!.id,
+        );
+        const posted = await postCupAnnouncements(interaction.guild);
+        extra =
+          "\n\n" +
+          [...cleared, ...posted]
+            .map((r) => `${r.ok ? "✅" : "❌"} #${r.channel} — ${r.detail}`)
+            .join("\n");
+      }
+      await interaction.editReply(
+        `Public registration is **closed** on the website and Discord.${extra}\n\nAdd someone: \`/player register\`\nRemove someone: \`/player delete @user\` (also takes them off a team). Captains: \`/captain remove\` first.`,
+      );
+      return;
+    }
+
+    if (name === "admin") {
+      if (!isOrganizer(member, discordId)) {
+        await interaction.reply({
+          content: `Only **${adminRoleName()}** can run cup setup.`,
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+      if (!interaction.guild) {
+        await interaction.reply({
+          content: "Run this in your Discord server.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      const sub = interaction.options.getSubcommand();
+      if (sub === "help") {
+        try {
+          const admin = await ensureAdminChannel(interaction.guild);
+          const help = await postAdminCommandHelp(admin, {
+            force: true,
+            botUserId: client.user?.id,
+          });
+          await interaction.editReply(
+            help.skipped
+              ? `Command help is already in ${admin}.`
+              : `Posted every command into ${admin}.`,
+          );
+        } catch (error) {
+          await editReplyChunks(
+            interaction,
+            `${describeDiscordChannelError(error, adminChannelName())}\n\nCommand list (here, since #${adminChannelName()} is locked):\n\n${fullHelpText()}`,
+          );
+        }
+        return;
+      }
+      const results = await setupCupDiscord(interaction.guild, {
+        botUserId: client.user?.id,
+        announce: false,
+        forceHelp: true,
+      });
+      const body = results
+        .map((r) => `${r.ok ? "✅" : "❌"} #${r.channel} — ${r.detail}`)
+        .join("\n");
+      const failedPayments = results.some(
+        (r) => !r.ok && r.channel.toLowerCase().includes("payment"),
+      );
+      const failedAdmin = results.some(
+        (r) => !r.ok && r.channel.toLowerCase() === adminChannelName().toLowerCase(),
+      );
+      const invite = failedPayments
+        ? `\n\nIf **#${paymentsChannelName()}** is missing, the bot needs **Manage Channels**. Re-invite:\n${botInviteUrl(botClientId)}\nOr create a public text channel named **${paymentsChannelName()}**, then run \`/admin setup\` again.`
+        : "";
+      const helpFallback = failedAdmin
+        ? `\n\nCommand list (posted here because **#${adminChannelName()}** is locked):\n\n${fullHelpText()}`
+        : "";
+      await editReplyChunks(
+        interaction,
+        `Cup channels updated.\n${body}${invite}\n\nPlayers: screenshot in **#${paymentsChannelName()}**, then an Admin clicks ✅.\nList players: \`/player list\`.${helpFallback}`,
+      );
       return;
     }
 
@@ -906,22 +1223,46 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
           discordId: user.id,
           teamName: interaction.options.getString("team", true),
         });
+        const roleNote = await trySetMemberCaptainRole(
+          interaction.guild,
+          user.id,
+          true,
+        );
         if (interaction.guild) {
-          await setMemberCaptainRole(interaction.guild, user.id, true);
-          await syncCupChannelAccess(interaction.guild);
+          try {
+            await syncCupChannelAccess(interaction.guild);
+          } catch (error) {
+            console.warn(
+              "channel access after captain add",
+              error instanceof Error ? error.message : error,
+            );
+          }
         }
+        void notifySiteRefresh();
         await interaction.editReply(
-          `${user} is now captain of **${team.name}** (${STARTING_PURSE} points). They can use **#captains** and chat in **#auction**.`,
+          [
+            `${user} is now captain of **${team.name}** (${STARTING_PURSE} points).`,
+            roleNote ??
+              "They can use **#captains** and chat in **#auction**.",
+          ].join("\n"),
         );
         return;
       }
       const user = interaction.options.getUser("user", true);
       const removed = await adminRemoveCaptain(user.id);
-      if (interaction.guild) {
-        await setMemberCaptainRole(interaction.guild, user.id, false);
-      }
+      const roleNote = await trySetMemberCaptainRole(
+        interaction.guild,
+        user.id,
+        false,
+      );
+      void notifySiteRefresh();
       await interaction.editReply(
-        `Removed captain ${user}. **${removed.teamName}** is dissolved; players are unsigned again.`,
+        [
+          `Removed captain ${user}. **${removed.teamName}** is dissolved; players are unsigned again.`,
+          roleNote,
+        ]
+          .filter(Boolean)
+          .join("\n"),
       );
       return;
     }
@@ -936,6 +1277,11 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
       }
       await interaction.deferReply();
       const sub = interaction.options.getSubcommand();
+      if (sub === "list") {
+        const players = await listRegisteredPlayers();
+        await editReplyChunks(interaction, formatPlayerDirectory(players));
+        return;
+      }
       if (sub === "dummy") {
         const count = interaction.options.getInteger("count", true);
         const result = await adminCreateDummyPlayers(count);
@@ -970,6 +1316,33 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
           result.teams === 0
             ? "No dummy teams to delete."
             : `Deleted **${result.teams}** dummy teams and **${result.players}** dummy players.`,
+        );
+        return;
+      }
+      if (sub === "register") {
+        const user = interaction.options.getUser("user", true);
+        const result = await registerPlayer({
+          discordId: user.id,
+          discordName: user.globalName || user.username,
+          steam: interaction.options.getString("steam", true),
+          medal: interaction.options.getString("rank", true),
+          role: interaction.options.getString("role", true),
+          playWindow: interaction.options.getString("when", true),
+        });
+        void notifySiteRefresh();
+        await trySetPlayWindowRoles(
+          interaction.guild,
+          user.id,
+          playWindowOrBoth(result.player.playWindow),
+        );
+        await interaction.editReply(
+          [
+            `Admin registered ${user}.`,
+            ...registerReplyLines(result),
+            playerMustPay(result.player.rosterRole)
+              ? `They still owe **${formatEntryFee()}** — screenshot in **#${paymentsChannelName()}**, admin ✅ to confirm.`
+              : "Substitute — no entry fee.",
+          ].join("\n"),
         );
         return;
       }
@@ -1014,7 +1387,13 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
       if (sub === "delete") {
         const removed = await adminDeletePlayer(user.id);
         await interaction.editReply(
-          `Deleted registration for **${removed.name}**. They can /register again.`,
+          `Deleted registration for **${removed.name}**.${
+            removed.teamName ? ` Removed from **${removed.teamName}**.` : ""
+          } ${
+            (await isRegistrationOpen())
+              ? "They can `/register` again."
+              : "To add them back, use `/player register`."
+          }`,
         );
         return;
       }
@@ -1039,6 +1418,58 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
       await interaction.editReply(
         `Rebalanced **${synced.name}**'s team roster (5 starters + up to 2 subs).`,
       );
+      return;
+    }
+
+    if (name === "pay") {
+      const sub = interaction.options.getSubcommand();
+      if (sub === "mark") {
+        if (!isOrganizer(member, discordId)) {
+          await interaction.reply({
+            content: `Only **${adminRoleName()}** can mark someone paid.`,
+            flags: MessageFlags.Ephemeral,
+          });
+          return;
+        }
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+        const user = interaction.options.getUser("user", true);
+        const result = await adminMarkPaid(user.id, discordId);
+        void notifySiteRefresh();
+        if (result.skipped) {
+          await interaction.editReply(
+            `${user} is a **substitute** — they do not pay.`,
+          );
+          return;
+        }
+        const teamNote = result.player.team
+          ? `\nTeam **${result.player.team.name}**.`
+          : "";
+        await interaction.editReply(
+          result.alreadyPaid
+            ? `${user} was already marked paid.${teamNote}`
+            : `Marked ${user} paid **${formatEntryFee()}**.${teamNote}`,
+        );
+        return;
+      }
+
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      if (sub === "unpaid") {
+        const unpaid = await listUnpaidPlayers();
+        await editReplyChunks(interaction, formatUnpaidList(unpaid));
+        return;
+      }
+      if (sub === "team") {
+        const name = interaction.options.getString("name", true);
+        const row = await findTeamPaymentsByName(name);
+        if (!row) {
+          await interaction.editReply(`No team matching **${name}**.`);
+          return;
+        }
+        await editReplyChunks(interaction, formatTeamPaymentDetail(row));
+        return;
+      }
+      const teams = await listTeamPayments();
+      await editReplyChunks(interaction, formatTeamPaymentsList(teams));
       return;
     }
 
@@ -1155,6 +1586,51 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
         }
         await interaction.editReply(
           `${formatGuideResults(results).join("\n")}${access}`,
+        );
+        return;
+      }
+
+      if (sub === "clear") {
+        if (!interaction.guild) {
+          await interaction.reply({
+            content: "Run this in your Discord server.",
+            flags: MessageFlags.Ephemeral,
+          });
+          return;
+        }
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+        const results = await clearCupAnnouncements(
+          interaction.guild,
+          client.user!.id,
+        );
+        const body = results
+          .map((r) => `${r.ok ? "✅" : "❌"} #${r.channel} — ${r.detail}`)
+          .join("\n");
+        await interaction.editReply(
+          `Removed old announcement copies.\n${body}\n\nPost a fresh set once with \`/rules closed\`.`,
+        );
+        return;
+      }
+
+      if (sub === "closed") {
+        if (!interaction.guild) {
+          await interaction.reply({
+            content: "Run this in your Discord server.",
+            flags: MessageFlags.Ephemeral,
+          });
+          return;
+        }
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+        const cleared = await clearCupAnnouncements(
+          interaction.guild,
+          client.user!.id,
+        );
+        const posted = await postCupAnnouncements(interaction.guild);
+        const body = [...cleared, ...posted]
+          .map((r) => `${r.ok ? "✅" : "❌"} #${r.channel} — ${r.detail}`)
+          .join("\n");
+        await interaction.editReply(
+          `Cleared old copies, then posted **one** set.\n${body}\n\n**#general:** registration closed + indoor tournament\n**#${paymentsChannelName()}:** payment rules (SadaPay ${paymentAccountNumber()})`,
         );
         return;
       }
@@ -1330,7 +1806,8 @@ function formatMatchReply(match: Awaited<ReturnType<typeof ingestMatch>>): strin
 
 async function saveProof(message: Message, matchHint: string): Promise<string | null> {
   const image = message.attachments.find((a) =>
-    (a.contentType ?? "").startsWith("image/"),
+    (a.contentType ?? "").startsWith("image/") ||
+    /\.(png|jpe?g|webp|gif)$/i.test(a.name ?? ""),
   );
   if (!image) return null;
   const dir = path.join(process.cwd(), "public", "uploads", "matches");
@@ -1341,6 +1818,95 @@ async function saveProof(message: Message, matchHint: string): Promise<string | 
   const buf = Buffer.from(await res.arrayBuffer());
   await writeFile(path.join(dir, file), buf);
   return `/uploads/matches/${file}`;
+}
+
+const PAY_TICK = "✅";
+
+function isPayTickEmoji(name: string | null) {
+  return (
+    name === PAY_TICK ||
+    name === "✔️" ||
+    name === "☑️" ||
+    name === "✔" ||
+    name === "white_check_mark"
+  );
+}
+
+function paymentProofTarget(message: Message) {
+  const mentioned = message.mentions.users.filter((user) => !user.bot);
+  if (
+    mentioned.size === 1 &&
+    isOrganizer(message.member, message.author.id)
+  ) {
+    return mentioned.first()!;
+  }
+  return message.author;
+}
+
+/** Put ✅ on screenshots so an admin can confirm 1000 PKR. Do not save the image. */
+async function offerPaymentTick(message: Message): Promise<boolean> {
+  if (message.channel.type !== ChannelType.GuildText) return false;
+  if (!isPaymentsChannelName(message.channel.name)) {
+    return false;
+  }
+  if (!messageHasImage(message)) return false;
+  await message.react(PAY_TICK).catch((error) => {
+    console.warn(
+      "Could not add ✅ on payment screenshot (need Add Reactions):",
+      error instanceof Error ? error.message : error,
+    );
+  });
+  return true;
+}
+
+async function handlePaymentTick(
+  reaction: MessageReaction | PartialMessageReaction,
+  user: User | PartialUser,
+) {
+  if (user.bot) return;
+  if (!isPayTickEmoji(reaction.emoji.name)) return;
+  const message = reaction.message.partial
+    ? await reaction.message.fetch()
+    : reaction.message;
+  if (message.author.bot) return;
+  if (message.channel.type !== ChannelType.GuildText) return;
+  if (!isPaymentsChannelName(message.channel.name)) {
+    return;
+  }
+  if (!messageHasImage(message)) return;
+
+  const guild = message.guild;
+  if (!guild) return;
+  const member = await guild.members.fetch(user.id).catch(() => null);
+  if (!isOrganizer(member, user.id)) return;
+
+  const target = paymentProofTarget(message);
+  try {
+    const result = await recordPlayerPayment({
+      discordId: target.id,
+      discordName: target.globalName || target.username,
+      verifiedBy: user.id,
+    });
+    if (result.skipped) {
+      await message.reply(
+        `${target} is a **substitute** — no entry fee.`,
+      );
+      return;
+    }
+    if (result.alreadyPaid) return;
+    void notifySiteRefresh();
+    let teamLine = "";
+    if (result.player.team) {
+      const teams = await listTeamPayments();
+      const row = teams.find((t) => t.id === result.player.team?.id);
+      if (row) teamLine = `\n${formatTeamPaymentLine(row)}`;
+    }
+    await message.reply(
+      `✅ Admin confirmed **${formatEntryFee()}** for ${target} (**${result.player.steamName}**).${teamLine}`,
+    );
+  } catch (error) {
+    await message.reply(fail(error));
+  }
 }
 
 async function handlePrefixResult(message: Message) {
@@ -1365,6 +1931,16 @@ client.on("interactionCreate", async (interaction: Interaction) => {
     if (!isRegisterChannel(interaction)) {
       await interaction.reply({
         content: registerOnlyHereMessage(),
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+    if (
+      !(await isRegistrationOpen()) &&
+      !isOrganizer(interaction.member as GuildMember | null, interaction.user.id)
+    ) {
+      await interaction.reply({
+        content: registrationClosedDiscordReply(),
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -1463,8 +2039,21 @@ client.on("error", (error) => {
 
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
+  if (await offerPaymentTick(message)) return;
+  if (await moderatePaymentsChannel(message)) return;
   if (await moderateCommandOnlyChannel(message)) return;
   await handlePrefixResult(message);
+});
+
+client.on(Events.MessageReactionAdd, async (reaction, user) => {
+  if (user.bot) return;
+  try {
+    if (reaction.partial) await reaction.fetch();
+    if (reaction.message.partial) await reaction.message.fetch();
+    await handlePaymentTick(reaction, user);
+  } catch (error) {
+    console.error("payment tick", error);
+  }
 });
 
 async function refreshPostedLot() {
@@ -1538,7 +2127,7 @@ async function main() {
           "Bot is not in that server yet (Missing Access). Invite it, then restart npm run bot.",
         );
         console.warn(
-          `Invite: https://discord.com/oauth2/authorize?client_id=${botClientId}&permissions=117760&scope=bot%20applications.commands`,
+          `Invite: ${botInviteUrl(botClientId)}`,
         );
       } else {
         throw error;

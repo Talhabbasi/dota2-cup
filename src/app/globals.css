@@ -83,6 +83,57 @@ main,
   z-index: 1;
 }
 
+.site-closed-banner {
+  position: relative;
+  z-index: 1;
+  overflow: hidden;
+  padding: 0.5rem 0;
+  font-size: 0.88rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #1a1408;
+  background: linear-gradient(90deg, #c9a227, #e0b34a 40%, #c9a227);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.25);
+}
+
+.site-closed-banner-track {
+  display: flex;
+  width: max-content;
+  animation: closed-banner-slide 22s linear infinite;
+}
+
+.site-closed-banner-group {
+  display: flex;
+}
+
+.site-closed-banner-item {
+  flex: none;
+  padding: 0 2.75rem;
+  white-space: nowrap;
+}
+
+@keyframes closed-banner-slide {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .site-closed-banner-track {
+    animation: none;
+    width: 100%;
+    justify-content: center;
+  }
+
+  .site-closed-banner-item:not(:first-child) {
+    display: none;
+  }
+}
+
 .site-header {
   display: flex;
   align-items: center;
@@ -473,16 +524,58 @@ tr:last-child td {
 }
 
 .hero-bleed-compact {
-  min-height: min(42vh, 380px);
+  min-height: 11.5rem;
+  align-items: flex-end;
+}
+
+.hero-bleed-dota {
+  background:
+    radial-gradient(ellipse at 78% 35%, rgba(176, 125, 31, 0.22), transparent 48%),
+    radial-gradient(ellipse at 12% 90%, rgba(90, 18, 28, 0.45), transparent 42%),
+    linear-gradient(180deg, #16141a 0%, #0b0c10 100%);
+}
+
+.hero-bleed-render {
+  position: absolute;
+  z-index: 1;
+  right: 6%;
+  bottom: -1.5rem;
+  height: 28rem;
+  width: auto;
+  pointer-events: none;
+  filter: drop-shadow(0 18px 40px rgba(0, 0, 0, 0.55));
+}
+
+@media (max-width: 720px) {
+  .hero-bleed-render {
+    height: 18rem;
+    opacity: 0.42;
+    right: -2rem;
+  }
 }
 
 .hero-bleed-compact .brand-hero {
   font-size: clamp(2rem, 5vw, 3.4rem);
+  margin-bottom: 0;
+  color: #f4d27a;
+  text-shadow: 0 8px 28px rgba(0, 0, 0, 0.85);
 }
 
 .hero-bleed-compact h1 {
   font-size: clamp(1rem, 2vw, 1.35rem);
   margin-bottom: 0;
+}
+
+.hero-bleed-compact .hero-bleed-content {
+  padding: 1.6rem 0 1.4rem;
+}
+
+.hero-bleed-compact .hero-bleed-shade {
+  background: linear-gradient(
+    180deg,
+    rgba(22, 20, 26, 0.15) 0%,
+    rgba(11, 12, 16, 0.55) 100%
+  );
 }
 
 .hero-bleed-image {
@@ -575,15 +668,15 @@ tr:last-child td {
 }
 
 .home-body {
-  padding-top: 0.5rem;
-  margin-top: -2.5rem;
+  padding-top: 1.25rem;
+  margin-top: 0;
   position: relative;
   z-index: 3;
 }
 
 .home-stats {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 0.75rem;
   margin-bottom: 1.25rem;
 }
@@ -3453,11 +3546,11 @@ tr:last-child td {
   }
 
   .hero-bleed-compact {
-    min-height: min(34vh, 280px);
+    min-height: 9.5rem;
   }
 
   .home-body {
-    margin-top: -1.5rem;
+    margin-top: 0;
   }
 
   .spotlight-faceoff {
@@ -3492,7 +3585,7 @@ tr:last-child td {
 
   .site-header {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
     gap: 0.45rem 0.55rem;
     padding: 0.55rem 0.85rem;
@@ -3738,6 +3831,30 @@ tr:last-child td {
   margin: 0;
   color: var(--ember);
   font-size: 0.9rem;
+}
+
+.register-closed-fee {
+  font-family: var(--font-oxanium), sans-serif;
+  font-size: 1.45rem;
+  color: var(--gold);
+  margin: 0.2rem 0 1rem;
+}
+
+.register-pay {
+  display: grid;
+  grid-template-columns: 8.5rem 1fr;
+  gap: 0.45rem 0.75rem;
+  margin: 0 0 1rem;
+}
+
+.register-pay dt {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.register-pay dd {
+  margin: 0;
+  font-weight: 600;
 }
 
 @media (max-width: 720px) {

@@ -60,8 +60,12 @@ function heroSlug(npcName: string): string {
   return npcName.replace(/^npc_dota_hero_/, "");
 }
 
-export function heroPortraitUrl(slug: string): string {
+export function heroPortraitUrl(slug: string) {
   return `https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/${slug}.png`;
+}
+
+export function heroRenderUrl(slug: string) {
+  return `https://cdn.cloudflare.steamstatic.com/apps/dota2/videos/dota_react/heroes/renders/${slug}.png`;
 }
 
 export function heroIconUrl(slug: string): string {

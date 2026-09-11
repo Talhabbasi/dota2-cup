@@ -90,10 +90,7 @@ export default async function TeamPage({
               ⚔
             </span>
             <p className="muted" style={{ margin: 0 }}>
-              No matches posted for this team yet.
-            </p>
-            <p className="muted" style={{ margin: 0, fontSize: "0.82rem" }}>
-              Results sync when match IDs are posted in Discord #results.
+              No matches yet.
             </p>
           </div>
         ) : (

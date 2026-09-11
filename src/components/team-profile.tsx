@@ -189,9 +189,6 @@ export function TeamRosterBoard({
       <div className="team-roster-panel-head">
         <div>
           <h2>Roster</h2>
-          <p className="muted">
-            Draft in Discord — any role mix within budget. Two bench subs max.
-          </p>
         </div>
         <div className="team-view-toggle" role="tablist" aria-label="Roster view">
           <button
@@ -228,7 +225,7 @@ export function TeamRosterBoard({
               <OpenSlot
                 key={`open-starter-${i}`}
                 variant="starter"
-                label="Draft in #auction"
+                label="Open"
               />
             ),
           )}
@@ -249,7 +246,7 @@ export function TeamRosterBoard({
                 <OpenSlot
                   key={`open-sub-${i}`}
                   variant="sub"
-                  label="6th & 7th picks"
+                  label="Open"
                 />
               ),
             )}
@@ -258,9 +255,7 @@ export function TeamRosterBoard({
       ) : null}
 
       {starters.length === 0 && subs.length === 0 ? (
-        <p className="team-roster-foot muted">
-          No auction picks yet — captain plus Discord draft fills this board.
-        </p>
+        <p className="team-roster-foot muted">No players on this roster yet.</p>
       ) : null}
     </section>
   );

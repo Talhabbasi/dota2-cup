@@ -3,11 +3,9 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { AuthButtons } from "./auth-buttons";
 
 const LINKS = [
   ["/", "Home"],
-  ["/register", "Register"],
   ["/teams", "Teams"],
   ["/matches", "Matches"],
   ["/table", "Table"],
@@ -19,6 +17,7 @@ export function Nav() {
   const pathname = usePathname();
   const [ready, setReady] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const links = LINKS;
 
   useEffect(() => {
     setReady(true);
@@ -63,7 +62,7 @@ export function Nav() {
         id="site-nav"
         className={menuOpen ? "site-nav is-open" : "site-nav"}
       >
-        {LINKS.map(([href, label]) => {
+        {links.map(([href, label]) => {
           const active =
             ready &&
             (href === "/" ? pathname === "/" : pathname.startsWith(href));
@@ -78,9 +77,6 @@ export function Nav() {
           );
         })}
       </nav>
-      <div className="header-auth">
-        <AuthButtons />
-      </div>
     </header>
   );
 }

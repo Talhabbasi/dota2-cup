@@ -1,5 +1,11 @@
 import { ChannelType, type GuildMember, type Message } from "discord.js";
 import { adminRoleName, isAdminDiscordId } from "./constants";
+import {
+  formatEntryFee,
+  isRegistrationOpen,
+  isPaymentsChannelName,
+  paymentsChannelName,
+} from "./registration-status";
 
 export const COMMAND_ONLY_CHANNEL_NAMES = [
   "register",
@@ -31,12 +37,21 @@ export function isCommandOnlyChannel(
   );
 }
 
-export function commandOnlyHint(channelName: string): string {
+export function commandOnlyHint(
+  channelName: string,
+  registrationOpen = false,
+): string {
   const site = cupSiteUrl();
   const register = registerChannelName();
   const name = channelName.toLowerCase();
 
   if (name === register.toLowerCase()) {
+    if (!registrationOpen) {
+      return (
+        `**#${register}** — public registration is **closed**. ` +
+        `Admins can still add someone with \`/player register\`. Chat in **#general**.`
+      );
+    }
     return (
       `**#${register}** is for slash commands only: \`/register\`, \`/when\`, \`/me\`. ` +
       `If the bot is offline, register at **${site}/register** (sign in with Discord). ` +
@@ -93,11 +108,60 @@ export async function moderateCommandOnlyChannel(
 
   try {
     const notice = await message.channel.send({
-      content: `<@${message.author.id}> ${commandOnlyHint(message.channel.name)}`,
+      content: `<@${message.author.id}> ${commandOnlyHint(
+        message.channel.name,
+        await isRegistrationOpen(),
+      )}`,
     });
     setTimeout(() => notice.delete().catch(() => {}), 12_000);
   } catch {
     /* channel may be locked */
+  }
+
+  return true;
+}
+
+export function messageHasImage(message: Message) {
+  return message.attachments.some((file) => {
+    const type = file.contentType ?? "";
+    if (type.startsWith("image/")) return true;
+    return /\.(png|jpe?g|webp|gif)$/i.test(file.name ?? "");
+  });
+}
+
+/** Delete chat in #payments unless it includes a screenshot (staff can talk). */
+export async function moderatePaymentsChannel(
+  message: Message,
+): Promise<boolean> {
+  if (message.author.bot) return false;
+  if (message.channel.type !== ChannelType.GuildText) return false;
+  if (!isPaymentsChannelName(message.channel.name)) {
+    return false;
+  }
+  if (canBypassCommandOnlyModeration(message.member, message.author.id)) {
+    return false;
+  }
+  if (messageHasImage(message)) return false;
+
+  try {
+    await message.delete();
+  } catch (error) {
+    console.warn(
+      "Could not delete non-screenshot in payments:",
+      error instanceof Error ? error.message : error,
+    );
+    return false;
+  }
+
+  try {
+    const notice = await message.channel.send({
+      content:
+        `<@${message.author.id}> **#${paymentsChannelName()}** is for **payment screenshots only**. ` +
+        `Upload the **${formatEntryFee()}** transfer picture. An Admin clicks ✅ to confirm. Questions go in **#general**.`,
+    });
+    setTimeout(() => notice.delete().catch(() => {}), 12_000);
+  } catch {
+    /* ignore */
   }
 
   return true;

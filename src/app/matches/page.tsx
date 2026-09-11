@@ -35,10 +35,6 @@ export default async function MatchesPage() {
         <div className="teams-list-hero-body">
           <p className="eyebrow">Scoreboard</p>
           <h1>Matches</h1>
-          <p className="lede">
-            Radiant vs Dire with kill scores like <strong>13:20</strong>. Posted
-            from Discord — stats from OpenDota.
-          </p>
           {views.length > 0 ? (
             <div className="teams-list-hero-pills">
               <span className="teams-list-hero-pill">
@@ -59,9 +55,8 @@ export default async function MatchesPage() {
           <span className="team-empty-matches-icon" aria-hidden>
             ⚔
           </span>
-          <p className="eyebrow">Waiting</p>
           <p className="muted" style={{ margin: 0 }}>
-            No matches yet. After a lobby, post <code>!result</code> in Discord.
+            No matches yet.
           </p>
         </div>
       ) : (

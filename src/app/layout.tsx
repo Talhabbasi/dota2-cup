@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Oxanium, Sora } from "next/font/google";
 import { Nav } from "@/components/nav";
+import { ClosedBanner } from "@/components/closed-banner";
 import { NavigationLoader } from "@/components/navigation-loader";
 import { Providers } from "@/components/providers";
 import "./globals.css";
@@ -36,10 +37,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <Providers>
           <NavigationLoader />
           <Nav />
+          <ClosedBanner />
           <main className="flex-1">{children}</main>
           <footer className="footer">
             <strong>MM Dota Cup</strong>
-            <div>Draft. Play. Dominate.</div>
           </footer>
         </Providers>
       </body>

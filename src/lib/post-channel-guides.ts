@@ -1,4 +1,6 @@
 import { ChannelType, type Guild, type TextChannel } from "discord.js";
+import { paymentsChannelEmbed } from "./cup-announcements";
+import { paymentsChannelName } from "./registration-status";
 import {
   buildRulesEmbed,
   CUP_RULES,
@@ -85,6 +87,22 @@ export async function postChannelGuides(
       guide.embed,
     );
     results.push({ channelName: guide.channelName, status });
+  }
+
+  const paymentsName = paymentsChannelName();
+  const payments = findTextChannel(guild, paymentsName);
+  if (!payments) {
+    results.push({ channelName: paymentsName, status: "missing" });
+  } else {
+    const payEmbed = paymentsChannelEmbed();
+    const status = await postAndPin(
+      payments,
+      botUserId,
+      payEmbed.data.title ?? "",
+      force,
+      payEmbed,
+    );
+    results.push({ channelName: paymentsName, status });
   }
 
   const generalName = rulesChannelName();

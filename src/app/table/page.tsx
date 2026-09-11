@@ -24,9 +24,6 @@ export default async function TablePage() {
         <div className="teams-list-hero-body">
           <p className="eyebrow">League</p>
           <h1>Standings</h1>
-          <p className="lede">
-            Three points for a win. Ranked after posted results from Discord.
-          </p>
           {views.length > 0 ? (
             <div className="teams-list-hero-pills">
               <span className="teams-list-hero-pill">

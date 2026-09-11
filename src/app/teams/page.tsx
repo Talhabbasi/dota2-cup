@@ -36,9 +36,6 @@ export default async function TeamsPage() {
         <div className="teams-list-hero-body">
           <p className="eyebrow">Franchises</p>
           <h1>Teams</h1>
-          <p className="lede">
-            Rosters and results. Registration and drafting happen in Discord.
-          </p>
           {cards.length > 0 ? (
             <div className="teams-list-hero-pills">
               <span className="teams-list-hero-pill">
@@ -60,9 +57,8 @@ export default async function TeamsPage() {
           <span className="team-empty-matches-icon" aria-hidden>
             🏆
           </span>
-          <p className="eyebrow">Empty lobby</p>
           <p className="muted" style={{ margin: 0 }}>
-            No franchises yet. An admin assigns captains in Discord.
+            No teams yet.
           </p>
         </div>
       ) : (

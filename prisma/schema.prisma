@@ -21,11 +21,21 @@ model Player {
   rosterRole  String?
   isCaptain   Boolean  @default(false)
   playWindow  String   @default("both")
+  paidAt      DateTime?
+  paymentAmount Int      @default(0)
+  paymentScreenshotPath String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   bids        Bid[]
   matchPlayers MatchPlayer[]
   lots        AuctionLot[]
+  payments    Payment[]
+}
+
+model CupSettings {
+  id                String   @id @default("singleton")
+  registrationOpen  Boolean  @default(false)
+  updatedAt         DateTime @updatedAt
 }
 
 model Team {
@@ -163,4 +173,18 @@ model Hero {
   statsJson   String   @default("{}")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+model Payment {
+  id             String   @id @default(cuid())
+  playerId       String
+  player         Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  discordId      String
+  discordName    String
+  screenshotPath String
+  amount         Int
+  createdAt      DateTime @default(now())
+
+  @@index([playerId])
+  @@index([discordId])
 }

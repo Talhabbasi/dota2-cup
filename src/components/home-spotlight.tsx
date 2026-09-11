@@ -79,7 +79,6 @@ export function LatestMatchSpotlight({
 
 export function UpcomingMatchSpotlight({
   fixture,
-  teamCount,
 }: {
   fixture: {
     radiantTeam: TeamRef;
@@ -88,53 +87,39 @@ export function UpcomingMatchSpotlight({
     bestOf?: number;
     kind?: string;
   } | null;
-  teamCount: number;
 }) {
+  if (!fixture) return null;
+
   return (
     <div className="spotlight-card spotlight-upcoming">
       <div className="spotlight-head">
         <span className="spotlight-badge upcoming">Upcoming</span>
         <span className="spotlight-date">
-          {fixture?.scheduledAt
+          {fixture.scheduledAt
             ? formatScheduleWhen(fixture.scheduledAt)
             : "Not scheduled"}
         </span>
       </div>
-      {fixture ? (
-        <>
-          <MatchFaceoff
-            radiant={fixture.radiantTeam}
-            dire={fixture.direTeam}
-            mid={
-              <>
-                <span className="spotlight-mid-label">vs</span>
-                <span className="spotlight-mid-meta">
-                  {fixture.kind === "final"
-                    ? `Grand Final · BO${fixture.bestOf ?? 3}`
-                    : `Best of ${fixture.bestOf ?? 1}`}
-                </span>
-              </>
-            }
-          />
-          {fixture.scheduledAt ? (
-            <div className="spotlight-times">
-              <p className="eyebrow">Kickoff</p>
-              <MatchTimeZones at={fixture.scheduledAt} />
-            </div>
-          ) : null}
-        </>
-      ) : (
-        <div className="spotlight-empty">
-          {teamCount < 2 ? (
-            <p>Need at least two teams before a schedule can be generated.</p>
-          ) : (
-            <p>
-              Match schedule will appear here after the admin runs{" "}
-              <code>/schedule generate</code> in Discord.
-            </p>
-          )}
+      <MatchFaceoff
+        radiant={fixture.radiantTeam}
+        dire={fixture.direTeam}
+        mid={
+          <>
+            <span className="spotlight-mid-label">vs</span>
+            <span className="spotlight-mid-meta">
+              {fixture.kind === "final"
+                ? `Grand Final · BO${fixture.bestOf ?? 3}`
+                : `Best of ${fixture.bestOf ?? 1}`}
+            </span>
+          </>
+        }
+      />
+      {fixture.scheduledAt ? (
+        <div className="spotlight-times">
+          <p className="eyebrow">Kickoff</p>
+          <MatchTimeZones at={fixture.scheduledAt} />
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

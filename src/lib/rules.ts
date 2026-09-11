@@ -35,11 +35,31 @@ export const CUP_RULES = {
       body: [
         "**#general** — chat, questions, announcements, match reminders.",
         "**#register** — `/register`, `/when`, `/me` only (or use the website if the bot is down).",
+        "**#payments** — payment screenshots only (1000 PKR per person). An Admin clicks ✅ to confirm.",
         "**#captains** — captain/admin commands only (`/roster`, `/purse`, `/schedule`, etc.).",
         "**#auction** — auction commands and bids only (`/bid`, buttons). Everyone can watch.",
         "**#results** — post `!result <match id>` after games.",
         "**#schedule** — `/schedule list` for fixtures.",
         "Casual messages in command channels are **auto-deleted**. Keep banter in **#general**.",
+      ],
+    },
+    {
+      name: "Eligibility",
+      body: [
+        "This is an **indoor tournament** for the MM Discord.",
+        "Only players who have **played with MM** (regularly or from time to time) may take part.",
+        "**Outdoor / outside members are not allowed.** A separate outdoor tournament will follow later.",
+      ],
+    },
+    {
+      name: "Payments",
+      body: [
+        "Public registration is **closed**.",
+        "Entry fee is **1000 PKR per person**. Substitutes do not pay.",
+        "Pay on **SadaPay** — account **0301-3396885**, title **Talha Abbasi**.",
+        "Each team must collect **exactly 5000 PKR** (five starters — min and max).",
+        "Post a clear transfer screenshot in **#payments**. An **Admin** clicks ✅ to confirm. You are not paid until then.",
+        "Do not chat in **#payments** — screenshots only. Questions go in **#general**.",
       ],
     },
     {
@@ -175,7 +195,8 @@ export function getChannelGuides(): { channelName: ChannelGuideName; embed: Embe
           "Read the **full pinned rules** in this channel before your first match.",
           "Website shows standings, teams, and matches (no login needed).",
           "Captains get **match reminders** here ~1 hour before scheduled games.",
-          "Keep sign-ups in **#register**, bids in **#auction**, scores in **#results**.",
+          "Keep sign-ups in **#register**, payment screenshots in **#payments**, bids in **#auction**, scores in **#results**.",
+          "This is an **indoor** MM tournament — outdoor / outside members are not allowed.",
           "**#register**, **#captains**, and **#auction** are commands-only — the bot deletes casual chat.",
           "Questions? Ask here or run `/help` for every command.",
         ],

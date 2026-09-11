@@ -1,16 +1,21 @@
 import {
   MAX_CAPTAINS,
   MAX_ROSTER,
+  MEDAL_LABELS,
   MEDALS,
   MIN_ROSTER,
   STARTING_PURSE,
   STARTING_ROLES,
   parseMedal,
+  type Medal,
 } from "./constants";
+import { formatRoles } from "./data";
+import { playerMustPay } from "./payments";
 import { parsePlayWindow } from "./play-window";
 import { prisma } from "./prisma";
 import {
   parseRegistrationRole,
+  parseRolesJson,
   rosterRoleForTeamJoin,
   stringifyRoles,
 } from "./roles";
@@ -43,8 +48,15 @@ export async function adminDeletePlayer(discordId: string) {
   if (player.isCaptain) {
     throw new Error("Remove the captain first with `/captain remove`.");
   }
+
+  const teamName = player.team?.name;
   if (player.teamId) {
-    throw new Error("Remove them from the team first with `/player remove`.");
+    const teamId = player.teamId;
+    await prisma.player.update({
+      where: { id: player.id },
+      data: { teamId: null, rosterRole: null },
+    });
+    await rebalanceTeamRoster(teamId);
   }
 
   const state = await prisma.auctionState.findUnique({
@@ -64,7 +76,7 @@ export async function adminDeletePlayer(discordId: string) {
   });
   await prisma.player.delete({ where: { id: player.id } });
 
-  return { name: player.steamName };
+  return { name: player.steamName, teamName: teamName ?? null };
 }
 
 export async function adminAddPlayerToTeam(input: {
@@ -380,4 +392,60 @@ export async function rebalanceAllTeamRosters() {
     await rebalanceTeamRoster(team.id);
   }
   return { teams: teams.length };
+}
+
+export async function listRegisteredPlayers() {
+  return prisma.player.findMany({
+    where: {
+      AND: [
+        { discordId: { not: { startsWith: DUMMY_PREFIX } } },
+        { discordId: { not: { startsWith: DUMMY_TEAM_PREFIX } } },
+      ],
+    },
+    orderBy: [{ steamName: "asc" }],
+    include: { team: { select: { name: true } } },
+  });
+}
+
+export function formatPlayerDirectory(
+  players: Awaited<ReturnType<typeof listRegisteredPlayers>>,
+) {
+  if (players.length === 0) return "No players registered.";
+
+  const groups = new Map<string, string[]>();
+  for (const player of players) {
+    const team = player.team?.name ?? "Unsigned";
+    const mention = `<@${player.discordId.split(":")[0]}>`;
+    const roles = formatRoles(parseRolesJson(player.rolesJson));
+    const medal =
+      MEDAL_LABELS[player.medal as Medal] ?? player.medal;
+    const slot = player.isCaptain
+      ? "captain"
+      : player.rosterRole === "sub"
+        ? "sub"
+        : player.teamId
+          ? "starter"
+          : "unsigned";
+    let fee = "unpaid";
+    if (!playerMustPay(player.rosterRole)) fee = "sub · free";
+    else if (player.paidAt) fee = "paid";
+    const line = `• **${player.steamName}** ${mention} · ${medal} · ${roles} · ${slot} · ${fee}`;
+    const list = groups.get(team) ?? [];
+    list.push(line);
+    groups.set(team, list);
+  }
+
+  const teamNames = [...groups.keys()].sort((a, b) => {
+    if (a === "Unsigned") return 1;
+    if (b === "Unsigned") return -1;
+    return a.localeCompare(b);
+  });
+
+  const lines = [`**Players** (${players.length})`, ""];
+  for (const name of teamNames) {
+    lines.push(`**${name}**`);
+    lines.push(...(groups.get(name) ?? []));
+    lines.push("");
+  }
+  return lines.join("\n").trim();
 }
