@@ -43,18 +43,6 @@ export function entryFeePkr() {
   return Number.isFinite(n) && n > 0 ? n : 1000;
 }
 
-export function paymentAccountNumber() {
-  return process.env.PAYMENT_ACCOUNT_NUMBER?.trim() || "0301-3396885";
-}
-
-export function paymentAccountName() {
-  return process.env.PAYMENT_ACCOUNT_NAME?.trim() || "Talha Abbasi";
-}
-
-export function paymentBankName() {
-  return process.env.PAYMENT_BANK_NAME?.trim() || "SadaPay";
-}
-
 export function teamFeePkr() {
   const raw = process.env.TEAM_FEE_PKR?.trim();
   const n = raw ? Number(raw) : 5000;
@@ -69,24 +57,11 @@ export function formatEntryFee() {
   return `Rs ${entryFeePkr().toLocaleString("en-PK")} PKR`;
 }
 
-export function paymentDetailsLines() {
-  return [
-    `**Bank / method:** ${paymentBankName()}`,
-    `**Account number:** \`${paymentAccountNumber()}\``,
-    `**Account title:** ${paymentAccountName()}`,
-    `**Entry fee:** ${formatEntryFee()} per person`,
-    `**Team fee:** ${formatTeamFee()} (exactly 5 starters)`,
-  ];
-}
-
 export function registrationClosedPublicMessage() {
   const channel = paymentsChannelName();
   return [
     "Registration for **MM Dota Cup** is **closed**.",
     "This is an **indoor tournament** for players who have played with **MM**. Outdoor / outside members are not allowed.",
-    "",
-    ...paymentDetailsLines(),
-    "",
     `Pay **${formatEntryFee()} per person**, then send your screenshot in **#${channel}**. An Admin clicks ✅ to confirm — you are not paid until then.`,
     "Already registered? You are in. Need a late add or a player removed? Ask an admin.",
   ].join("\n");

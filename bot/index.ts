@@ -48,7 +48,6 @@ import {
   formatEntryFee,
   isPaymentsChannelName,
   isRegistrationOpen,
-  paymentAccountNumber,
   paymentsChannelName,
   registrationClosedDiscordReply,
   setRegistrationOpen,
@@ -1630,7 +1629,7 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
           .map((r) => `${r.ok ? "✅" : "❌"} #${r.channel} — ${r.detail}`)
           .join("\n");
         await interaction.editReply(
-          `Cleared old copies, then posted **one** set.\n${body}\n\n**#general:** registration closed + indoor tournament\n**#${paymentsChannelName()}:** payment rules (SadaPay ${paymentAccountNumber()})`,
+          `Cleared old copies, then posted **one** set.\n${body}\n\n**#general:** registration closed + indoor tournament\n**#${paymentsChannelName()}:** payment rules`,
         );
         return;
       }

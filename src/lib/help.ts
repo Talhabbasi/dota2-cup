@@ -44,7 +44,7 @@ export const HELP_GUIDE = `## How to run the cup
 
 **Registration.** Admins toggle with \`/registration close\` or \`/registration open\`. Late add: \`/player register\`. Remove: \`/player delete\`. Website Register tab is hidden while closed. This is an **indoor MM** tournament — outdoor members are not allowed.
 
-**Payments.** Entry fee is **1000 PKR per person** via **SadaPay** (\`0301-3396885\`, Talha Abbasi). Substitutes **do not pay**. A team is allowed only at **exactly 5000 PKR** (five starters). Post a transfer screenshot in **#payments**. An **Admin clicks ✅** to confirm. Backup: \`/pay mark\`. Check \`/pay unpaid\` and \`/pay teams\`.
+**Payments.** Entry fee is **1000 PKR per person**. Substitutes **do not pay**. A team is allowed only at **exactly 5000 PKR** (five starters). Post a transfer screenshot in **#payments**. An **Admin clicks ✅** to confirm. Backup: \`/pay mark\`. Check \`/pay unpaid\` and \`/pay teams\`.
 
 **Channels.** **#register**, **#captains**, and **#auction** are **commands only**. **#payments** is **screenshots only**. Use **#general** for conversation.
 

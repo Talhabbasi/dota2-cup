@@ -12,9 +12,6 @@ import { rulesChannelName } from "./rules";
 import {
   formatEntryFee,
   formatTeamFee,
-  paymentAccountName,
-  paymentAccountNumber,
-  paymentBankName,
   paymentsChannelName,
 } from "./registration-status";
 
@@ -60,32 +57,6 @@ function findNamedTextChannel(guild: Guild, names: string[]): TextChannel | null
 }
 
 export function registrationClosedEmbed() {
-  const bank = paymentBankName();
-  const fields = [
-    {
-      name: "Entry fee",
-      value: `**${formatEntryFee()}** per person`,
-      inline: true,
-    },
-    {
-      name: "Account number",
-      value: `\`${paymentAccountNumber()}\``,
-      inline: true,
-    },
-    {
-      name: "Account title",
-      value: paymentAccountName(),
-      inline: true,
-    },
-  ];
-  if (bank) {
-    fields.splice(1, 0, {
-      name: "Bank / method",
-      value: bank,
-      inline: true,
-    });
-  }
-
   return new EmbedBuilder()
     .setColor(GOLD)
     .setTitle("Registration is closed")
@@ -101,7 +72,6 @@ export function registrationClosedEmbed() {
         "Need a late add or a removal? Ping an **Admin**.",
       ].join("\n"),
     )
-    .addFields(fields)
     .setFooter({ text: "MM Dota Cup · Admins: /player register · /player delete" });
 }
 
@@ -116,22 +86,13 @@ export function paymentsChannelEmbed() {
         "",
         "**Rules**",
         `1. The entry fee is **${formatEntryFee()} per person**.`,
-        "2. Send **1000 PKR** to the SadaPay account below, then upload a **clear screenshot** — nothing else.",
+        "2. Upload a **clear screenshot** of your **1000 PKR** transfer — nothing else.",
         "3. Do **not** chat, ask questions, or post memes here. Use **#general** for that.",
         "4. An **Admin** will click ✅ on your screenshot to confirm. You are **not paid** until that happens.",
         "5. Your screenshot stays in Discord. We do not save the image anywhere else.",
         "6. **Substitutes do not pay.**",
         `7. A team is allowed only at **exactly ${formatTeamFee()}** — five starters. That amount is both the minimum and the maximum.`,
       ].join("\n"),
-    )
-    .addFields(
-      { name: "Bank / method", value: paymentBankName(), inline: true },
-      {
-        name: "Account number",
-        value: `\`${paymentAccountNumber()}\``,
-        inline: true,
-      },
-      { name: "Account title", value: paymentAccountName(), inline: true },
     )
     .setFooter({ text: "Staff may talk here. Everyone else: screenshot only." });
 }

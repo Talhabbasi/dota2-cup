@@ -56,7 +56,6 @@ export const CUP_RULES = {
       body: [
         "Public registration is **closed**.",
         "Entry fee is **1000 PKR per person**. Substitutes do not pay.",
-        "Pay on **SadaPay** — account **0301-3396885**, title **Talha Abbasi**.",
         "Each team must collect **exactly 5000 PKR** (five starters — min and max).",
         "Post a clear transfer screenshot in **#payments**. An **Admin** clicks ✅ to confirm. You are not paid until then.",
         "Do not chat in **#payments** — screenshots only. Questions go in **#general**.",
