@@ -109,7 +109,9 @@ export function UpcomingMatchSpotlight({
             <span className="spotlight-mid-meta">
               {fixture.kind === "final"
                 ? `Grand Final · BO${fixture.bestOf ?? 3}`
-                : `Best of ${fixture.bestOf ?? 1}`}
+                : fixture.kind && fixture.kind !== "regular"
+                  ? `${fixture.kind === "ub" ? "Upper bracket" : fixture.kind === "lb" ? "Elimination" : fixture.kind === "lb_final" ? "Elimination final" : fixture.kind === "group" ? "Group stage" : "Playoff"} · BO${fixture.bestOf ?? 1}`
+                  : `Best of ${fixture.bestOf ?? 1}`}
             </span>
           </>
         }

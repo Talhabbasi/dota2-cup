@@ -449,3 +449,53 @@ export function formatPlayerDirectory(
   }
   return lines.join("\n").trim();
 }
+
+export async function listUnsignedPlayers() {
+  const players = await listRegisteredPlayers();
+  return players.filter((player) => !player.teamId && !player.isCaptain);
+}
+
+export function formatUnsignedPlayers(
+  players: Awaited<ReturnType<typeof listUnsignedPlayers>>,
+) {
+  if (players.length === 0) {
+    return "No unsigned players. Everyone registered is on a team.";
+  }
+
+  const groups = new Map<string, typeof players>();
+  for (const player of players) {
+    const medal = player.medal.toLowerCase();
+    const list = groups.get(medal) ?? [];
+    list.push(player);
+    groups.set(medal, list);
+  }
+
+  const lines = [
+    `**Unsigned players** (${players.length}) — not on a team, still in the auction pool`,
+    "",
+  ];
+  for (const medal of MEDALS) {
+    const list = groups.get(medal);
+    if (!list || list.length === 0) continue;
+    lines.push(`**${MEDAL_LABELS[medal]}** (${list.length})`);
+    for (const player of list) {
+      const mention = `<@${player.discordId.split(":")[0]}>`;
+      const roles = formatRoles(parseRolesJson(player.rolesJson));
+      lines.push(`• **${player.steamName}** ${mention} · ${roles}`);
+    }
+    lines.push("");
+  }
+  const leftover = [...groups.keys()].filter(
+    (medal) => !(MEDALS as readonly string[]).includes(medal),
+  );
+  for (const medal of leftover) {
+    const list = groups.get(medal) ?? [];
+    lines.push(`**${medal}** (${list.length})`);
+    for (const player of list) {
+      const mention = `<@${player.discordId.split(":")[0]}>`;
+      const roles = formatRoles(parseRolesJson(player.rolesJson));
+      lines.push(`• **${player.steamName}** ${mention} · ${roles}`);
+    }
+  }
+  return lines.join("\n").trim();
+}

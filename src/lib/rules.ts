@@ -1,7 +1,7 @@
 import { EmbedBuilder } from "discord.js";
 import { MAX_ROSTER, MIN_ROSTER, STARTING_PURSE } from "./constants";
 import { cupSiteUrl } from "./channel-moderation";
-import { FINAL_BEST_OF, MATCHES_PER_WEEKEND, REGULAR_BEST_OF } from "./schedule";
+import { FINAL_BEST_OF, REGULAR_BEST_OF } from "./schedule";
 
 export const CHANNEL_GUIDE_NAMES = [
   "register",
@@ -35,10 +35,11 @@ export const CUP_RULES = {
       body: [
         "**#general** — chat, questions, announcements, match reminders.",
         "**#register** — `/register`, `/when`, `/me` only (or use the website if the bot is down).",
-        "**#payments** — payment screenshots only (1000 PKR per person). An Admin clicks ✅ to confirm.",
+        "**#payments** — registered players only. Payment screenshots (1000 PKR per person). An Admin clicks ✅ to confirm.",
         "**#captains** — captain/admin commands only (`/roster`, `/purse`, `/schedule`, etc.).",
-        "**#auction** — auction commands and bids only (`/bid`, buttons). Everyone can watch.",
-        "**#results** — post `!result <match id>` after games.",
+        "**#auction** — registered players only. Auction commands and bids (`/bid`, buttons). Captains bid; others watch.",
+        "**#teams** — registered players only.",
+        "**#results** — registered players only. Post `!result <match id>` after games.",
         "**#schedule** — `/schedule list` for fixtures.",
         "Casual messages in command channels are **auto-deleted**. Keep banter in **#general**.",
       ],
@@ -56,6 +57,7 @@ export const CUP_RULES = {
       body: [
         "Public registration is **closed**.",
         "Entry fee is **1000 PKR per person**. Substitutes do not pay.",
+        "Pay on **SadaPay** — account **0301-3396885**, IBAN **PK16SADA0000003013396885**, title **Talha Abbasi**.",
         "Each team must collect **exactly 5000 PKR** (five starters — min and max).",
         "Post a clear transfer screenshot in **#payments**. An **Admin** clicks ✅ to confirm. You are not paid until then.",
         "Do not chat in **#payments** — screenshots only. Questions go in **#general**.",
@@ -68,7 +70,7 @@ export const CUP_RULES = {
         "After you join a team (captain or auction), **players cannot change medal or role**.",
         "Weekend play window can always be changed with `/when` or the website Register page.",
         "Admins can fix a wrong rank, role, or window with `/player edit user:@player rank:<medal> role:<role> when:<evening|late|both>` (or `discord_id`).",
-        "Your registered role decides which **auction pool** you appear in (mid, safelane, etc.).",
+        "Your **medal / rank** decides which **auction pool** you appear in (Immortal, Divine, etc.). Role does not split the pool.",
         "Teams draft any mix of players within budget — two safelanes, two mids, etc. is fine.",
         "Roster is **5 starters + 2 subs** (captain counts as one starter). Subs are auto-tagged after the fifth pick.",
         "Register honestly — sandbagging may get you removed by admins.",
@@ -88,23 +90,24 @@ export const CUP_RULES = {
     {
       name: "Auction (Discord #auction)",
       body: [
-        "Admin starts one role pool at a time (mid, safelane, offlane, supports, sub).",
+        "Admin starts one **rank** pool at a time (Immortal, Divine, Ancient, …).",
         "Captains bid with `/bid` or the buttons — buy any players you can afford.",
         "No position limits: two mids, two safelanes, etc. is allowed within your budget.",
         "First **5** players on a team are starters; picks **6 and 7** are marked **Sub**.",
-        "Flex players appear in every pool until sold once.",
+        "Everyone at the same medal is in the same queue. Role is shown on the card only.",
       ],
     },
     {
       name: "Schedule & weekends",
       body: [
-        "Admin runs `/schedule generate` when every team has 5+ players.",
-        `Each weekend has **${MATCHES_PER_WEEKEND}** matches (Friday, Saturday, Sunday).`,
+        "8 teams in **2 groups of 4**. Admin: `/playoff groups` then `/playoff generate`.",
+        "Group stage: each team plays **1** best-of-1. Losers of that match are out of the upper path.",
+        "The two Match 1 winners (one from each group) play the **upper bracket**.",
+        "The two Match 2 winners play **elimination**.",
+        "Upper-bracket winner goes to the **grand final**. Upper-bracket loser plays the elimination winner (also elimination).",
+        `Grand final is **best of ${FINAL_BEST_OF}** (first to 2). All other series are **best of ${REGULAR_BEST_OF}**.`,
         "Kickoff is **11:30 PM PKT** if both teams can play 8pm–12am, or **12:30 AM PKT** if they only overlap after midnight.",
-        "A team plays at most **2** games per weekend.",
-        `Every regular-season game is **best of ${REGULAR_BEST_OF}** — one lobby, one winner.`,
-        `After the regular season, the **top 2** teams play a **best of ${FINAL_BEST_OF}** grand final (first to 2).`,
-        "Every team pairing happens **once** in the regular season — no duplicate fixtures.",
+        "Post `!result` after each game — the bot books the next bracket match automatically.",
       ],
     },
     {
@@ -221,15 +224,15 @@ export function getChannelGuides(): { channelName: ChannelGuideName; embed: Embe
       channelName: "auction",
       embed: guideEmbed(
         "#auction — Draft night",
-        "Everyone can watch. Captains and admins bid with commands or buttons. **No casual chat.**",
+        "Registered cup players can watch. Captains and admins bid with commands or buttons. **No casual chat.**",
         [
-          "Admin: `/auction start role:mid` (then safelane, offlane, supports, sub).",
+          "Admin: `/auction start rank:immortal` (then divine, ancient, …).",
           "Captains bid: `/bid amount:3200` or use the **+100 / +500** buttons.",
           "Buy any mix within budget — two safelanes, two mids, etc.",
-          "Flex players appear in every pool until sold once.",
-          "30-second clock resets after each bid.",
+          "Same **rank** shares one queue. Listed role is info only.",
+          "Clock ends → Admin **Confirm** (sell) or **Skip**. Does not auto-charge.",
           "Players 6 and 7 on your roster auto-become **Sub**.",
-          "Admin: `/auction pause` · `/auction skip` · `/auction undo`",
+          "Admin: `/auction pause` · `/auction resume` · `/auction skip` · `/auction confirm`",
           "Reactions and hello messages are removed — discuss in **#general**.",
         ],
       ),
@@ -238,7 +241,7 @@ export function getChannelGuides(): { channelName: ChannelGuideName; embed: Embe
       channelName: "results",
       embed: guideEmbed(
         "#results — Post match scores",
-        "After every game, post the Dota Match ID here.",
+        "Registered cup players only. After every game, post the Dota Match ID here.",
         [
           "Dota → profile → Matches → open the game → copy **Match ID**.",
           "Post: `!result 8123456789` (optional scoreboard screenshot).",
@@ -253,14 +256,14 @@ export function getChannelGuides(): { channelName: ChannelGuideName; embed: Embe
       channelName: "schedule",
       embed: guideEmbed(
         "#schedule — Fixtures & match times",
-        "When every team has 5+ players, admins generate the season schedule.",
+        "8 teams, 2 groups, then upper / elimination playoffs.",
         [
-          "Everyone: `/schedule list` — upcoming Fri / Sat / Sun fixtures.",
+          "Everyone: `/playoff status` or `/schedule list`.",
+          "Admin: `/playoff groups` then `/playoff generate` when all 8 rosters are full.",
+          "Group stage is **1 match per team**. Match 1 winners play upper; Match 2 winners play elimination.",
+          `Upper winner goes to a **best of ${FINAL_BEST_OF}** final. Upper loser plays the elimination winner.`,
           "Kickoff is **11:30 PM PKT** (evening window) or **12:30 AM PKT** (late window). Website shows UK, EU, US times.",
-          `Regular season is **best of ${REGULAR_BEST_OF}**. Max **2 games per team** per weekend.`,
-          `Grand final: **top 2** play **best of ${FINAL_BEST_OF}** (admin: \`/schedule final\`).`,
-          "Every team pairing happens **once** in the regular season.",
-          "Admin: `/schedule generate` when rosters are full · `/schedule clear` to reset.",
+          "The next bracket match is created automatically after `!result`.",
           "Captains get a reminder in **#general** ~1 hour before each game.",
         ],
       ),

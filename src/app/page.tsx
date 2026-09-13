@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { Suspense } from "react";
 import { MatchCard } from "@/components/match-card";
 import {
@@ -15,12 +16,13 @@ import {
   getMatchCount,
   getUpcomingFixture,
 } from "@/lib/data";
+import { getPlayoffView } from "@/lib/playoff";
 import { getActiveWeekendBundle } from "@/lib/schedule";
 
 export const revalidate = 30;
 
 export default async function Home() {
-  const [table, matches, teamCount, matchCount, upcoming, weekend] =
+  const [table, matches, teamCount, matchCount, upcoming, weekend, playoff] =
     await Promise.all([
       getStandings(),
       getRecentMatches(5),
@@ -28,6 +30,7 @@ export default async function Home() {
       getMatchCount(),
       getUpcomingFixture(),
       getActiveWeekendBundle(),
+      getPlayoffView(),
     ]);
 
   const latest = matches[0] ?? null;
@@ -39,7 +42,17 @@ export default async function Home() {
       <section className="hero-bleed hero-bleed-compact hero-bleed-dota">
         <div className="hero-bleed-shade" />
         <div className="hero-bleed-content">
-          <p className="brand-hero animate-rise">MM Dota Cup</p>
+          <p className="brand-hero animate-rise">
+            <Image
+              src="/mm-dota-cup-icon.png"
+              alt=""
+              width={72}
+              height={72}
+              className="brand-hero-icon"
+              priority
+            />
+            MM Dota Cup
+          </p>
         </div>
       </section>
 
@@ -64,6 +77,22 @@ export default async function Home() {
             {upcoming ? (
               <UpcomingMatchSpotlight fixture={upcoming} />
             ) : null}
+          </section>
+        ) : null}
+
+        {playoff.groupA.length + playoff.groupB.length > 0 ? (
+          <section className="home-playoff-link">
+            <div className="section-head row">
+              <h2>Playoffs</h2>
+              <Link href="/playoffs" className="text-link">
+                Groups
+              </Link>
+            </div>
+            <p className="muted">
+              Group A · {playoff.groupA.map((team) => team.name).join(", ") || "empty"}
+              <br />
+              Group B · {playoff.groupB.map((team) => team.name).join(", ") || "empty"}
+            </p>
           </section>
         ) : null}
 

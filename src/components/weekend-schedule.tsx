@@ -2,6 +2,7 @@ import Link from "next/link";
 import { MatchTimeZones } from "@/components/match-timezones";
 import { KICKOFF_SHORT } from "@/lib/play-window";
 import { weekendSlotLabel } from "@/lib/match-times";
+import { isPlayoffKind, playoffRoundLabel } from "@/lib/playoff";
 import { MATCHES_PER_WEEKEND, formatScheduleWhen, kickoffWindowFromDate } from "@/lib/schedule";
 
 type Fixture = {
@@ -10,6 +11,7 @@ type Fixture = {
   status: string;
   scheduledAt: Date;
   kind?: string;
+  slotKey?: string | null;
   bestOf?: number;
   radiantWins?: number;
   direWins?: number;
@@ -29,22 +31,33 @@ export function WeekendScheduleBlock({
   const completed = fixtures.filter((f) => f.status === "completed").length;
   const nextFixture = fixtures.find((f) => f.status === "scheduled");
   const isFinal = fixtures.some((f) => f.kind === "final");
+  const isPlayoff = fixtures.some((f) => isPlayoffKind(f.kind));
 
   return (
     <section className="weekend-schedule">
       <div className="weekend-board">
         <div className="section-head row">
-          <h2>{isFinal ? "Grand Final" : `Weekend ${weekendIndex + 1}`}</h2>
+          <h2>
+            {isFinal
+              ? "Grand Final"
+              : isPlayoff
+                ? "Playoffs"
+                : `Weekend ${weekendIndex + 1}`}
+          </h2>
           <span className="muted">
             {isFinal
               ? "Best of 3 · first to 2"
-              : `${completed}/${MATCHES_PER_WEEKEND} played · best of 1`}
+              : isPlayoff
+                ? `${completed}/${fixtures.length} series done`
+                : `${completed}/${MATCHES_PER_WEEKEND} played · best of 1`}
           </span>
         </div>
         <p className="weekend-rule muted">
           {isFinal
-            ? "Top 2 from the table play a best of 3. Regular season games stay best of 1."
-            : "Three best-of-1 matches Fri / Sat / Sun. Kickoff is 11:30 PM PKT for the evening window, or 12:30 AM for after-midnight teams. The top 2 meet in a best-of-3 final."}
+            ? "Upper-bracket winner vs elimination-final winner. First to 2."
+            : isPlayoff
+              ? "Group winners play upper. The other group winners play elimination. Upper loser plays the elimination winner. Final is best of 3."
+              : "Three best-of-1 matches Fri / Sat / Sun. Kickoff is 11:30 PM PKT for the evening window, or 12:30 AM for after-midnight teams."}
         </p>
 
         <div className="weekend-grid">
@@ -59,8 +72,8 @@ export function WeekendScheduleBlock({
               >
                 <div className="weekend-card-head">
                   <span className="weekend-day">
-                    {fixture.kind === "final"
-                      ? "Final"
+                    {isPlayoffKind(fixture.kind)
+                      ? playoffRoundLabel(fixture.kind, fixture.slotKey)
                       : weekendSlotLabel(fixture.slotIndex)}
                     {" · "}
                     {KICKOFF_SHORT[kickoffWindowFromDate(fixture.scheduledAt)]}

@@ -1,12 +1,16 @@
 export const HELP_COMMANDS = `**Anyone**
 \`/register\` — public sign-up in #register (admins can close this)
 \`/when window:<evening|late|both>\` — weekend play window (8pm–12am, after 12am, or either)
-\`/me\` — your registration, team, role, weekend window, and **payment status**
+\`/me\` — your medal, role, and team card in chat (\`user:@x\` optional)
+\`/pool\` — all players except captains, grouped by role with medal
+\`/unsigned\` — registered players who are not on a team yet (auction pool), grouped by rank
+\`/pay collected\` — total money in, still owed, and expected
 \`/pay unpaid\` — starters who still owe, grouped by team (subs are free)
 \`/pay teams\` — which teams have collected exactly **5000 PKR** (min and max)
 \`/pay team name:<team>\` — who on that team has not paid
 \`/help\` — this list
 \`/schedule list\` — upcoming fixtures
+\`/playoff status\` — groups and the playoff bracket
 
 **Captain**
 \`/bid amount:<number>\` or the +100 / +500 buttons
@@ -14,7 +18,7 @@ export const HELP_COMMANDS = `**Anyone**
 \`/roster\` — your 5–7 and empty slots
 
 **Admin** (Discord role **Admin**)
-\`/admin setup\` — create **#payments** (everyone can see it) and post this help in **#admin**
+\`/admin setup\` — create **#payments** (registered players only), team voice rooms, and post this help in **#admin**
 \`/admin help\` — post this command list into **#admin** again
 \`/registration close\` — close website + Discord sign-ups (posts 3 announcements + creates #payments)
 \`/registration open\` — re-open public registration
@@ -25,6 +29,7 @@ export const HELP_COMMANDS = `**Anyone**
 \`/captain add user:@x team:<name>\`
 \`/captain remove user:@x\`
 \`/player list\` — every registered player (team, role, paid/unpaid)
+\`/player unsigned\` — players not on a team, grouped by rank
 \`/player register user:@x steam:<url> rank: role: when:\` — late add
 \`/player add user:@x team:<name>\` — add unsigned player to a team
 \`/player remove user:@x\` — take player off a team (keeps registration)
@@ -32,11 +37,16 @@ export const HELP_COMMANDS = `**Anyone**
 \`/player edit user:@x rank:<medal> role:<role> when:<evening|late|both>\` — fix rank, role, and/or weekend window (or \`discord_id:<id>\`)
 \`/player resync user:@x\` — fix roster slot from registration
 \`/pay mark user:@x\` — mark paid without waiting for a screenshot tick
-\`/schedule generate\` — round-robin Fri/Sat/Sun after all teams have 5+ players
-\`/schedule final\` — BO3 grand final for the top 2
-\`/schedule clear\`
-\`/auction start role:<mid|safelane|offlane|soft_support|hard_support|sub>\`
-\`/auction pause\` · \`/auction skip\` · \`/auction undo\`
+\`/playoff groups\` — randomly split 8 teams into Group A / Group B
+\`/playoff assign team:<name> group:<A|B>\`
+\`/playoff generate\` — book the 4 group-stage matches (1 game per team)
+\`/playoff status\` · \`/playoff clear\`
+\`/schedule generate\` — old round-robin (only if you are not using playoffs)
+\`/schedule list\` · \`/schedule clear\`
+\`/auction start rank:<immortal|divine|ancient|legend|archon|crusader|guardian|herald|uncalibrated>\` — live cup in **#auction** (same rank together, any role)
+\`/auction pause\` · \`/auction resume\` · \`/auction skip\` · \`/auction confirm\`
+\`/auction revert user:@x\` or \`name:<steam>\` — return a sold player to the pool and refund the team points
+In **#auction-test** (Admin only): same commands, fake teams/players, **does not touch live data**. Admins bid with buttons or \`/bid\`
 \`/result match_id:<id>\` or in #results: \`!result 8123456789\`
 \`/result assign steam32:<id> user:@player\` — map a stand-in / smurf`;
 
@@ -44,17 +54,17 @@ export const HELP_GUIDE = `## How to run the cup
 
 **Registration.** Admins toggle with \`/registration close\` or \`/registration open\`. Late add: \`/player register\`. Remove: \`/player delete\`. Website Register tab is hidden while closed. This is an **indoor MM** tournament — outdoor members are not allowed.
 
-**Payments.** Entry fee is **1000 PKR per person**. Substitutes **do not pay**. A team is allowed only at **exactly 5000 PKR** (five starters). Post a transfer screenshot in **#payments**. An **Admin clicks ✅** to confirm. Backup: \`/pay mark\`. Check \`/pay unpaid\` and \`/pay teams\`.
+**Payments.** Entry fee is **1000 PKR per person** via **SadaPay** (\`0301-3396885\`, IBAN \`PK16SADA0000003013396885\`, Talha Abbasi). Substitutes **do not pay**. A team is allowed only at **exactly 5000 PKR** (five starters). Post a transfer screenshot in **#payments**. An **Admin clicks ✅** to confirm. Backup: \`/pay mark\`. Check \`/pay collected\` for the running total, plus \`/pay unpaid\` and \`/pay teams\`.
 
-**Channels.** **#register**, **#captains**, and **#auction** are **commands only**. **#payments** is **screenshots only**. Use **#general** for conversation.
+**Channels.** **#register**, **#captains**, and **#auction** are **commands only**. **#payments**, **#teams**, **#results**, and **#auction** are visible to **registered players only**. **#auction-test** is **Admin only** and never writes live cup data. **#payments** is screenshots only. Each team has a **5-player voice** room (captain + Admin can drag). Use **#general** for conversation.
 
 **Captains.** Only admins assign captains with \`/captain add user:@player team:<name>\`. Players cannot self-claim. Captains get **20,000** auction points in Discord.
 
 **Rosters.** Admins can manually add unsigned players with \`/player add\`. Role slots always follow what the player picked at registration. Players 6–7 on a roster are **subs** and skip the fee.
 
-**Auction night.** Admin runs one pool at a time in #auction. Captains buy any players within budget — no position limits. Roster is 5 starters + 2 subs (captain counts as a starter).
+**Auction night.** Admin runs one **rank** pool at a time in #auction (Immortal, then Divine, and so on). Same medal = same pool, regardless of role. Captains buy any players within budget — no position limits. Roster is 5 starters + 2 subs (captain counts as a starter). Practice in **#auction-test** (Admin only) — that channel never writes purses, rosters, or the website.
 
-**Schedule.** When every team has 5+ players, admin runs \`/schedule generate\`. Matches spread across **Fri / Sat / Sun**. Kickoff is **11:30 PM PKT** when both teams can play 8pm–12am, or **12:30 AM PKT** when they only overlap after midnight. Regular games are **best of 1**. Max **2 games per team** per weekend. After the table is set, the **top 2** play a **best of 3** grand final (\`/schedule final\`).
+**Playoffs.** 8 teams, 2 groups of 4. Admin: \`/playoff groups\` then \`/playoff generate\`. Each team plays **1** group match. Match 1 winners play the **upper bracket**; Match 2 winners play **elimination**. Upper winner goes to the **best of 3 final**. Upper loser plays the elimination winner (also elimination). Kickoff is **11:30 PM PKT** when both teams can play 8pm–12am, or **12:30 AM PKT** when they only overlap after midnight. Post each game with \`!result\` — the next bracket match is created automatically.
 
 **Reminders.** The bot pings captains in #general about **1 hour** before a scheduled match (configurable).
 

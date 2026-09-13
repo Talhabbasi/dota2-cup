@@ -8,10 +8,17 @@ import {
 } from "discord.js";
 import { adminRoleName } from "./constants";
 import { fullHelpText, splitDiscordChunks } from "./help";
+import { lockPaymentsChannel, lockRegisteredPlayerChannels } from "./payments-channel-access";
 import { rulesChannelName } from "./rules";
+import { syncTeamVoiceChannels } from "./team-voice";
+import { dummyAuctionChannelName, ensureDummyAuctionChannel } from "./dummy-auction-channel";
 import {
   formatEntryFee,
   formatTeamFee,
+  paymentAccountName,
+  paymentAccountNumber,
+  paymentBankName,
+  paymentIban,
   paymentsChannelName,
 } from "./registration-status";
 
@@ -28,7 +35,12 @@ export const BOT_INVITE_PERMISSIONS = String(
     PermissionFlagsBits.AttachFiles |
     PermissionFlagsBits.ReadMessageHistory |
     PermissionFlagsBits.AddReactions |
-    PermissionFlagsBits.UseApplicationCommands,
+    PermissionFlagsBits.UseApplicationCommands |
+    PermissionFlagsBits.Connect |
+    PermissionFlagsBits.Speak |
+    PermissionFlagsBits.MoveMembers |
+    PermissionFlagsBits.MuteMembers |
+    PermissionFlagsBits.ManageGuild,
 );
 
 export function botInviteUrl(clientId: string) {
@@ -82,11 +94,18 @@ export function paymentsChannelEmbed() {
     .setTitle(`#${channel} — payment rules`)
     .setDescription(
       [
+        "This channel is **only visible to registered cup players** and staff.",
         "This channel is for **payment screenshots only**. Read these rules before you post.",
+        "",
+        "**Pay here**",
+        `**${paymentBankName()}**`,
+        `Account number: \`${paymentAccountNumber()}\``,
+        `IBAN: \`${paymentIban()}\``,
+        `Account title: **${paymentAccountName()}**`,
         "",
         "**Rules**",
         `1. The entry fee is **${formatEntryFee()} per person**.`,
-        "2. Upload a **clear screenshot** of your **1000 PKR** transfer — nothing else.",
+        `2. Send **1000 PKR** to the **${paymentBankName()}** account above, then upload a **clear screenshot** — nothing else.`,
         "3. Do **not** chat, ask questions, or post memes here. Use **#general** for that.",
         "4. An **Admin** will click ✅ on your screenshot to confirm. You are **not paid** until that happens.",
         "5. Your screenshot stays in Discord. We do not save the image anywhere else.",
@@ -94,7 +113,70 @@ export function paymentsChannelEmbed() {
         `7. A team is allowed only at **exactly ${formatTeamFee()}** — five starters. That amount is both the minimum and the maximum.`,
       ].join("\n"),
     )
+    .addFields(
+      { name: "Bank / method", value: paymentBankName(), inline: true },
+      { name: "Account number", value: `\`${paymentAccountNumber()}\``, inline: true },
+      { name: "Account title", value: paymentAccountName(), inline: true },
+      { name: "IBAN", value: `\`${paymentIban()}\``, inline: false },
+    )
     .setFooter({ text: "Staff may talk here. Everyone else: screenshot only." });
+}
+
+function isPaymentAnnouncementMessage(message: Message, botUserId: string) {
+  if (message.author.id !== botUserId) return false;
+  const title = message.embeds[0]?.title?.trim().toLowerCase() ?? "";
+  return (
+    title.includes("payment rules") ||
+    title.includes("payment screenshots") ||
+    /^#payments?\b/.test(title)
+  );
+}
+
+/** Update the pinned #payments announcement in place so account details show without duplicates. */
+export async function refreshPinnedPaymentAnnouncement(
+  guild: Guild,
+  botUserId?: string,
+) {
+  if (!botUserId) return;
+  await guild.channels.fetch();
+  const payments = findNamedTextChannel(guild, [
+    paymentsChannelName(),
+    "payment",
+    "payments",
+  ]);
+  if (!payments) return;
+
+  const embed = paymentsChannelEmbed();
+  try {
+    const { items } = await payments.messages.fetchPins();
+    let updated = 0;
+    for (const pin of items) {
+      const msg = pin.message;
+      if (!isPaymentAnnouncementMessage(msg, botUserId)) continue;
+      await msg.edit({ embeds: [embed] });
+      updated += 1;
+    }
+    if (updated > 0) {
+      console.log(`Updated ${updated} pinned payment announcement(s) in #${payments.name}`);
+      return;
+    }
+  } catch (error) {
+    console.warn(
+      "Could not read #payments pins:",
+      error instanceof Error ? error.message : error,
+    );
+  }
+
+  try {
+    const sent = await payments.send({ embeds: [embed] });
+    await sent.pin().catch(() => undefined);
+    console.log(`Posted payment announcement in #${payments.name}`);
+  } catch (error) {
+    console.warn(
+      "Could not post #payments announcement:",
+      error instanceof Error ? error.message : error,
+    );
+  }
 }
 
 export function indoorLeagueEmbed() {
@@ -208,53 +290,16 @@ export async function clearCupAnnouncements(
   return results;
 }
 
-async function makePaymentsVisible(channel: TextChannel, guild: Guild) {
-  await channel.permissionOverwrites.edit(guild.roles.everyone, {
-    ViewChannel: true,
-    SendMessages: true,
-    AttachFiles: true,
-    ReadMessageHistory: true,
-    AddReactions: true,
-    EmbedLinks: true,
-  });
-  const adminRole = guild.roles.cache.find(
-    (role) => role.name.toLowerCase() === adminRoleName().toLowerCase(),
-  );
-  if (adminRole) {
-    await channel.permissionOverwrites.edit(adminRole, {
-      ViewChannel: true,
-      SendMessages: true,
-      AttachFiles: true,
-      ReadMessageHistory: true,
-      AddReactions: true,
-      EmbedLinks: true,
-      ManageMessages: true,
-    });
-  }
-  const botMember = guild.members.me;
-  if (botMember) {
-    await channel.permissionOverwrites.edit(botMember, {
-      ViewChannel: true,
-      SendMessages: true,
-      AttachFiles: true,
-      ReadMessageHistory: true,
-      AddReactions: true,
-      EmbedLinks: true,
-      ManageMessages: true,
-    });
-  }
-}
-
 export async function ensurePaymentsChannel(guild: Guild): Promise<TextChannel> {
   await guild.channels.fetch();
   const name = paymentsChannelName();
   const existing = findNamedTextChannel(guild, [name, "payment", "payments"]);
   if (existing) {
     try {
-      await makePaymentsVisible(existing, guild);
+      await lockPaymentsChannel(existing, guild);
     } catch (error) {
       console.warn(
-        `Could not update #${existing.name} visibility:`,
+        `Could not lock #${existing.name} to registered players:`,
         error instanceof Error ? error.message : error,
       );
     }
@@ -268,22 +313,18 @@ export async function ensurePaymentsChannel(guild: Guild): Promise<TextChannel> 
     permissionOverwrites: [
       {
         id: guild.roles.everyone.id,
-        allow: [
-          PermissionFlagsBits.ViewChannel,
-          PermissionFlagsBits.SendMessages,
-          PermissionFlagsBits.AttachFiles,
-          PermissionFlagsBits.ReadMessageHistory,
-          PermissionFlagsBits.AddReactions,
-          PermissionFlagsBits.EmbedLinks,
-        ],
+        deny: [PermissionFlagsBits.ViewChannel],
       },
     ],
     reason: "MM Dota Cup payment proof channel",
   });
   try {
-    await makePaymentsVisible(created, guild);
-  } catch {
-    /* overwrites already set on create */
+    await lockPaymentsChannel(created, guild);
+  } catch (error) {
+    console.warn(
+      `Could not lock #${created.name} to registered players:`,
+      error instanceof Error ? error.message : error,
+    );
   }
   return created;
 }
@@ -465,7 +506,7 @@ export async function setupCupDiscord(
     results.push({
       channel: payments.name,
       ok: true,
-      detail: `visible — ${payments}`,
+      detail: `registered players only — ${payments}`,
     });
   } catch (error) {
     results.push({
@@ -473,8 +514,60 @@ export async function setupCupDiscord(
       ok: false,
       detail:
         error instanceof Error
-          ? `${error.message} — the bot needs **Manage Channels**. Re-invite it or create a public #${paymentsChannelName()} yourself.`
+          ? `${error.message} — the bot needs **Manage Channels**. Re-invite it or create #${paymentsChannelName()} yourself.`
           : "Could not create #payments (need Manage Channels)",
+    });
+  }
+
+  try {
+    await lockRegisteredPlayerChannels(guild);
+    results.push({
+      channel: "teams / results / auction",
+      ok: true,
+      detail: "registered players only",
+    });
+  } catch (error) {
+    results.push({
+      channel: "teams / results / auction",
+      ok: false,
+      detail:
+        error instanceof Error
+          ? error.message
+          : "Could not lock those channels (need Manage Channels)",
+    });
+  }
+
+  try {
+    const voice = await syncTeamVoiceChannels(guild);
+    results.push(...voice);
+  } catch (error) {
+    results.push({
+      channel: "team voice",
+      ok: false,
+      detail:
+        error instanceof Error
+          ? error.message
+          : "Could not create team voice channels",
+    });
+  }
+
+  try {
+    const testAuction = await ensureDummyAuctionChannel(guild, {
+      botUserId: options?.botUserId,
+    });
+    results.push({
+      channel: testAuction.name,
+      ok: true,
+      detail: `Admin-only test auction — ${testAuction}`,
+    });
+  } catch (error) {
+    results.push({
+      channel: dummyAuctionChannelName(),
+      ok: false,
+      detail:
+        error instanceof Error
+          ? `${error.message} — the bot needs **Manage Channels** to create #${dummyAuctionChannelName()}.`
+          : `Could not create #${dummyAuctionChannelName()} (need Manage Channels)`,
     });
   }
 
@@ -519,7 +612,7 @@ export async function postCupAnnouncements(
       results.push({
         channel: payments.name,
         ok: true,
-        detail: `visible — ${payments}`,
+        detail: `registered players only — ${payments}`,
       });
     } catch (error) {
       results.push({

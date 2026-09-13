@@ -67,7 +67,7 @@ export function commandOnlyHint(
   if (name === "auction") {
     return (
       "**#auction** is for auction commands and bids only (`/bid` or the buttons). " +
-      "Watch here, chat in **#general**."
+      "Registered players can watch; chat in **#general**."
     );
   }
   return "This channel is for slash commands only. Chat in **#general**.";

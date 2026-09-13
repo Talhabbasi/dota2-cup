@@ -61,6 +61,7 @@ import {
   postCupAnnouncements,
   setupCupDiscord,
   clearCupAnnouncements,
+  refreshPinnedPaymentAnnouncement,
 } from "../src/lib/cup-announcements";
 import {
   messageHasImage,
@@ -75,11 +76,15 @@ import {
 } from "../src/lib/captains";
 import {
   clearAuctionMessage,
+  confirmLot,
   getAuctionView,
   markAuctionAnnounced,
   patchLivePlayer,
   pauseAuction,
   placeBid,
+  repairAuctionScores,
+  revertSoldAuctionPlayers,
+  resumeAuction,
   saveAuctionMessage,
   skipLot,
   startAuction,
@@ -87,6 +92,10 @@ import {
   undoLastSale,
   hydrateAuctionClock,
 } from "../src/lib/auction";
+import {
+  dummyAuctionChannelName,
+  isDummyAuctionChannel,
+} from "../src/lib/dummy-auction-channel";
 import { notifySiteRefresh } from "../src/lib/notify-site";
 import {
   adminMarkPaid,
@@ -95,6 +104,8 @@ import {
   formatTeamPaymentLine,
   formatTeamPaymentsList,
   formatUnpaidList,
+  formatPaymentCollection,
+  getPaymentCollection,
   listTeamPayments,
   listUnpaidPlayers,
   playerMustPay,
@@ -109,6 +120,14 @@ import {
   generateWeekendSchedule,
   listScheduledFixtures,
 } from "../src/lib/schedule";
+import {
+  assignPlayoffGroup,
+  clearPlayoffFixtures,
+  formatPlayoffStatus,
+  generatePlayoffGroupStage,
+  getPlayoffView,
+  seedPlayoffGroups,
+} from "../src/lib/playoff";
 import { fullHelpText, splitDiscordChunks } from "../src/lib/help";
 import { tickMatchReminders } from "../src/lib/reminders";
 import {
@@ -128,6 +147,8 @@ import {
   trySetMemberCaptainRole,
   trySetPlayWindowRoles,
 } from "../src/lib/discord-access";
+import { trySetMemberRegisteredRole } from "../src/lib/payments-channel-access";
+import { syncGuildIcon } from "../src/lib/guild-branding";
 import {
   adminAddPlayerToTeam,
   adminClearDummyPlayers,
@@ -139,7 +160,9 @@ import {
   adminResyncRosterRole,
   adminUpdatePlayerProfile,
   formatPlayerDirectory,
+  formatUnsignedPlayers,
   listRegisteredPlayers,
+  listUnsignedPlayers,
 } from "../src/lib/players-admin";
 import { parseRolesJson } from "../src/lib/roles";
 import { prisma } from "../src/lib/prisma";
@@ -215,7 +238,16 @@ const commands = [
     ),
   new SlashCommandBuilder()
     .setName("me")
-    .setDescription("Show your registration and team"),
+    .setDescription("Show your medal, role, and team in chat")
+    .addUserOption((o) =>
+      o.setName("user").setDescription("Another player (optional)"),
+    ),
+  new SlashCommandBuilder()
+    .setName("pool")
+    .setDescription("List players (except captains) with medal and role"),
+  new SlashCommandBuilder()
+    .setName("unsigned")
+    .setDescription("List registered players who are not on a team yet"),
   new SlashCommandBuilder()
     .setName("when")
     .setDescription("Set when you can play on weekends (Pakistan time)")
@@ -256,6 +288,11 @@ const commands = [
     .setDescription("Admin: manage registered players")
     .addSubcommand((s) =>
       s.setName("list").setDescription("Admin: list every registered player"),
+    )
+    .addSubcommand((s) =>
+      s
+        .setName("unsigned")
+        .setDescription("Admin: list players not on a team"),
     )
     .addSubcommand((s) =>
       s
@@ -457,7 +494,7 @@ const commands = [
     .addSubcommand((s) =>
       s
         .setName("setup")
-        .setDescription("Create #payments (visible to everyone) and post commands in #admin"),
+        .setDescription("Create #payments, lock cup channels, team voice, and #auction-test"),
     )
     .addSubcommand((s) =>
       s.setName("help").setDescription("Post all bot commands into #admin"),
@@ -467,6 +504,11 @@ const commands = [
     .setDescription("Bid on the player on the block")
     .addIntegerOption((o) =>
       o.setName("amount").setDescription("Bid amount").setRequired(true).setMinValue(100),
+    )
+    .addStringOption((o) =>
+      o
+        .setName("team")
+        .setDescription("TEST channel only: dummy team to bid as (Liquid / OG / Secret)"),
     ),
   new SlashCommandBuilder()
     .setName("purse")
@@ -483,20 +525,39 @@ const commands = [
     .addSubcommand((s) =>
       s
         .setName("start")
-        .setDescription("Start a role auction")
+        .setDescription("Start a rank auction (#auction live, #auction-test fake)")
         .addStringOption((o) =>
           o
-            .setName("role")
-            .setDescription("Role pool")
+            .setName("rank")
+            .setDescription("Medal pool — all unsigned players at this rank")
             .setRequired(true)
-            .addChoices(...roleChoices),
+            .addChoices(...medalChoices),
         ),
     )
     .addSubcommand((s) =>
       s.setName("pause").setDescription("Pause the live clock"),
     )
     .addSubcommand((s) =>
-      s.setName("skip").setDescription("Mark the current player unsold"),
+      s.setName("resume").setDescription("Resume a paused auction"),
+    )
+    .addSubcommand((s) =>
+      s.setName("skip").setDescription("Pass the current player (unsold)"),
+    )
+    .addSubcommand((s) =>
+      s
+        .setName("confirm")
+        .setDescription("Sell the current player to the high bidder"),
+    )
+    .addSubcommand((s) =>
+      s
+        .setName("revert")
+        .setDescription("Admin: return a sold player to the pool and refund points")
+        .addUserOption((o) =>
+          o.setName("user").setDescription("Sold player to return to the pool"),
+        )
+        .addStringOption((o) =>
+          o.setName("name").setDescription("Steam name if they are not in Discord"),
+        ),
     )
     .addSubcommand((s) =>
       s.setName("undo").setDescription("Undo the last sale"),
@@ -541,6 +602,55 @@ const commands = [
       s.setName("clear").setDescription("Admin: delete pending scheduled matches"),
     ),
   new SlashCommandBuilder()
+    .setName("playoff")
+    .setDescription("Group stage + Dota-style upper / elimination playoffs")
+    .addSubcommand((s) =>
+      s.setName("status").setDescription("Show groups and the playoff bracket"),
+    )
+    .addSubcommand((s) =>
+      s
+        .setName("groups")
+        .setDescription("Admin: randomly split 8 teams into Group A and Group B"),
+    )
+    .addSubcommand((s) =>
+      s
+        .setName("assign")
+        .setDescription("Admin: put a team in Group A or B")
+        .addStringOption((o) =>
+          o.setName("team").setDescription("Team name").setRequired(true),
+        )
+        .addStringOption((o) =>
+          o
+            .setName("group")
+            .setDescription("Group")
+            .setRequired(true)
+            .addChoices(
+              { name: "Group A", value: "A" },
+              { name: "Group B", value: "B" },
+            ),
+        ),
+    )
+    .addSubcommand((s) =>
+      s
+        .setName("generate")
+        .setDescription("Admin: book the 4 group-stage matches")
+        .addStringOption((o) =>
+          o
+            .setName("friday")
+            .setDescription("First Friday as YYYY-MM-DD (default: next Friday)"),
+        )
+        .addBooleanOption((o) =>
+          o
+            .setName("force")
+            .setDescription("Replace playoff fixtures that are still scheduled"),
+        ),
+    )
+    .addSubcommand((s) =>
+      s
+        .setName("clear")
+        .setDescription("Admin: delete pending playoff fixtures"),
+    ),
+  new SlashCommandBuilder()
     .setName("result")
     .setDescription("Import a match from OpenDota")
     .addSubcommand((s) =>
@@ -570,7 +680,12 @@ const commands = [
     ),
   new SlashCommandBuilder()
     .setName("pay")
-    .setDescription("Entry fees — unpaid players and team 5000 PKR status")
+    .setDescription("Entry fees — collected money, unpaid players, team 5000 PKR")
+    .addSubcommand((s) =>
+      s
+        .setName("collected")
+        .setDescription("How much money is in, owed, and expected"),
+    )
     .addSubcommand((s) =>
       s
         .setName("unpaid")
@@ -599,11 +714,35 @@ const commands = [
     ),
 ].map((c) => c.toJSON());
 
+function memberHasAdminRole(member: GuildMember | null | undefined): boolean {
+  if (!member?.roles?.cache) return false;
+  const name = adminRoleName().toLowerCase();
+  return member.roles.cache.some((role) => role.name.toLowerCase() === name);
+}
+
 function isOrganizer(member: GuildMember | null, discordId: string): boolean {
   if (isAdminDiscordId(discordId)) return true;
-  if (!member) return false;
-  const name = adminRoleName();
-  return member.roles.cache.some((r) => r.name === name);
+  return memberHasAdminRole(member);
+}
+
+function isOrganizerInteraction(interaction: {
+  user: { id: string };
+  member: unknown;
+  guild: ChatInputCommandInteraction["guild"];
+}): boolean {
+  if (isAdminDiscordId(interaction.user.id)) return true;
+  if (memberHasAdminRole(interaction.member as GuildMember | null)) {
+    return true;
+  }
+  const guild = interaction.guild;
+  if (!guild) return false;
+  const adminRole = guild.roles.cache.find(
+    (role) => role.name.toLowerCase() === adminRoleName().toLowerCase(),
+  );
+  const raw = interaction.member as { roles?: unknown } | null;
+  if (!adminRole || !raw?.roles) return false;
+  if (Array.isArray(raw.roles)) return raw.roles.includes(adminRole.id);
+  return false;
 }
 
 function fail(error: unknown): string {
@@ -701,6 +840,111 @@ function playerPageUrl(playerId: string) {
   return `${siteUrl()}/players/${playerId}`;
 }
 
+const CARD_GOLD = 0xb07d1f;
+
+function playerSlotLabel(player: {
+  isCaptain: boolean;
+  rosterRole: string | null;
+  teamId: string | null;
+}) {
+  if (player.isCaptain) return "Captain";
+  if (player.rosterRole === "sub") return "Substitute";
+  if (player.teamId) return "Starter";
+  return "Auction pool";
+}
+
+function playerCardEmbed(
+  player: {
+    id: string;
+    steamName: string;
+    medal: string;
+    rolesJson: string;
+    playWindow: string;
+    isCaptain: boolean;
+    rosterRole: string | null;
+    teamId: string | null;
+    team: { name: string } | null;
+  },
+  discordUser: User,
+) {
+  const role = formatRoles(parseRolesJson(player.rolesJson));
+  const window = PLAY_WINDOW_LABELS[playWindowOrBoth(player.playWindow)];
+  const team = player.team?.name ?? "Unsigned";
+  return new EmbedBuilder()
+    .setColor(CARD_GOLD)
+    .setAuthor({
+      name: discordUser.globalName || discordUser.username,
+      iconURL: discordUser.displayAvatarURL({ size: 64 }),
+    })
+    .setTitle(player.steamName)
+    .setURL(playerPageUrl(player.id))
+    .setThumbnail(discordUser.displayAvatarURL({ size: 256 }))
+    .setDescription(`${discordUser}`)
+    .addFields(
+      { name: "Medal", value: medalLabel(player.medal), inline: true },
+      { name: "Role", value: role, inline: true },
+      { name: "Team", value: team, inline: true },
+      { name: "Slot", value: playerSlotLabel(player), inline: true },
+      { name: "Weekends", value: window, inline: true },
+    )
+    .setFooter({ text: "MM Dota Cup" });
+}
+
+async function poolEmbeds() {
+  const players = await prisma.player.findMany({
+    where: { isCaptain: false },
+    orderBy: [{ steamName: "asc" }],
+    include: { team: { select: { name: true } } },
+  });
+  if (players.length === 0) {
+    return [
+      new EmbedBuilder()
+        .setColor(CARD_GOLD)
+        .setTitle("Player pool")
+        .setDescription("No players in the pool yet (captains are hidden).")
+        .setFooter({ text: "MM Dota Cup" }),
+    ];
+  }
+
+  const groups = new Map<string, string[]>();
+  for (const player of players) {
+    const role = formatRoles(parseRolesJson(player.rolesJson));
+    const team = player.team?.name ? ` · ${player.team.name}` : "";
+    const line = `• **${player.steamName}** — ${medalLabel(player.medal)}${team}`;
+    const list = groups.get(role) ?? [];
+    list.push(line);
+    groups.set(role, list);
+  }
+
+  const embeds: EmbedBuilder[] = [];
+  let current = new EmbedBuilder()
+    .setColor(CARD_GOLD)
+    .setTitle(`Player pool · ${players.length}`)
+    .setDescription("Registered players except captains — medal and role.")
+    .setFooter({ text: "MM Dota Cup" });
+  let fields = 0;
+
+  for (const [role, lines] of [...groups.entries()].sort((a, b) =>
+    a[0].localeCompare(b[0]),
+  )) {
+    const chunks = splitDiscordChunks(lines.join("\n"), 1024);
+    for (const chunk of chunks) {
+      if (fields >= 25) {
+        embeds.push(current);
+        current = new EmbedBuilder()
+          .setColor(CARD_GOLD)
+          .setTitle("Player pool")
+          .setFooter({ text: "MM Dota Cup" });
+        fields = 0;
+      }
+      current.addFields({ name: role, value: chunk, inline: false });
+      fields += 1;
+    }
+  }
+  embeds.push(current);
+  return embeds;
+}
+
 function registerReplyLines(
   result: Awaited<ReturnType<typeof registerPlayer>>,
 ): string[] {
@@ -750,16 +994,34 @@ function findTextChannel(
   return found?.type === ChannelType.GuildText ? found : null;
 }
 
+function channelNameOf(channel: unknown): string | null {
+  if (
+    channel &&
+    typeof channel === "object" &&
+    "name" in channel &&
+    typeof channel.name === "string"
+  ) {
+    return channel.name;
+  }
+  return null;
+}
+
+function sandboxFromChannel(channel: unknown) {
+  return isDummyAuctionChannel(channelNameOf(channel));
+}
+
 function lotEmbed(view: ReturnType<typeof getAuctionView>) {
   const embed = new EmbedBuilder()
     .setColor(view.status === "running" ? 0xd4a24c : 0x6b7280)
     .setTitle(
-      view.role
-        ? `ON THE BLOCK — ${ROLE_LABELS[view.role].toUpperCase()}`
-        : "Auction idle",
+      view.medal
+        ? `${view.sandbox ? "TEST · " : ""}ON THE BLOCK — ${medalLabel(view.medal).toUpperCase()}`
+        : view.sandbox
+          ? "Test auction idle"
+          : "Auction idle",
     );
 
-  if (view.currentPlayer && view.role) {
+  if (view.currentPlayer && view.medal) {
     const roles = formatRoles(parseRolesJson(view.currentPlayer.rolesJson));
     embed.addFields(
       {
@@ -769,12 +1031,12 @@ function lotEmbed(view: ReturnType<typeof getAuctionView>) {
       },
       {
         name: "Rank",
-        value: MEDAL_LABELS[view.currentPlayer.medal as keyof typeof MEDAL_LABELS] ?? view.currentPlayer.medal,
+        value: medalLabel(view.currentPlayer.medal),
         inline: true,
       },
       {
-        name: "Role",
-        value: ROLE_LABELS[view.role],
+        name: "Listed roles",
+        value: roles,
         inline: true,
       },
       {
@@ -791,16 +1053,19 @@ function lotEmbed(view: ReturnType<typeof getAuctionView>) {
         name: "Clock",
         value:
           view.status === "paused"
-            ? "paused"
-            : view.status === "running" && view.endsAt && view.secondsLeft > 0
-              ? `<t:${Math.floor(view.endsAt.getTime() / 1000)}:R>`
-              : "Ended",
+            ? "paused — resume, Confirm, or Skip"
+            : view.awaitingDecision
+              ? view.highBidder
+                ? "Ended — Admin: Confirm or Skip"
+                : "Ended — Admin: Skip (no bid)"
+              : view.status === "running" && view.endsAt && view.secondsLeft > 0
+                ? `<t:${Math.floor(view.endsAt.getTime() / 1000)}:R>`
+                : "Ended",
         inline: true,
       },
-      { name: "Listed roles", value: roles, inline: false },
     );
     embed.setFooter({
-      text: `${view.remainingInRole} still in the ${ROLE_LABELS[view.role]} queue`,
+      text: `${view.remainingInPool} still in the ${medalLabel(view.medal)} queue`,
     });
   } else {
     embed.setDescription("No player on the block. Admin: `/auction start`.");
@@ -830,19 +1095,19 @@ function saleEmbed(view: ReturnType<typeof getAuctionView>) {
   if (sale.teamName && sale.price != null) {
     return new EmbedBuilder()
       .setColor(0x22c55e)
-      .setTitle("SOLD")
+      .setTitle(view.sandbox ? "SOLD (TEST)" : "SOLD")
       .setDescription(
         `**${sale.playerName}** joins **${sale.teamName}** for **${sale.price}**`,
       )
       .addFields(
         {
           name: "Rank",
-          value: MEDAL_LABELS[sale.medal as keyof typeof MEDAL_LABELS] ?? sale.medal,
+          value: medalLabel(sale.medal),
           inline: true,
         },
         {
-          name: "Role",
-          value: ROLE_LABELS[sale.role],
+          name: "Listed roles",
+          value: formatRoles(parseRolesJson(sale.rolesJson)),
           inline: true,
         },
         {
@@ -853,12 +1118,12 @@ function saleEmbed(view: ReturnType<typeof getAuctionView>) {
   }
   return new EmbedBuilder()
     .setColor(0x9ca3af)
-    .setTitle("UNSOLD")
+    .setTitle(view.sandbox ? "UNSOLD (TEST)" : "UNSOLD")
     .setDescription(`**${sale.playerName}** goes back to the pool.`)
     .addFields(
       {
-        name: "Role",
-        value: ROLE_LABELS[sale.role],
+        name: "Rank",
+        value: medalLabel(sale.medal),
         inline: true,
       },
       {
@@ -869,32 +1134,62 @@ function saleEmbed(view: ReturnType<typeof getAuctionView>) {
 }
 
 function doneEmbed(view: ReturnType<typeof getAuctionView>) {
-  const role = view.lastSale?.role ?? view.role;
+  const medal = view.lastSale?.medal ?? view.medal;
+  const label = medal ? medalLabel(medal) : null;
   return new EmbedBuilder()
     .setColor(0x6366f1)
-    .setTitle("Auction complete")
+    .setTitle(view.sandbox ? "Test auction complete" : "Auction complete")
     .setDescription(
-      role
-        ? `The **${ROLE_LABELS[role]}** queue is finished.`
-        : "This role queue is finished.",
+      label
+        ? view.sandbox
+          ? `The **TEST ${label}** queue is finished. Live cup data was not changed.`
+          : `The **${label}** queue is finished.`
+        : view.sandbox
+          ? "This test queue is finished. Live cup data was not changed."
+          : "This rank queue is finished.",
     );
 }
 
-function lotButtons() {
-  return new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder()
-      .setCustomId("bid:open")
-      .setLabel("Bid (open / +0)")
-      .setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder()
-      .setCustomId(`bid:${BID_INCREMENT}`)
-      .setLabel(`+${BID_INCREMENT}`)
-      .setStyle(ButtonStyle.Primary),
-    new ButtonBuilder()
-      .setCustomId("bid:500")
-      .setLabel("+500")
-      .setStyle(ButtonStyle.Success),
-  );
+function lotActionRows(view: ReturnType<typeof getAuctionView>) {
+  const lotId = view.lotId ?? "none";
+  const canBid =
+    view.status === "running" &&
+    !view.awaitingDecision &&
+    Boolean(view.currentPlayer);
+  const canAct =
+    Boolean(view.currentPlayer) &&
+    (view.status === "running" || view.status === "paused");
+  return [
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`bid:open:${lotId}`)
+        .setLabel("Bid (open / +0)")
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(!canBid),
+      new ButtonBuilder()
+        .setCustomId(`bid:${BID_INCREMENT}:${lotId}`)
+        .setLabel(`+${BID_INCREMENT}`)
+        .setStyle(ButtonStyle.Primary)
+        .setDisabled(!canBid),
+      new ButtonBuilder()
+        .setCustomId(`bid:500:${lotId}`)
+        .setLabel("+500")
+        .setStyle(ButtonStyle.Success)
+        .setDisabled(!canBid),
+    ),
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`lot:skip:${lotId}`)
+        .setLabel("Skip")
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(!canAct),
+      new ButtonBuilder()
+        .setCustomId(`lot:confirm:${lotId}`)
+        .setLabel("Admin Confirm")
+        .setStyle(ButtonStyle.Danger)
+        .setDisabled(!canAct || !view.highBidder),
+    ),
+  ];
 }
 
 async function closeLotMessage(
@@ -925,9 +1220,12 @@ async function closeLotMessage(
 async function postNewLot(channel: TextChannel, view: ReturnType<typeof getAuctionView>) {
   const sent = await channel.send({
     embeds: [lotEmbed(view)],
-    components: view.status === "running" && view.currentPlayer ? [lotButtons()] : [],
+    components:
+      view.currentPlayer && (view.status === "running" || view.status === "paused")
+        ? lotActionRows(view)
+        : [],
   });
-  saveAuctionMessage(channel.id, sent.id);
+  saveAuctionMessage(channel.id, sent.id, view.sandbox);
 }
 
 async function publishLot(channel: TextChannel, view: ReturnType<typeof getAuctionView>) {
@@ -937,23 +1235,23 @@ async function publishLot(channel: TextChannel, view: ReturnType<typeof getAucti
       view.messageId,
       view.event === "sold" ? "Sold" : view.event === "unsold" ? "Unsold" : "Ended",
     );
-    clearAuctionMessage();
+    clearAuctionMessage(view.sandbox);
     await channel.send({ embeds: [saleEmbed(view)] });
     if (view.event === "done" || !view.currentPlayer) {
       await channel.send({ embeds: [doneEmbed(view)] });
-      markAuctionAnnounced();
+      markAuctionAnnounced(view.sandbox);
       return;
     }
     await postNewLot(channel, view);
-    markAuctionAnnounced();
+    markAuctionAnnounced(view.sandbox);
     return;
   }
 
   if (view.event === "lot" || !view.messageId || view.channelId !== channel.id) {
     await closeLotMessage(channel, view.messageId);
-    clearAuctionMessage();
+    clearAuctionMessage(view.sandbox);
     await postNewLot(channel, view);
-    markAuctionAnnounced();
+    markAuctionAnnounced(view.sandbox);
     return;
   }
 
@@ -961,7 +1259,10 @@ async function publishLot(channel: TextChannel, view: ReturnType<typeof getAucti
     const existing = await channel.messages.fetch(view.messageId);
     await existing.edit({
       embeds: [lotEmbed(view)],
-      components: view.status === "running" && view.currentPlayer ? [lotButtons()] : [],
+      components:
+      view.currentPlayer && (view.status === "running" || view.status === "paused")
+        ? lotActionRows(view)
+        : [],
     });
   } catch {
     await postNewLot(channel, view);
@@ -1028,6 +1329,7 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
         discordId,
         playWindowOrBoth(result.player.playWindow),
       );
+      await trySetMemberRegisteredRole(interaction.guild, discordId, true);
       await interaction.editReply({
         content: registerReplyLines(result).join("\n"),
       });
@@ -1050,30 +1352,45 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
     }
 
     if (name === "me") {
-      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      const target = interaction.options.getUser("user") ?? interaction.user;
+      await interaction.deferReply();
       const player = await prisma.player.findFirst({
         where: {
-          OR: [{ discordId }, { discordId: { startsWith: `${discordId}:` } }],
+          OR: [
+            { discordId: target.id },
+            { discordId: { startsWith: `${target.id}:` } },
+          ],
         },
-        include: { team: true },
+        include: { team: { select: { name: true } } },
       });
       if (!player) {
-        await interaction.editReply(
-          (await isRegistrationOpen())
-            ? "You are not registered. Use `/register`."
-            : "You are not registered. Public sign-ups are closed — ask an admin to `/player register` you.",
-        );
+        await interaction.editReply({
+          content:
+            target.id === interaction.user.id
+              ? (await isRegistrationOpen())
+                ? "You are not registered. Use `/register`."
+                : "You are not registered. Public sign-ups are closed — ask an admin to `/player register` you."
+              : `${target} is not registered in MM Dota Cup.`,
+        });
         return;
       }
-      const roles = formatRoles(parseRolesJson(player.rolesJson));
-      const sub = player.rosterRole === "sub" ? " · Sub" : "";
-      const window = PLAY_WINDOW_LABELS[playWindowOrBoth(player.playWindow)];
-      const team = player.team
-        ? `Team **${player.team.name}**${player.isCaptain ? " · captain" : ""}${sub}`
-        : "Unsigned — you will appear in the auction";
-      await interaction.editReply(
-        `**${player.steamName}** · ${player.medal} · ${roles}\nWeekends: **${window}** (change with \`/when\`)\nWebsite: ${playerPageUrl(player.id)}\nSteam: ${steamProfileUrl(player.steam32)}\nSteam32 \`${player.steam32}\`\n${team}\n${paymentStatusLine(player)}`,
-      );
+      await interaction.editReply({
+        embeds: [playerCardEmbed(player, target)],
+      });
+      return;
+    }
+
+    if (name === "pool") {
+      await interaction.deferReply();
+      const embeds = await poolEmbeds();
+      await interaction.editReply({ embeds: embeds.slice(0, 10) });
+      return;
+    }
+
+    if (name === "unsigned") {
+      await interaction.deferReply();
+      const unsigned = await listUnsignedPlayers();
+      await editReplyChunks(interaction, formatUnsignedPlayers(unsigned));
       return;
     }
 
@@ -1194,7 +1511,7 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
         (r) => !r.ok && r.channel.toLowerCase() === adminChannelName().toLowerCase(),
       );
       const invite = failedPayments
-        ? `\n\nIf **#${paymentsChannelName()}** is missing, the bot needs **Manage Channels**. Re-invite:\n${botInviteUrl(botClientId)}\nOr create a public text channel named **${paymentsChannelName()}**, then run \`/admin setup\` again.`
+        ? `\n\nIf **#${paymentsChannelName()}** is missing, the bot needs **Manage Channels**. Re-invite:\n${botInviteUrl(botClientId)}\nOr create a text channel named **${paymentsChannelName()}**, then run \`/admin setup\` again.`
         : "";
       const helpFallback = failedAdmin
         ? `\n\nCommand list (posted here because **#${adminChannelName()}** is locked):\n\n${fullHelpText()}`
@@ -1254,6 +1571,16 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
         user.id,
         false,
       );
+      if (interaction.guild) {
+        try {
+          await syncCupChannelAccess(interaction.guild);
+        } catch (error) {
+          console.warn(
+            "channel access after captain remove",
+            error instanceof Error ? error.message : error,
+          );
+        }
+      }
       void notifySiteRefresh();
       await interaction.editReply(
         [
@@ -1279,6 +1606,11 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
       if (sub === "list") {
         const players = await listRegisteredPlayers();
         await editReplyChunks(interaction, formatPlayerDirectory(players));
+        return;
+      }
+      if (sub === "unsigned") {
+        const unsigned = await listUnsignedPlayers();
+        await editReplyChunks(interaction, formatUnsignedPlayers(unsigned));
         return;
       }
       if (sub === "dummy") {
@@ -1334,6 +1666,7 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
           user.id,
           playWindowOrBoth(result.player.playWindow),
         );
+        await trySetMemberRegisteredRole(interaction.guild, user.id, true);
         await interaction.editReply(
           [
             `Admin registered ${user}.`,
@@ -1374,7 +1707,7 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
           );
         } else if (!live.patched) {
           lines.push(
-            "If this role's auction is already running, `/auction start` that pool again so they appear in the right queue.",
+            "If this rank's auction is already running, `/auction start` that pool again so they appear in the right queue.",
           );
         } else if (live.bidReset) {
           lines.push("Live auction start price was updated (no bid yet).");
@@ -1385,6 +1718,7 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
       const user = interaction.options.getUser("user", true);
       if (sub === "delete") {
         const removed = await adminDeletePlayer(user.id);
+        await trySetMemberRegisteredRole(interaction.guild, user.id, false);
         await interaction.editReply(
           `Deleted registration for **${removed.name}**.${
             removed.teamName ? ` Removed from **${removed.teamName}**.` : ""
@@ -1401,6 +1735,16 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
           discordId: user.id,
           teamName: interaction.options.getString("team", true),
         });
+        if (interaction.guild) {
+          try {
+            await syncCupChannelAccess(interaction.guild);
+          } catch (error) {
+            console.warn(
+              "channel access after player add",
+              error instanceof Error ? error.message : error,
+            );
+          }
+        }
         await interaction.editReply(
           `Added **${result.player.steamName}** to **${result.team.name}**.`,
         );
@@ -1408,6 +1752,16 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
       }
       if (sub === "remove") {
         const removed = await adminRemovePlayerFromTeam(user.id);
+        if (interaction.guild) {
+          try {
+            await syncCupChannelAccess(interaction.guild);
+          } catch (error) {
+            console.warn(
+              "channel access after player remove",
+              error instanceof Error ? error.message : error,
+            );
+          }
+        }
         await interaction.editReply(
           `Removed **${removed.name}** from **${removed.teamName}**.`,
         );
@@ -1443,15 +1797,23 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
         const teamNote = result.player.team
           ? `\nTeam **${result.player.team.name}**.`
           : "";
+        const collection = await getPaymentCollection();
         await interaction.editReply(
-          result.alreadyPaid
-            ? `${user} was already marked paid.${teamNote}`
-            : `Marked ${user} paid **${formatEntryFee()}**.${teamNote}`,
+          `${
+            result.alreadyPaid
+              ? `${user} was already marked paid.${teamNote}`
+              : `Marked ${user} paid **${formatEntryFee()}**.${teamNote}`
+          }\n**Collected: ${collection.collected.toLocaleString("en-PK")} PKR** (${collection.paidCount} paid · ${collection.unpaidCount} still owe).`,
         );
         return;
       }
 
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      if (sub === "collected") {
+        const data = await getPaymentCollection();
+        await editReplyChunks(interaction, formatPaymentCollection(data));
+        return;
+      }
       if (sub === "unpaid") {
         const unpaid = await listUnpaidPlayers();
         await editReplyChunks(interaction, formatUnpaidList(unpaid));
@@ -1473,13 +1835,23 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
     }
 
     if (name === "bid") {
+      const sandbox = sandboxFromChannel(interaction.channel);
+      if (sandbox && !isOrganizer(member, discordId)) {
+        await interaction.reply({
+          content: `Only **${adminRoleName()}** can bid in **#${dummyAuctionChannelName()}**.`,
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
       await interaction.deferReply();
       const view = await placeBid({
         discordId,
         amount: interaction.options.getInteger("amount", true),
+        sandbox,
+        teamName: interaction.options.getString("team"),
       });
       await interaction.editReply({
-        content: `Bid **${view.currentBid}** from ${view.highBidder?.name ?? "?"} on **${view.currentPlayer?.steamName}**.`,
+        content: `${sandbox ? "TEST bid " : "Bid "}**${view.currentBid}** from ${view.highBidder?.name ?? "?"} on **${view.currentPlayer?.steamName}**.`,
       });
       if (interaction.channel?.type === ChannelType.GuildText) {
         await publishLot(interaction.channel, view);
@@ -1488,6 +1860,18 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
     }
 
     if (name === "purse") {
+      const sandbox = sandboxFromChannel(interaction.channel);
+      if (sandbox) {
+        const view = getAuctionView(true);
+        await interaction.reply({
+          content:
+            view.teamBalances.length === 0
+              ? `No test auction running. In **#${dummyAuctionChannelName()}** run \`/auction start\`.`
+              : `**TEST purses** (not live)\n${purseLines(view.teamBalances)}`,
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
       const { team } = await getTeamByCaptainDiscord(discordId);
       await interaction.reply({
         content: `**${team.name}** has **${team.purse}** / ${STARTING_PURSE} points.`,
@@ -1497,6 +1881,17 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
     }
 
     if (name === "roster") {
+      if (sandboxFromChannel(interaction.channel)) {
+        const view = getAuctionView(true);
+        await interaction.reply({
+          content:
+            view.teamBalances.length === 0
+              ? `No test auction running. In **#${dummyAuctionChannelName()}** run \`/auction start\`.`
+              : `**TEST rosters** (not live)\n${purseLines(view.teamBalances)}`,
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
       const q = interaction.options.getString("team");
       const team = q
         ? await prisma.team.findFirst({
@@ -1527,22 +1922,64 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
         return;
       }
       await interaction.deferReply();
+      const sandbox = sandboxFromChannel(interaction.channel);
       const sub = interaction.options.getSubcommand();
       let view;
       if (sub === "start") {
-        view = await startAuction(interaction.options.getString("role", true));
+        view = await startAuction(interaction.options.getString("rank", true), {
+          sandbox,
+        });
       } else if (sub === "pause") {
-        view = await pauseAuction();
+        view = await pauseAuction({ sandbox });
+      } else if (sub === "resume") {
+        view = await resumeAuction({ sandbox });
       } else if (sub === "skip") {
-        view = await skipLot();
+        view = await skipLot({ sandbox });
+      } else if (sub === "confirm") {
+        view = await confirmLot({ sandbox });
+      } else if (sub === "revert") {
+        const user = interaction.options.getUser("user");
+        const nameOpt = interaction.options.getString("name");
+        let steamName = nameOpt?.trim() ?? "";
+        if (user) {
+          const registered = await prisma.player.findFirst({
+            where: {
+              OR: [
+                { discordId: user.id },
+                { discordId: { startsWith: `${user.id}:` } },
+              ],
+            },
+            select: { steamName: true },
+          });
+          if (!registered) {
+            throw new Error(`${user} is not a registered player.`);
+          }
+          steamName = registered.steamName;
+        }
+        if (!steamName) {
+          throw new Error("Pick `user:` or type `name:` (Steam name).");
+        }
+        const result = await revertSoldAuctionPlayers([steamName]);
+        void notifySiteRefresh();
+        const row = result.reverted[0];
+        await interaction.editReply({
+          content: row
+            ? `Reverted **${row.steamName}** from **${row.fromTeam}**. Refunded **${row.refunded}** points. They are unsigned again — start that rank pool to auction them.`
+            : "Nothing to revert.",
+        });
+        return;
       } else {
         view = await undoLastSale();
       }
       await interaction.editReply({
         content:
           sub === "start"
-            ? `Started **${ROLE_LABELS[view.role as Role]}** auction.`
-            : `Auction ${sub}.`,
+            ? sandbox
+              ? `Started **TEST ${medalLabel(view.medal ?? "")}** auction in **#${dummyAuctionChannelName()}**. Live cup data will not change.`
+              : `Started **${medalLabel(view.medal ?? "")}** auction.`
+            : sandbox
+              ? `Test auction ${sub}.`
+              : `Auction ${sub}.`,
       });
       if (interaction.channel?.type === ChannelType.GuildText) {
         await publishLot(interaction.channel, view);
@@ -1580,7 +2017,7 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
           await syncCupChannelAccess(interaction.guild);
           access = `\n\n${describeChannelAccess()}`;
         } catch (error) {
-          access = `\n\n⚠️ Could not lock #captains / #auction. Give the bot **Manage Channels** and **Manage Roles**.`;
+          access = `\n\n⚠️ Could not lock cup channels. Give the bot **Manage Channels** and **Manage Roles**.`;
           console.error("channel access", error);
         }
         await interaction.editReply(
@@ -1743,6 +2180,74 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
       return;
     }
 
+    if (name === "playoff") {
+      const sub = interaction.options.getSubcommand();
+      if (sub === "status") {
+        const view = await getPlayoffView();
+        await interaction.reply({ content: formatPlayoffStatus(view) });
+        return;
+      }
+      if (!isOrganizer(member, discordId)) {
+        await interaction.reply({
+          content: `Only **${adminRoleName()}** can manage playoffs.`,
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+      if (sub === "clear") {
+        const n = await clearPlayoffFixtures();
+        await interaction.reply(
+          n === 0
+            ? "No pending playoff fixtures to clear."
+            : `Cleared **${n}** pending playoff fixtures.`,
+        );
+        return;
+      }
+      if (sub === "assign") {
+        const result = await assignPlayoffGroup({
+          teamName: interaction.options.getString("team", true),
+          group: interaction.options.getString("group", true) as "A" | "B",
+        });
+        await interaction.reply(
+          `**${result.teamName}** is now in **Group ${result.group}**.`,
+        );
+        return;
+      }
+      if (sub === "groups") {
+        await interaction.deferReply();
+        const view = await seedPlayoffGroups();
+        await interaction.editReply({
+          content: [
+            "Randomly split **8** teams into Group A and Group B.",
+            "Next: `/playoff generate` to book the 4 group matches.",
+            "",
+            formatPlayoffStatus(view),
+          ].join("\n"),
+        });
+        return;
+      }
+      await interaction.deferReply();
+      const result = await generatePlayoffGroupStage({
+        friday: interaction.options.getString("friday") ?? undefined,
+        force: interaction.options.getBoolean("force") ?? false,
+      });
+      const preview = result.fixtures
+        .map(
+          (f) =>
+            `• ${formatScheduleWhen(f.scheduledAt)} — **${f.radiantTeam.name}** vs **${f.direTeam.name}**`,
+        )
+        .join("\n");
+      await interaction.editReply({
+        content: [
+          "Group stage booked — each team plays **1** best-of-1.",
+          "Match 1 winners go to the **upper bracket**. Match 2 winners play **elimination**.",
+          "Upper winner goes to the **Bo3 final**. Upper loser plays the elimination winner.",
+          preview,
+        ].join("\n"),
+      });
+      return;
+    }
+
     if (name === "result") {
       const sub = interaction.options.getSubcommand();
       if (sub === "assign") {
@@ -1900,8 +2405,9 @@ async function handlePaymentTick(
       const row = teams.find((t) => t.id === result.player.team?.id);
       if (row) teamLine = `\n${formatTeamPaymentLine(row)}`;
     }
+    const collection = await getPaymentCollection();
     await message.reply(
-      `✅ Admin confirmed **${formatEntryFee()}** for ${target} (**${result.player.steamName}**).${teamLine}`,
+      `✅ Admin confirmed **${formatEntryFee()}** for ${target} (**${result.player.steamName}**).${teamLine}\n**Collected: ${collection.collected.toLocaleString("en-PK")} PKR** (${collection.paidCount} paid · ${collection.unpaidCount} still owe).`,
     );
   } catch (error) {
     await message.reply(fail(error));
@@ -1979,6 +2485,7 @@ client.on("interactionCreate", async (interaction: Interaction) => {
         discordId,
         playWindowOrBoth(result.player.playWindow),
       );
+      await trySetMemberRegisteredRole(interaction.guild, discordId, true);
       await interaction.editReply({
         content: registerReplyLines(result).join("\n"),
         components: [],
@@ -1992,19 +2499,68 @@ client.on("interactionCreate", async (interaction: Interaction) => {
     }
     return;
   }
-  if (interaction.isButton() && interaction.customId.startsWith("bid:")) {
+  if (
+    interaction.isButton() &&
+    (interaction.customId.startsWith("bid:") ||
+      interaction.customId.startsWith("lot:"))
+  ) {
     try {
+      const sandbox = sandboxFromChannel(interaction.channel);
+      const member = interaction.member as GuildMember | null;
+      const parts = interaction.customId.split(":");
+      const kind = parts[0];
+      const spec = parts[1];
+      const lotId = parts[2] ?? null;
+
+      if (kind === "lot") {
+        if (!isOrganizerInteraction(interaction)) {
+          await interaction.reply({
+            content:
+              spec === "confirm"
+                ? `Only **${adminRoleName()}** can press **Admin Confirm**. Captains bid only.`
+                : `Only **${adminRoleName()}** can Skip.`,
+            flags: MessageFlags.Ephemeral,
+          });
+          return;
+        }
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+        const view =
+          spec === "confirm"
+            ? await confirmLot({ sandbox, lotId })
+            : await skipLot({ sandbox, lotId });
+        await interaction.editReply(
+          spec === "confirm"
+            ? `Confirmed **${view.lastSale?.playerName ?? "sale"}** → ${view.lastSale?.teamName ?? "?"} for **${view.lastSale?.price ?? 0}**.`
+            : `Skipped **${view.lastSale?.playerName ?? "player"}**.`,
+        );
+        if (interaction.channel?.type === ChannelType.GuildText) {
+          await publishLot(interaction.channel, view);
+        }
+        return;
+      }
+
+      if (
+        sandbox &&
+        !isOrganizer(member, interaction.user.id)
+      ) {
+        await interaction.reply({
+          content: `Only **${adminRoleName()}** can bid in **#${dummyAuctionChannelName()}**.`,
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-      const spec = interaction.customId.slice(4);
       const view =
         spec === "open"
-          ? await placeBid({ discordId: interaction.user.id })
+          ? await placeBid({ discordId: interaction.user.id, sandbox, lotId })
           : await placeBid({
               discordId: interaction.user.id,
               bump: Number(spec),
+              sandbox,
+              lotId,
             });
       await interaction.editReply(
-        `Bid **${view.currentBid}** — ${view.highBidder?.name ?? "?"}`,
+        `${sandbox ? "TEST bid " : "Bid "}**${view.currentBid}** — ${view.highBidder?.name ?? "?"}`,
       );
       if (interaction.channel?.type === ChannelType.GuildText) {
         await publishLot(interaction.channel, view);
@@ -2055,8 +2611,8 @@ client.on(Events.MessageReactionAdd, async (reaction, user) => {
   }
 });
 
-async function refreshPostedLot() {
-  const view = await getAuctionView();
+async function refreshPostedLot(sandbox = false) {
+  const view = await getAuctionView(sandbox);
   if (!view.channelId || !view.messageId) return;
   const channel = await client.channels.fetch(view.channelId);
   if (channel?.type === ChannelType.GuildText) {
@@ -2067,13 +2623,43 @@ async function refreshPostedLot() {
 client.once(Events.ClientReady, async () => {
   console.log(`Bot online as ${client.user?.tag}`);
   await hydrateAuctionClock().catch(() => undefined);
+  try {
+    const repair = await repairAuctionScores();
+    if (repair.pursesFixed.length > 0 || repair.duplicateLotsRemoved > 0) {
+      console.log(
+        `Repaired auction scores: removed ${repair.duplicateLotsRemoved} duplicate lots; purses ${repair.pursesFixed.map((p) => `${p.name} ${p.from}→${p.to}`).join(", ") || "ok"}`,
+      );
+      void notifySiteRefresh();
+    }
+  } catch (error) {
+    console.warn("auction score repair", error);
+  }
   for (const guild of client.guilds.cache.values()) {
     try {
       await syncCupChannelAccess(guild);
       await syncCaptainRolesFromDb(guild);
-      console.log(`Locked #captains and #auction in ${guild.name}`);
+      console.log(
+        `Locked #captains and registered-only channels in ${guild.name}`,
+      );
     } catch (error) {
       console.error(`channel access (${guild.name})`, error);
+    }
+    try {
+      await syncGuildIcon(guild);
+      console.log(`Set MM Dota Cup server icon for ${guild.name}`);
+    } catch (error) {
+      console.warn(
+        `Could not set server icon for ${guild.name} (need Manage Server):`,
+        error instanceof Error ? error.message : error,
+      );
+    }
+    try {
+      await refreshPinnedPaymentAnnouncement(guild, client.user?.id);
+    } catch (error) {
+      console.warn(
+        `Could not refresh #payments announcement (${guild.name}):`,
+        error instanceof Error ? error.message : error,
+      );
     }
   }
   if (autoPostChannelRulesEnabled() && client.user) {
@@ -2091,12 +2677,19 @@ client.once(Events.ClientReady, async () => {
       }
     }
   }
+  let auctionTickBusy = false;
   setInterval(async () => {
+    if (auctionTickBusy) return;
+    auctionTickBusy = true;
     try {
-      const { changed } = await tickAuction();
-      if (changed) await refreshPostedLot();
+      for (const sandbox of [false, true]) {
+        const { changed } = await tickAuction(sandbox);
+        if (changed) await refreshPostedLot(sandbox);
+      }
     } catch (error) {
       console.error("auction tick", error);
+    } finally {
+      auctionTickBusy = false;
     }
   }, 1000);
   setInterval(async () => {

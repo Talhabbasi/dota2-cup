@@ -2,12 +2,14 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 
 const LINKS = [
   ["/", "Home"],
   ["/teams", "Teams"],
   ["/matches", "Matches"],
+  ["/playoffs", "Playoffs"],
   ["/table", "Table"],
   ["/players", "Players"],
   ["/heroes", "Heroes"],
@@ -43,9 +45,14 @@ export function Nav() {
   return (
     <header className="site-header">
       <Link href="/" className="brand" onClick={() => setMenuOpen(false)}>
-        <span className="brand-mark" aria-hidden>
-          ◈
-        </span>
+        <Image
+          src="/mm-dota-cup-icon.png"
+          alt=""
+          width={28}
+          height={28}
+          className="brand-mark-img"
+          priority
+        />
         MM Dota Cup
       </Link>
       <button

@@ -84,6 +84,16 @@ type PlayerPayRow = {
   team: { id: string; name: string } | null;
 };
 
+const DUMMY_PREFIX = "test-dummy-";
+const DUMMY_TEAM_PREFIX = "test-dummy-team-";
+
+function isDummyDiscordId(discordId: string) {
+  return (
+    discordId.startsWith(DUMMY_PREFIX) ||
+    discordId.startsWith(DUMMY_TEAM_PREFIX)
+  );
+}
+
 function unpaidRequired(player: PlayerPayRow) {
   return playerMustPay(player.rosterRole) && !player.paidAt;
 }
@@ -103,7 +113,9 @@ export async function listUnpaidPlayers() {
     },
     orderBy: [{ team: { name: "asc" } }, { steamName: "asc" }],
   });
-  return players.filter(unpaidRequired);
+  return players.filter(
+    (player) => !isDummyDiscordId(player.discordId) && unpaidRequired(player),
+  );
 }
 
 export type TeamPaymentRow = {
@@ -163,7 +175,9 @@ export async function listTeamPayments(): Promise<TeamPaymentRow[]> {
     },
     orderBy: { name: "asc" },
   });
-  return teams.map((team) => summarizeTeamPayments(team.name, team.id, team.players));
+  return teams
+    .filter((team) => team.players.some((p) => !isDummyDiscordId(p.discordId)))
+    .map((team) => summarizeTeamPayments(team.name, team.id, team.players));
 }
 
 export function formatPaymentPlayerLine(player: {
@@ -243,10 +257,84 @@ export async function findTeamPaymentsByName(name: string) {
 export function formatTeamPaymentsList(rows: TeamPaymentRow[]) {
   if (rows.length === 0) return "No teams yet.";
   const allowed = rows.filter((r) => r.allowed).length;
+  const collected = rows.reduce((sum, r) => sum + r.paidPkr, 0);
   const lines = [
     `**Team fees** — min and max **${formatTeamFee()}** (5 starters × ${formatEntryFee()}). Subs free.`,
-    `Allowed: **${allowed}/${rows.length}**`,
+    `**Collected from teams: ${collected.toLocaleString("en-PK")} PKR** · Allowed: **${allowed}/${rows.length}**`,
     ...rows.map(formatTeamPaymentLine),
   ];
+  return lines.join("\n");
+}
+
+export async function getPaymentCollection() {
+  const players = await prisma.player.findMany({
+    where: {
+      AND: [
+        { discordId: { not: { startsWith: DUMMY_PREFIX } } },
+        { discordId: { not: { startsWith: DUMMY_TEAM_PREFIX } } },
+      ],
+    },
+    select: {
+      steamName: true,
+      rosterRole: true,
+      paidAt: true,
+      paymentAmount: true,
+      team: { select: { name: true } },
+    },
+    orderBy: [{ steamName: "asc" }],
+  });
+
+  const fee = entryFeePkr();
+  const starters = players.filter((p) => playerMustPay(p.rosterRole));
+  const paid = starters.filter((p) => p.paidAt);
+  const unpaid = starters.filter((p) => !p.paidAt);
+  const collected = paid.reduce(
+    (sum, p) => sum + (p.paymentAmount || fee),
+    0,
+  );
+  const expected = starters.length * fee;
+  const owed = unpaid.length * fee;
+  const teams = await listTeamPayments();
+  const teamsAllowed = teams.filter((t) => t.allowed).length;
+
+  return {
+    collected,
+    expected,
+    owed,
+    paidCount: paid.length,
+    unpaidCount: unpaid.length,
+    starterCount: starters.length,
+    teamsAllowed,
+    teamCount: teams.length,
+    paid,
+    unpaid,
+    teams,
+  };
+}
+
+export function formatPaymentCollection(
+  data: Awaited<ReturnType<typeof getPaymentCollection>>,
+) {
+  const lines = [
+    "**Money collected**",
+    `**In: ${data.collected.toLocaleString("en-PK")} PKR** (${data.paidCount} paid)`,
+    `Still owed: **${data.owed.toLocaleString("en-PK")} PKR** (${data.unpaidCount} unpaid)`,
+    `Expected from registered starters: **${data.expected.toLocaleString("en-PK")} PKR** (${data.starterCount} × ${formatEntryFee()})`,
+    `Teams at exactly ${formatTeamFee()}: **${data.teamsAllowed}/${data.teamCount}**`,
+  ];
+
+  if (data.teams.length > 0) {
+    lines.push("", "**By team**", ...data.teams.map(formatTeamPaymentLine));
+  }
+
+  const unsignedPaid = data.paid.filter((p) => !p.team);
+  const unsignedUnpaid = data.unpaid.filter((p) => !p.team);
+  if (unsignedPaid.length + unsignedUnpaid.length > 0) {
+    lines.push(
+      "",
+      `**Unsigned starters** — paid ${unsignedPaid.length}, unpaid ${unsignedUnpaid.length}`,
+    );
+  }
+
   return lines.join("\n");
 }

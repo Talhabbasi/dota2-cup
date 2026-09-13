@@ -80,6 +80,7 @@ export async function getTeams() {
       id: true,
       name: true,
       purse: true,
+      groupKey: true,
       players: {
         select: {
           id: true,

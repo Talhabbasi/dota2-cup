@@ -17,6 +17,35 @@ export const REGULAR_BEST_OF = 1;
 export const FINAL_BEST_OF = 3;
 export const SERIES_WINS_FOR_FINAL = 2;
 
+function fixtureRoundLabel(kind: string, slotKey?: string | null) {
+  switch (slotKey) {
+    case "group-a-1":
+      return "Group A · Match 1";
+    case "group-a-2":
+      return "Group A · Match 2";
+    case "group-b-1":
+      return "Group B · Match 1";
+    case "group-b-2":
+      return "Group B · Match 2";
+    case "ub":
+      return "Upper bracket";
+    case "lb":
+      return "Elimination";
+    case "lb_final":
+      return "Elimination final";
+    case "final":
+      return "Grand Final";
+    default:
+      break;
+  }
+  if (kind === "final") return "Grand Final";
+  if (kind === "group") return "Group stage";
+  if (kind === "ub") return "Upper bracket";
+  if (kind === "lb") return "Elimination";
+  if (kind === "lb_final") return "Elimination final";
+  return weekendSlotLabel(0);
+}
+
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 const MONTH_NAMES = [
   "Jan", "Feb", "Mar", "Apr", "May", "Jun",
@@ -53,7 +82,7 @@ export function scheduleLateMinuteLocal(): number {
   return Number.isFinite(n) ? Math.min(59, Math.max(0, n)) : 30;
 }
 
-function localParts(date: Date, offsetH: number) {
+export function localParts(date: Date, offsetH: number) {
   const shifted = new Date(date.getTime() + offsetH * 3_600_000);
   return {
     year: shifted.getUTCFullYear(),
@@ -205,7 +234,7 @@ function scorePairForWeekend(
   return score;
 }
 
-function kickoffAt(
+export function kickoffAt(
   start: { year: number; month: number; day: number },
   weekendIndex: number,
   slot: number,
@@ -318,7 +347,7 @@ function distributeWeekendSlots(
   return result;
 }
 
-function teamRowFromRoster(team: {
+export function teamRowFromRoster(team: {
   id: string;
   name: string;
   players: { playWindow: string }[];
@@ -654,6 +683,11 @@ export async function completeScheduledFixture(input: {
         status: seriesOver ? "completed" : "scheduled",
       },
     });
+
+    if (seriesOver) {
+      const { advancePlayoff } = await import("./playoff");
+      await advancePlayoff(fixture.id);
+    }
   } catch {
     /* schedule optional until admin runs /schedule generate */
   }
@@ -672,10 +706,15 @@ export function formatScheduleSummary(
       lines.push(
         f.kind === "final"
           ? `\n**Grand Final** (best of ${f.bestOf} · first to ${Math.ceil(f.bestOf / 2)})`
-          : `\n**Weekend ${f.weekendIndex + 1}** (Fri / Sat / Sun · BO1 · 11:30 PM or 12:30 AM PKT · max 2 games per team)`,
+          : f.kind === "regular"
+            ? `\n**Weekend ${f.weekendIndex + 1}** (Fri / Sat / Sun · BO1 · 11:30 PM or 12:30 AM PKT · max 2 games per team)`
+            : `\n**Playoffs · Weekend ${f.weekendIndex + 1}**`,
       );
     }
-    const day = f.kind === "final" ? "Final" : weekendSlotLabel(f.slotIndex);
+    const day =
+      f.kind === "regular"
+        ? weekendSlotLabel(f.slotIndex)
+        : fixtureRoundLabel(f.kind, f.slotKey);
     const pkt = formatScheduleWhen(f.scheduledAt);
     const window =
       kickoffWindowFromDate(f.scheduledAt) === "late"

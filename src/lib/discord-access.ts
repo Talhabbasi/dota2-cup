@@ -7,7 +7,9 @@ import {
 } from "discord.js";
 import { adminRoleName } from "./constants";
 import { ensurePaymentsChannel } from "./cup-announcements";
-import { formatEntryFee } from "./registration-status";
+import { lockRegisteredPlayerChannels } from "./payments-channel-access";
+import { ensureDummyAuctionChannel } from "./dummy-auction-channel";
+import { syncTeamVoiceChannels } from "./team-voice";
 import {
   PLAY_WINDOW_ROLE_NAMES,
   type KickoffWindow,
@@ -111,18 +113,48 @@ export async function syncCupChannelAccess(guild: Guild) {
     }
   }
 
+  try {
+    await ensurePaymentsChannel(guild);
+  } catch (error) {
+    console.warn(
+      "Could not create or lock #payments (bot needs Manage Channels):",
+      error instanceof Error ? error.message : error,
+    );
+  }
+
+  try {
+    await lockRegisteredPlayerChannels(guild);
+  } catch (error) {
+    console.warn(
+      "Could not lock cup channels to registered players:",
+      error instanceof Error ? error.message : error,
+    );
+  }
+
+  try {
+    await syncTeamVoiceChannels(guild);
+  } catch (error) {
+    console.warn(
+      "Could not sync team voice channels:",
+      error instanceof Error ? error.message : error,
+    );
+  }
+
+  try {
+    const testAuction = await ensureDummyAuctionChannel(guild, {
+      botUserId: guild.client.user?.id,
+    });
+    console.log(`Admin-only #${testAuction.name} ready in ${guild.name}`);
+  } catch (error) {
+    console.warn(
+      "Could not create Admin-only #auction-test:",
+      error instanceof Error ? error.message : error,
+    );
+  }
+
   const auction = findTextChannel(guild, "auction");
   if (auction) {
     try {
-      await auction.permissionOverwrites.edit(guild.roles.everyone, {
-        ViewChannel: true,
-        ReadMessageHistory: true,
-        SendMessages: false,
-        SendMessagesInThreads: false,
-        CreatePublicThreads: false,
-        CreatePrivateThreads: false,
-        AddReactions: false,
-      });
       if (captainRole) {
         await allowStaff(auction, captainRole);
       }
@@ -134,19 +166,10 @@ export async function syncCupChannelAccess(guild: Guild) {
       }
     } catch (error) {
       console.warn(
-        "Could not lock #auction (need Manage Roles):",
+        "Could not give captains send access in #auction:",
         error instanceof Error ? error.message : error,
       );
     }
-  }
-
-  try {
-    await ensurePaymentsChannel(guild);
-  } catch (error) {
-    console.warn(
-      "Could not create or unhide #payments (bot needs Manage Channels):",
-      error instanceof Error ? error.message : error,
-    );
   }
 }
 
@@ -280,7 +303,8 @@ export async function syncCaptainRolesFromDb(guild: Guild) {
 export function describeChannelAccess() {
   return [
     `#captains — only **${captainRoleName()}** and **${adminRoleName()}** can see and chat.`,
-    `#auction — everyone can watch; only **${captainRoleName()}** and **${adminRoleName()}** can send messages.`,
-    `#payments — post a screenshot; an **Admin** clicks ✅ to confirm ${formatEntryFee()}.`,
+    `#auction — only **registered** players can watch; only **${captainRoleName()}** and **${adminRoleName()}** can send messages.`,
+    `#payments · #teams · #results — only **registered** players (and **${adminRoleName()}**) can see them.`,
+    `Team voice — only that team's roster can see their room (5 players). Their captain and **${adminRoleName()}** can drag members.`,
   ].join("\n");
 }

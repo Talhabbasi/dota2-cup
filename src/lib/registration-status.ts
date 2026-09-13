@@ -57,6 +57,22 @@ export function formatEntryFee() {
   return `Rs ${entryFeePkr().toLocaleString("en-PK")} PKR`;
 }
 
+export function paymentAccountNumber() {
+  return process.env.PAYMENT_ACCOUNT_NUMBER?.trim() || "0301-3396885";
+}
+
+export function paymentAccountName() {
+  return process.env.PAYMENT_ACCOUNT_NAME?.trim() || "Talha Abbasi";
+}
+
+export function paymentBankName() {
+  return process.env.PAYMENT_BANK_NAME?.trim() || "SadaPay";
+}
+
+export function paymentIban() {
+  return process.env.PAYMENT_IBAN?.trim() || "PK16SADA0000003013396885";
+}
+
 export function registrationClosedPublicMessage() {
   const channel = paymentsChannelName();
   return [
