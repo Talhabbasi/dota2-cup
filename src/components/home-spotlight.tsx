@@ -8,15 +8,17 @@ import type { MatchCardMatch } from "./match-card";
 type TeamRef = { id: string; name: string };
 
 function MatchFaceoff({
-  radiant,
-  dire,
+  left,
+  right,
   mid,
   linkTeams = true,
+  showSides = false,
 }: {
-  radiant: TeamRef;
-  dire: TeamRef;
+  left: TeamRef;
+  right: TeamRef;
   mid: ReactNode;
   linkTeams?: boolean;
+  showSides?: boolean;
 }) {
   function TeamName({ team }: { team: TeamRef }) {
     if (linkTeams && team.id) {
@@ -30,15 +32,19 @@ function MatchFaceoff({
   }
 
   return (
-    <div className="spotlight-faceoff">
-      <div className="spotlight-team radiant">
-        <span className="spotlight-side">Radiant</span>
-        <TeamName team={radiant} />
+    <div
+      className={
+        showSides ? "spotlight-faceoff" : "spotlight-faceoff spotlight-faceoff-plain"
+      }
+    >
+      <div className="spotlight-team">
+        {showSides ? <span className="spotlight-side spotlight-side-r">Radiant</span> : null}
+        <TeamName team={left} />
       </div>
       <div className="spotlight-vs">{mid}</div>
-      <div className="spotlight-team dire">
-        <span className="spotlight-side">Dire</span>
-        <TeamName team={dire} />
+      <div className="spotlight-team spotlight-team-end">
+        {showSides ? <span className="spotlight-side spotlight-side-d">Dire</span> : null}
+        <TeamName team={right} />
       </div>
     </div>
   );
@@ -62,9 +68,10 @@ export function LatestMatchSpotlight({
         <span className="spotlight-date">{formatMatchWhen(match.createdAt)}</span>
       </div>
       <MatchFaceoff
-        radiant={radiant}
-        dire={dire}
+        left={radiant}
+        right={dire}
         linkTeams={false}
+        showSides
         mid={
           <>
             <span className="spotlight-mid-label">vs</span>
@@ -101,16 +108,22 @@ export function UpcomingMatchSpotlight({
         </span>
       </div>
       <MatchFaceoff
-        radiant={fixture.radiantTeam}
-        dire={fixture.direTeam}
+        left={fixture.radiantTeam}
+        right={fixture.direTeam}
         mid={
           <>
             <span className="spotlight-mid-label">vs</span>
             <span className="spotlight-mid-meta">
               {fixture.kind === "final"
-                ? `Grand Final · BO${fixture.bestOf ?? 3}`
+                ? `Grand Final · Bo${fixture.bestOf ?? 3}`
+                : fixture.kind === "adv"
+                  ? `Advancement Match · Bo${fixture.bestOf ?? 1}`
+                  : fixture.kind === "ub_final"
+                    ? `Upper Final · Bo${fixture.bestOf ?? 1}`
+                    : fixture.kind === "lb_final"
+                      ? `Lower Final · Bo${fixture.bestOf ?? 1}`
                 : fixture.kind && fixture.kind !== "regular"
-                  ? `${fixture.kind === "ub" ? "Upper bracket" : fixture.kind === "lb" ? "Elimination" : fixture.kind === "lb_final" ? "Elimination final" : fixture.kind === "group" ? "Group stage" : "Playoff"} · BO${fixture.bestOf ?? 1}`
+                  ? `${fixture.kind === "ub" ? "Upper bracket" : fixture.kind === "lb" ? "Lower bracket" : fixture.kind === "group" ? "Group stage" : "Playoff"} · Bo${fixture.bestOf ?? 1}`
                   : `Best of ${fixture.bestOf ?? 1}`}
             </span>
           </>

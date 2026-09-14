@@ -3,7 +3,7 @@ import { MatchTimeZones } from "@/components/match-timezones";
 import { KICKOFF_SHORT } from "@/lib/play-window";
 import { weekendSlotLabel } from "@/lib/match-times";
 import { isPlayoffKind, playoffRoundLabel } from "@/lib/playoff";
-import { MATCHES_PER_WEEKEND, formatScheduleWhen, kickoffWindowFromDate } from "@/lib/schedule";
+import { formatScheduleWhen, kickoffWindowFromDate } from "@/lib/schedule";
 
 type Fixture = {
   id: string;
@@ -28,7 +28,6 @@ export function WeekendScheduleBlock({
   fixtures: Fixture[];
   champion?: { id: string; name: string; count: number } | null;
 }) {
-  const completed = fixtures.filter((f) => f.status === "completed").length;
   const nextFixture = fixtures.find((f) => f.status === "scheduled");
   const isFinal = fixtures.some((f) => f.kind === "final");
   const isPlayoff = fixtures.some((f) => isPlayoffKind(f.kind));
@@ -41,23 +40,19 @@ export function WeekendScheduleBlock({
             {isFinal
               ? "Grand Final"
               : isPlayoff
-                ? "Playoffs"
+                ? "This weekend"
                 : `Weekend ${weekendIndex + 1}`}
           </h2>
-          <span className="muted">
-            {isFinal
-              ? "Best of 3 · first to 2"
-              : isPlayoff
-                ? `${completed}/${fixtures.length} series done`
-                : `${completed}/${MATCHES_PER_WEEKEND} played · best of 1`}
-          </span>
+          <Link href="/schedule" className="text-link">
+            Full schedule
+          </Link>
         </div>
         <p className="weekend-rule muted">
           {isFinal
-            ? "Upper-bracket winner vs elimination-final winner. First to 2."
+            ? "Upper Final winner vs Lower Final winner. Bo3, first to 2."
             : isPlayoff
-              ? "Group winners play upper. The other group winners play elimination. Upper loser plays the elimination winner. Final is best of 3."
-              : "Three best-of-1 matches Fri / Sat / Sun. Kickoff is 11:30 PM PKT for the evening window, or 12:30 AM for after-midnight teams."}
+              ? "Saturday and Sunday only. Group stage 10:00 PM–6:00 AM PKT; playoffs 10:00 AM–3:00 AM PKT."
+              : "Saturday and Sunday only. Kickoff slots are 10:00 PM through 6:00 AM PKT."}
         </p>
 
         <div className="weekend-grid">

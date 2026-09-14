@@ -17,6 +17,8 @@ import {
   parseRegistrationRole,
   parseRolesJson,
   rosterRoleForTeamJoin,
+  sortTeamRoster,
+  starterCountOnTeam,
   stringifyRoles,
 } from "./roles";
 
@@ -54,7 +56,7 @@ export async function adminDeletePlayer(discordId: string) {
     const teamId = player.teamId;
     await prisma.player.update({
       where: { id: player.id },
-      data: { teamId: null, rosterRole: null },
+      data: { teamId: null, rosterRole: null, teamJoinedAt: null },
     });
     await rebalanceTeamRoster(teamId);
   }
@@ -103,7 +105,8 @@ export async function adminAddPlayerToTeam(input: {
     where: { id: player.id },
     data: {
       teamId: team.id,
-      rosterRole: rosterRoleForTeamJoin(team.players.length),
+      teamJoinedAt: new Date(),
+      rosterRole: rosterRoleForTeamJoin(starterCountOnTeam(team.players)),
     },
   });
   await rebalanceTeamRoster(team.id);
@@ -124,23 +127,48 @@ export async function adminRemovePlayerFromTeam(discordId: string) {
   const teamId = player.teamId;
   await prisma.player.update({
     where: { id: player.id },
-    data: { teamId: null, rosterRole: null },
+    data: { teamId: null, rosterRole: null, teamJoinedAt: null },
   });
   await rebalanceTeamRoster(teamId);
 
   return { name: player.steamName, teamName };
 }
 
-/** First 5 (captain first, then join order) are starters; 6–7 are subs. */
+/** Captain, then join order: first 5 are starters; 6–7 are subs. */
 export async function rebalanceTeamRoster(teamId: string) {
   const players = await prisma.player.findMany({
     where: { teamId },
-    orderBy: [{ isCaptain: "desc" }, { createdAt: "asc" }],
+    include: {
+      lots: {
+        where: { status: "sold", teamId },
+        select: { createdAt: true },
+        orderBy: { createdAt: "asc" },
+        take: 1,
+      },
+    },
   });
-  for (let i = 0; i < players.length; i++) {
+
+  const missingJoin = players.filter((player) => !player.teamJoinedAt);
+  for (const player of missingJoin) {
     await prisma.player.update({
-      where: { id: players[i].id },
-      data: { rosterRole: i >= MIN_ROSTER ? "sub" : null },
+      where: { id: player.id },
+      data: {
+        teamJoinedAt: player.lots[0]?.createdAt ?? player.createdAt,
+      },
+    });
+  }
+
+  const ordered = sortTeamRoster(
+    missingJoin.length === 0
+      ? players
+      : await prisma.player.findMany({ where: { teamId } }),
+  );
+  for (let i = 0; i < ordered.length; i++) {
+    const nextRole = i >= MIN_ROSTER ? "sub" : null;
+    if (ordered[i].rosterRole === nextRole) continue;
+    await prisma.player.update({
+      where: { id: ordered[i].id },
+      data: { rosterRole: nextRole },
     });
   }
 }
@@ -235,7 +263,7 @@ export async function adminCreateDummyTeams(teamCount = 2, rosterSize = MIN_ROST
 
     await prisma.player.update({
       where: { id: captain.id },
-      data: { teamId: team.id, rosterRole: null },
+      data: { teamId: team.id, rosterRole: null, teamJoinedAt: new Date() },
     });
     players.push(`${captain.steamName} (C)`);
 
@@ -253,6 +281,7 @@ export async function adminCreateDummyTeams(teamCount = 2, rosterSize = MIN_ROST
           medal,
           rolesJson: stringifyRoles([role]),
           teamId: team.id,
+          teamJoinedAt: new Date(),
           rosterRole: rosterRoleForTeamJoin(i),
         },
       });
@@ -301,7 +330,7 @@ export async function adminClearDummyTeams() {
     });
     await prisma.player.updateMany({
       where: { teamId: { in: teamIds } },
-      data: { teamId: null, rosterRole: null, isCaptain: false },
+      data: { teamId: null, rosterRole: null, isCaptain: false, teamJoinedAt: null },
     });
     await prisma.team.deleteMany({ where: { id: { in: teamIds } } });
   }

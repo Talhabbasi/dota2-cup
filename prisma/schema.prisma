@@ -19,6 +19,7 @@ model Player {
   teamId      String?
   team        Team?    @relation(fields: [teamId], references: [id], onDelete: SetNull)
   rosterRole  String?
+  teamJoinedAt DateTime?
   isCaptain   Boolean  @default(false)
   playWindow  String   @default("both")
   paidAt      DateTime?

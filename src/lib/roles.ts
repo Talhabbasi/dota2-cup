@@ -11,16 +11,31 @@ export function isRosterSub(rosterRole: string | null): boolean {
   return rosterRole === "sub";
 }
 
-/** First 5 on a team are starters; players 6–7 are subs. */
-export function rosterRoleForTeamJoin(currentSize: number): string | null {
-  return currentSize >= MIN_ROSTER ? "sub" : null;
+/** First 5 starters on a team; anyone joining after that is a sub. */
+export function rosterRoleForTeamJoin(starterCount: number): string | null {
+  return starterCount >= MIN_ROSTER ? "sub" : null;
 }
 
-export function sortTeamRoster<T extends { isCaptain: boolean; createdAt: Date }>(
-  players: T[],
-): T[] {
+export function starterCountOnTeam(
+  players: { rosterRole: string | null }[],
+): number {
+  return players.filter((player) => !isRosterSub(player.rosterRole)).length;
+}
+
+function joinTime(player: {
+  createdAt: Date;
+  teamJoinedAt?: Date | null;
+}): number {
+  return (player.teamJoinedAt ?? player.createdAt).getTime();
+}
+
+export function sortTeamRoster<
+  T extends { isCaptain: boolean; createdAt: Date; teamJoinedAt?: Date | null },
+>(players: T[]): T[] {
   return [...players].sort((a, b) => {
     if (a.isCaptain !== b.isCaptain) return a.isCaptain ? -1 : 1;
+    const joined = joinTime(a) - joinTime(b);
+    if (joined !== 0) return joined;
     return a.createdAt.getTime() - b.createdAt.getTime();
   });
 }

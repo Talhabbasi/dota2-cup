@@ -16,10 +16,36 @@ import {
   getMatchCount,
   getUpcomingFixture,
 } from "@/lib/data";
+import { PlayoffGraph } from "@/components/playoff-graph";
 import { getPlayoffView } from "@/lib/playoff";
 import { getActiveWeekendBundle } from "@/lib/schedule";
 
 export const revalidate = 30;
+
+function HomeGroupColumn({
+  title,
+  teams,
+}: {
+  title: string;
+  teams: { id: string; name: string }[];
+}) {
+  return (
+    <div className="home-group-col">
+      <h3>{title}</h3>
+      {teams.length === 0 ? (
+        <p className="muted">Not assigned yet.</p>
+      ) : (
+        <ul>
+          {teams.map((team) => (
+            <li key={team.id}>
+              <Link href={`/teams/${team.id}`}>{team.name}</Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
 
 export default async function Home() {
   const [table, matches, teamCount, matchCount, upcoming, weekend, playoff] =
@@ -72,7 +98,13 @@ export default async function Home() {
         </div>
 
         {showSpotlight ? (
-          <section className="home-spotlight">
+          <section
+            className={
+              latest && upcoming
+                ? "home-spotlight"
+                : "home-spotlight home-spotlight-solo"
+            }
+          >
             {latest ? <LatestMatchSpotlight match={latest} /> : null}
             {upcoming ? (
               <UpcomingMatchSpotlight fixture={upcoming} />
@@ -82,17 +114,19 @@ export default async function Home() {
 
         {playoff.groupA.length + playoff.groupB.length > 0 ? (
           <section className="home-playoff-link">
-            <div className="section-head row">
-              <h2>Playoffs</h2>
-              <Link href="/playoffs" className="text-link">
-                Groups
-              </Link>
+            <div className="weekend-board home-groups-board">
+              <div className="section-head row">
+                <h2>Group stage</h2>
+                <Link href="/playoffs" className="text-link">
+                  Full bracket
+                </Link>
+              </div>
+              <div className="home-groups-grid">
+                <HomeGroupColumn title="Group A" teams={playoff.groupA} />
+                <HomeGroupColumn title="Group B" teams={playoff.groupB} />
+              </div>
+              <PlayoffGraph view={playoff} compact />
             </div>
-            <p className="muted">
-              Group A · {playoff.groupA.map((team) => team.name).join(", ") || "empty"}
-              <br />
-              Group B · {playoff.groupB.map((team) => team.name).join(", ") || "empty"}
-            </p>
           </section>
         ) : null}
 

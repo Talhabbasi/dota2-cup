@@ -53,6 +53,7 @@ export async function adminAddCaptain(input: {
       teamId: team.id,
       isCaptain: true,
       rosterRole: null,
+      teamJoinedAt: new Date(),
     },
   });
 
@@ -92,6 +93,7 @@ export async function adminRemoveCaptain(discordId: string) {
       teamId: null,
       rosterRole: null,
       isCaptain: false,
+      teamJoinedAt: null,
     },
   });
 

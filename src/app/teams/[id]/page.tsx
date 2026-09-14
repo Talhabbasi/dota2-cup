@@ -47,8 +47,8 @@ export default async function TeamPage({
 
   const captain = team.players.find((p) => p.isCaptain);
   const ordered = sortTeamRoster(team.players);
-  const starters = ordered.filter((_, i) => i < 5);
-  const subs = ordered.filter((_, i) => i >= 5);
+  const starters = ordered.filter((player) => !isRosterSub(player.rosterRole));
+  const subs = ordered.filter((player) => isRosterSub(player.rosterRole));
   const record = standings.find((row) => row.id === team.id);
   const teamWindow = deriveTeamPlayWindow(
     team.players.map((p) => playWindowOrBoth(p.playWindow)),
@@ -76,8 +76,8 @@ export default async function TeamPage({
       />
 
       <TeamRosterBoard
-        starters={starters.map((p) => ({ ...toPlayerView(p), isSub: false }))}
-        subs={subs.map((p) => ({ ...toPlayerView(p), isSub: true }))}
+        starters={starters.map(toPlayerView)}
+        subs={subs.map(toPlayerView)}
       />
 
       <section className="team-matches-panel">

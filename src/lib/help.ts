@@ -18,7 +18,7 @@ export const HELP_COMMANDS = `**Anyone**
 \`/roster\` — your 5–7 and empty slots
 
 **Admin** (Discord role **Admin**)
-\`/admin setup\` — create **#payments** (registered players only), team voice rooms, and post this help in **#admin**
+\`/admin setup\` — create **#payments** (registered players only), private team chats, team voice rooms, and post this help in **#admin**
 \`/admin help\` — post this command list into **#admin** again
 \`/registration close\` — close website + Discord sign-ups (posts 3 announcements + creates #payments)
 \`/registration open\` — re-open public registration
@@ -31,18 +31,23 @@ export const HELP_COMMANDS = `**Anyone**
 \`/player list\` — every registered player (team, role, paid/unpaid)
 \`/player unsigned\` — players not on a team, grouped by rank
 \`/player register user:@x steam:<url> rank: role: when:\` — late add
-\`/player add user:@x team:<name>\` — add unsigned player to a team
-\`/player remove user:@x\` — take player off a team (keeps registration)
+\`/player add user:@x team:<name>\` — add unsigned player to a team (team chat + registered-player roles)
+\`/player remove user:@x\` — take player off a team and remove their team Discord role (keeps registration)
 \`/player delete user:@x\` — remove player from the cup (also off their team)
 \`/player edit user:@x rank:<medal> role:<role> when:<evening|late|both>\` — fix rank, role, and/or weekend window (or \`discord_id:<id>\`)
 \`/player resync user:@x\` — fix roster slot from registration
 \`/pay mark user:@x\` — mark paid without waiting for a screenshot tick
 \`/playoff groups\` — randomly split 8 teams into Group A / Group B
 \`/playoff assign team:<name> group:<A|B>\`
-\`/playoff generate\` — book the 4 group-stage matches (1 game per team)
-\`/playoff status\` · \`/playoff clear\`
-\`/schedule generate\` — old round-robin (only if you are not using playoffs)
+\`/playoff open\` — book playoffs from final group standings (does not touch group matches)
+\`/playoff post\` — post or refresh the bracket in **#matches**
+\`/playoff status\` · \`/playoff clear\` (clear keeps the group-stage grid)
+\`/schedule groups\` — book Group A Saturday + Group B Sunday round-robin (posts in **#matches**)
+\`/schedule add team_a: team_b: date:YYYY-MM-DD time:\` — book a Sat/Sun match (group 10pm–6am · playoffs 10am–3am PKT)
+\`/schedule edit fixture:\` — change teams or kickoff on a booked match (including auto-generated ones)
+\`/schedule remove fixture:\` — delete one booked match
 \`/schedule list\` · \`/schedule clear\`
+\`/schedule generate\` — old round-robin (only if you are not using playoffs)
 \`/auction start rank:<immortal|divine|ancient|legend|archon|crusader|guardian|herald|uncalibrated>\` — live cup in **#auction** (same rank together, any role)
 \`/auction pause\` · \`/auction resume\` · \`/auction skip\` · \`/auction confirm\`
 \`/auction revert user:@x\` or \`name:<steam>\` — return a sold player to the pool and refund the team points
@@ -56,15 +61,15 @@ export const HELP_GUIDE = `## How to run the cup
 
 **Payments.** Entry fee is **1000 PKR per person** via **SadaPay** (\`0301-3396885\`, IBAN \`PK16SADA0000003013396885\`, Talha Abbasi). Substitutes **do not pay**. A team is allowed only at **exactly 5000 PKR** (five starters). Post a transfer screenshot in **#payments**. An **Admin clicks ✅** to confirm. Backup: \`/pay mark\`. Check \`/pay collected\` for the running total, plus \`/pay unpaid\` and \`/pay teams\`.
 
-**Channels.** **#register**, **#captains**, and **#auction** are **commands only**. **#payments**, **#teams**, **#results**, and **#auction** are visible to **registered players only**. **#auction-test** is **Admin only** and never writes live cup data. **#payments** is screenshots only. Each team has a **5-player voice** room (captain + Admin can drag). Use **#general** for conversation.
+**Channels.** **#register**, **#captains**, and **#auction** are **commands only**. **#payments**, **#teams**, **#matches**, **#results**, and **#auction** are visible to **registered players only**. Each franchise also gets a **private team chat** (only that roster) and a **5-player voice** room (captain + Admin can drag). **#auction-test** is **Admin only** and never writes live cup data. **#payments** is screenshots only. Use **#general** for conversation.
 
 **Captains.** Only admins assign captains with \`/captain add user:@player team:<name>\`. Players cannot self-claim. Captains get **20,000** auction points in Discord.
 
-**Rosters.** Admins can manually add unsigned players with \`/player add\`. Role slots always follow what the player picked at registration. Players 6–7 on a roster are **subs** and skip the fee.
+**Rosters.** Admins can manually add unsigned players with \`/player add\` — they get that team's Discord role, private chat, and the same registered-player permissions as everyone else. \`/player remove\` takes the team role and chat away. Role slots always follow what the player picked at registration. Players 6–7 on a roster are **subs** and skip the fee.
 
 **Auction night.** Admin runs one **rank** pool at a time in #auction (Immortal, then Divine, and so on). Same medal = same pool, regardless of role. Captains buy any players within budget — no position limits. Roster is 5 starters + 2 subs (captain counts as a starter). Practice in **#auction-test** (Admin only) — that channel never writes purses, rosters, or the website.
 
-**Playoffs.** 8 teams, 2 groups of 4. Admin: \`/playoff groups\` then \`/playoff generate\`. Each team plays **1** group match. Match 1 winners play the **upper bracket**; Match 2 winners play **elimination**. Upper winner goes to the **best of 3 final**. Upper loser plays the elimination winner (also elimination). Kickoff is **11:30 PM PKT** when both teams can play 8pm–12am, or **12:30 AM PKT** when they only overlap after midnight. Post each game with \`!result\` — the next bracket match is created automatically.
+**Playoffs.** 8 teams, 2 groups of 4. Admin: \`/playoff groups\` then \`/schedule groups\` (Group A Saturday, Group B Sunday, 10:00 PM–4:00 AM PKT). When both groups finish, 4th is eliminated and \`/playoff open\` (or the last \`!result\`) books A3 vs B3 plus Upper Round 1. Playoff kickoffs are Saturday/Sunday **10:00 AM–3:00 AM PKT**. Grand Final is **Bo3**; every other series is **Bo1**. Change any booked match with \`/schedule edit\`. Kickoff times also show on the website **Schedule** / **Playoffs** pages and in **#matches**.
 
 **Reminders.** The bot pings captains in #general about **1 hour** before a scheduled match (configurable).
 

@@ -15,6 +15,7 @@ import {
   Routes,
   SlashCommandBuilder,
   StringSelectMenuBuilder,
+  type AutocompleteInteraction,
   type ChatInputCommandInteraction,
   type GuildMember,
   type Interaction,
@@ -57,6 +58,7 @@ import {
   botInviteUrl,
   describeDiscordChannelError,
   ensureAdminChannel,
+  matchesChannelName,
   postAdminCommandHelp,
   postCupAnnouncements,
   setupCupDiscord,
@@ -121,11 +123,31 @@ import {
   listScheduledFixtures,
 } from "../src/lib/schedule";
 import {
+  MATCH_NIGHT_TIME_CHOICES,
+  SCHEDULE_KIND_CHOICES,
+  createScheduledMatch,
+  deleteScheduledMatch,
+  formatFixtureChoiceLabel,
+  formatFixtureLine,
+  listEditableFixtures,
+  listTeamsForSchedule,
+  upcomingWeekendDates,
+  updateScheduledMatch,
+} from "../src/lib/schedule-crud";
+import { postGroupStageToMatches } from "../src/lib/group-stage-discord";
+import { postPlayoffToMatches } from "../src/lib/playoff-discord";
+import {
+  bookGroupStageRoundRobin,
+  bookedGroupStageFromDb,
+  formatGroupStageDiscord,
+} from "../src/lib/group-stage-schedule";
+import {
   assignPlayoffGroup,
   clearPlayoffFixtures,
   formatPlayoffStatus,
   generatePlayoffGroupStage,
   getPlayoffView,
+  openPlayoffsFromGroups,
   seedPlayoffGroups,
 } from "../src/lib/playoff";
 import { fullHelpText, splitDiscordChunks } from "../src/lib/help";
@@ -144,8 +166,11 @@ import {
   describeChannelAccess,
   syncCaptainRolesFromDb,
   syncCupChannelAccess,
+  tryGrantCupPlayerAccess,
+  tryRevokeCupPlayerAccess,
   trySetMemberCaptainRole,
   trySetPlayWindowRoles,
+  trySyncCupChannelAccess,
 } from "../src/lib/discord-access";
 import { trySetMemberRegisteredRole } from "../src/lib/payments-channel-access";
 import { syncGuildIcon } from "../src/lib/guild-branding";
@@ -494,7 +519,7 @@ const commands = [
     .addSubcommand((s) =>
       s
         .setName("setup")
-        .setDescription("Create #payments, lock cup channels, team voice, and #auction-test"),
+        .setDescription("Create #payments, lock cup channels, team chats, team voice, and #auction-test"),
     )
     .addSubcommand((s) =>
       s.setName("help").setDescription("Post all bot commands into #admin"),
@@ -564,7 +589,122 @@ const commands = [
     ),
   new SlashCommandBuilder()
     .setName("schedule")
-    .setDescription("Weekend round-robin match schedule")
+    .setDescription("Weekend match schedule (Sat/Sun)")
+    .addSubcommand((s) =>
+      s
+        .setName("add")
+        .setDescription("Admin: book Team A vs Team B on a Saturday or Sunday")
+        .addStringOption((o) =>
+          o
+            .setName("team_a")
+            .setDescription("First team")
+            .setRequired(true)
+            .setAutocomplete(true),
+        )
+        .addStringOption((o) =>
+          o
+            .setName("team_b")
+            .setDescription("Second team")
+            .setRequired(true)
+            .setAutocomplete(true),
+        )
+        .addStringOption((o) =>
+          o
+            .setName("date")
+            .setDescription("Saturday or Sunday as YYYY-MM-DD")
+            .setRequired(true)
+            .setAutocomplete(true),
+        )
+        .addStringOption((o) =>
+          o
+            .setName("time")
+            .setDescription("Kickoff (group: 10pm–6am · playoffs: 10am–3am PKT)")
+            .setRequired(true)
+            .addChoices(...MATCH_NIGHT_TIME_CHOICES),
+        )
+        .addStringOption((o) =>
+          o
+            .setName("kind")
+            .setDescription("Match type (default: group stage)")
+            .addChoices(...SCHEDULE_KIND_CHOICES),
+        ),
+    )
+    .addSubcommand((s) =>
+      s
+        .setName("edit")
+        .setDescription("Admin: change teams or time on a scheduled match")
+        .addStringOption((o) =>
+          o
+            .setName("fixture")
+            .setDescription("Which match to change")
+            .setRequired(true)
+            .setAutocomplete(true),
+        )
+        .addStringOption((o) =>
+          o
+            .setName("team_a")
+            .setDescription("New first team")
+            .setAutocomplete(true),
+        )
+        .addStringOption((o) =>
+          o
+            .setName("team_b")
+            .setDescription("New second team")
+            .setAutocomplete(true),
+        )
+        .addStringOption((o) =>
+          o
+            .setName("date")
+            .setDescription("New Saturday or Sunday as YYYY-MM-DD")
+            .setAutocomplete(true),
+        )
+        .addStringOption((o) =>
+          o
+            .setName("time")
+            .setDescription("New kickoff (group: 10pm–6am · playoffs: 10am–3am PKT)")
+            .addChoices(...MATCH_NIGHT_TIME_CHOICES),
+        )
+        .addStringOption((o) =>
+          o
+            .setName("kind")
+            .setDescription("Match type")
+            .addChoices(...SCHEDULE_KIND_CHOICES),
+        ),
+    )
+    .addSubcommand((s) =>
+      s
+        .setName("remove")
+        .setDescription("Admin: delete a scheduled match")
+        .addStringOption((o) =>
+          o
+            .setName("fixture")
+            .setDescription("Which match to delete")
+            .setRequired(true)
+            .setAutocomplete(true),
+        ),
+    )
+    .addSubcommand((s) =>
+      s
+        .setName("groups")
+        .setDescription("Admin: book Group A Saturday + Group B Sunday round-robin")
+        .addStringOption((o) =>
+          o
+            .setName("saturday")
+            .setDescription("Group A date YYYY-MM-DD (default: next Saturday)")
+            .setAutocomplete(true),
+        )
+        .addStringOption((o) =>
+          o
+            .setName("sunday")
+            .setDescription("Group B date YYYY-MM-DD (default: next Sunday)")
+            .setAutocomplete(true),
+        )
+        .addBooleanOption((o) =>
+          o
+            .setName("force")
+            .setDescription("Replace group matches that are still scheduled"),
+        ),
+    )
     .addSubcommand((s) =>
       s
         .setName("generate")
@@ -633,7 +773,7 @@ const commands = [
     .addSubcommand((s) =>
       s
         .setName("generate")
-        .setDescription("Admin: book the 4 group-stage matches")
+        .setDescription("Admin: book the 4-match legacy group stage (not the round-robin)")
         .addStringOption((o) =>
           o
             .setName("friday")
@@ -647,8 +787,18 @@ const commands = [
     )
     .addSubcommand((s) =>
       s
+        .setName("open")
+        .setDescription("Admin: book playoffs from final group standings"),
+    )
+    .addSubcommand((s) =>
+      s
+        .setName("post")
+        .setDescription("Admin: post or refresh the playoff bracket in #matches"),
+    )
+    .addSubcommand((s) =>
+      s
         .setName("clear")
-        .setDescription("Admin: delete pending playoff fixtures"),
+        .setDescription("Admin: delete pending playoff fixtures (keeps group matches)"),
     ),
   new SlashCommandBuilder()
     .setName("result")
@@ -748,6 +898,51 @@ function isOrganizerInteraction(interaction: {
 function fail(error: unknown): string {
   console.error(error);
   return publicErrorMessage(error);
+}
+
+async function handleScheduleAutocomplete(interaction: AutocompleteInteraction) {
+  if (interaction.commandName !== "schedule") {
+    await interaction.respond([]);
+    return;
+  }
+  const focused = interaction.options.getFocused(true);
+  const query = focused.value.trim().toLowerCase();
+
+  if (focused.name === "team_a" || focused.name === "team_b") {
+    const teams = await listTeamsForSchedule();
+    const choices = teams
+      .filter((team) => !query || team.name.toLowerCase().includes(query))
+      .slice(0, 25)
+      .map((team) => ({ name: team.name.slice(0, 100), value: team.name }));
+    await interaction.respond(choices);
+    return;
+  }
+
+  if (focused.name === "date" || focused.name === "saturday" || focused.name === "sunday") {
+    const dates = upcomingWeekendDates(8).filter(
+      (row) =>
+        !query ||
+        row.value.includes(query) ||
+        row.name.toLowerCase().includes(query),
+    );
+    await interaction.respond(dates.slice(0, 25));
+    return;
+  }
+
+  if (focused.name === "fixture") {
+    const fixtures = await listEditableFixtures(25);
+    const choices = fixtures
+      .map((fixture) => ({
+        name: formatFixtureChoiceLabel(fixture),
+        value: fixture.id,
+      }))
+      .filter((row) => !query || row.name.toLowerCase().includes(query))
+      .slice(0, 25);
+    await interaction.respond(choices);
+    return;
+  }
+
+  await interaction.respond([]);
 }
 
 async function editReplyChunks(
@@ -1539,27 +1734,24 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
           discordId: user.id,
           teamName: interaction.options.getString("team", true),
         });
+        const captain = team.players.find((p) => p.isCaptain);
+        await tryGrantCupPlayerAccess(
+          interaction.guild,
+          user.id,
+          captain?.playWindow,
+        );
         const roleNote = await trySetMemberCaptainRole(
           interaction.guild,
           user.id,
           true,
         );
-        if (interaction.guild) {
-          try {
-            await syncCupChannelAccess(interaction.guild);
-          } catch (error) {
-            console.warn(
-              "channel access after captain add",
-              error instanceof Error ? error.message : error,
-            );
-          }
-        }
+        await trySyncCupChannelAccess(interaction.guild);
         void notifySiteRefresh();
         await interaction.editReply(
           [
             `${user} is now captain of **${team.name}** (${STARTING_PURSE} points).`,
             roleNote ??
-              "They can use **#captains** and chat in **#auction**.",
+              "They got the team role, registered-player access, **#captains**, and their private team chat.",
           ].join("\n"),
         );
         return;
@@ -1571,20 +1763,11 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
         user.id,
         false,
       );
-      if (interaction.guild) {
-        try {
-          await syncCupChannelAccess(interaction.guild);
-        } catch (error) {
-          console.warn(
-            "channel access after captain remove",
-            error instanceof Error ? error.message : error,
-          );
-        }
-      }
+      await trySyncCupChannelAccess(interaction.guild);
       void notifySiteRefresh();
       await interaction.editReply(
         [
-          `Removed captain ${user}. **${removed.teamName}** is dissolved; players are unsigned again.`,
+          `Removed captain ${user}. **${removed.teamName}** is dissolved; players are unsigned again and lost that team's Discord role and private chat.`,
           roleNote,
         ]
           .filter(Boolean)
@@ -1633,6 +1816,7 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
       if (sub === "dummy-teams") {
         const count = interaction.options.getInteger("count") ?? 2;
         const result = await adminCreateDummyTeams(count);
+        await trySyncCupChannelAccess(interaction.guild);
         const body = result.created
           .map((t) => `• **${t.name}** — ${t.players.length}/7`)
           .join("\n");
@@ -1643,6 +1827,7 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
       }
       if (sub === "dummy-teams-clear") {
         const result = await adminClearDummyTeams();
+        await trySyncCupChannelAccess(interaction.guild);
         await interaction.editReply(
           result.teams === 0
             ? "No dummy teams to delete."
@@ -1718,7 +1903,8 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
       const user = interaction.options.getUser("user", true);
       if (sub === "delete") {
         const removed = await adminDeletePlayer(user.id);
-        await trySetMemberRegisteredRole(interaction.guild, user.id, false);
+        await tryRevokeCupPlayerAccess(interaction.guild, user.id);
+        await trySyncCupChannelAccess(interaction.guild);
         await interaction.editReply(
           `Deleted registration for **${removed.name}**.${
             removed.teamName ? ` Removed from **${removed.teamName}**.` : ""
@@ -1735,35 +1921,22 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
           discordId: user.id,
           teamName: interaction.options.getString("team", true),
         });
-        if (interaction.guild) {
-          try {
-            await syncCupChannelAccess(interaction.guild);
-          } catch (error) {
-            console.warn(
-              "channel access after player add",
-              error instanceof Error ? error.message : error,
-            );
-          }
-        }
+        await tryGrantCupPlayerAccess(
+          interaction.guild,
+          user.id,
+          result.player.playWindow,
+        );
+        await trySyncCupChannelAccess(interaction.guild);
         await interaction.editReply(
-          `Added **${result.player.steamName}** to **${result.team.name}**.`,
+          `Added **${result.player.steamName}** to **${result.team.name}**. They can see that team's private chat and have the same registered-player roles as everyone else.`,
         );
         return;
       }
       if (sub === "remove") {
         const removed = await adminRemovePlayerFromTeam(user.id);
-        if (interaction.guild) {
-          try {
-            await syncCupChannelAccess(interaction.guild);
-          } catch (error) {
-            console.warn(
-              "channel access after player remove",
-              error instanceof Error ? error.message : error,
-            );
-          }
-        }
+        await trySyncCupChannelAccess(interaction.guild);
         await interaction.editReply(
-          `Removed **${removed.name}** from **${removed.teamName}**.`,
+          `Removed **${removed.name}** from **${removed.teamName}**. Their team Discord role and private chat access are gone (registration kept).`,
         );
         return;
       }
@@ -1961,6 +2134,9 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
         }
         const result = await revertSoldAuctionPlayers([steamName]);
         void notifySiteRefresh();
+        if (!sandbox) {
+          await trySyncCupChannelAccess(interaction.guild);
+        }
         const row = result.reverted[0];
         await interaction.editReply({
           content: row
@@ -1983,6 +2159,12 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
       });
       if (interaction.channel?.type === ChannelType.GuildText) {
         await publishLot(interaction.channel, view);
+      }
+      if (
+        !sandbox &&
+        (sub === "confirm" || sub === "undo")
+      ) {
+        await trySyncCupChannelAccess(interaction.guild);
       }
       return;
     }
@@ -2118,7 +2300,7 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
         await interaction.reply({
           content:
             fixtures.length === 0
-              ? "No fixtures scheduled. Admin: `/schedule generate` after every team has 5+ players."
+              ? "No fixtures scheduled. Admin: `/schedule add` (Sat/Sun) or `/schedule groups`."
               : `**Upcoming schedule** (${total.length} total)\n${body}`,
         });
         return;
@@ -2136,6 +2318,72 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
           n === 0
             ? "No pending fixtures to clear."
             : `Cleared **${n}** scheduled fixtures.`,
+        );
+        return;
+      }
+      if (sub === "add") {
+        await interaction.deferReply();
+        const fixture = await createScheduledMatch({
+          teamA: interaction.options.getString("team_a", true),
+          teamB: interaction.options.getString("team_b", true),
+          date: interaction.options.getString("date", true),
+          time: interaction.options.getString("time", true),
+          kind: interaction.options.getString("kind") ?? undefined,
+        });
+        void notifySiteRefresh();
+        await interaction.editReply(
+          `Scheduled ${formatFixtureLine(fixture)}.\nShown on the website **Schedule** page.`,
+        );
+        return;
+      }
+      if (sub === "edit") {
+        await interaction.deferReply();
+        const fixture = await updateScheduledMatch({
+          fixtureId: interaction.options.getString("fixture", true),
+          teamA: interaction.options.getString("team_a"),
+          teamB: interaction.options.getString("team_b"),
+          date: interaction.options.getString("date"),
+          time: interaction.options.getString("time"),
+          kind: interaction.options.getString("kind"),
+        });
+        void notifySiteRefresh();
+        await interaction.editReply(`Updated ${formatFixtureLine(fixture)}.`);
+        return;
+      }
+      if (sub === "remove") {
+        await interaction.deferReply();
+        const fixture = await deleteScheduledMatch(
+          interaction.options.getString("fixture", true),
+        );
+        void notifySiteRefresh();
+        await interaction.editReply(
+          `Removed **${fixture.radiantTeam.name}** vs **${fixture.direTeam.name}** (${formatScheduleWhen(fixture.scheduledAt)}).`,
+        );
+        return;
+      }
+      if (sub === "groups") {
+        await interaction.deferReply();
+        const result = await bookGroupStageRoundRobin({
+          saturday: interaction.options.getString("saturday") ?? undefined,
+          sunday: interaction.options.getString("sunday") ?? undefined,
+          force: interaction.options.getBoolean("force") ?? false,
+        });
+        void notifySiteRefresh();
+        let posted = "";
+        if (interaction.guild) {
+          try {
+            const post = await postGroupStageToMatches(
+              interaction.guild,
+              result,
+              { botUserId: client.user?.id, force: true },
+            );
+            posted = `\nPosted in ${post.channel}.`;
+          } catch (error) {
+            posted = `\nBooked, but could not post in **#${matchesChannelName()}**: ${error instanceof Error ? error.message : "need Manage Channels"}.`;
+          }
+        }
+        await interaction.editReply(
+          `${formatGroupStageDiscord(result)}${posted}`,
         );
         return;
       }
@@ -2184,7 +2432,11 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
       const sub = interaction.options.getSubcommand();
       if (sub === "status") {
         const view = await getPlayoffView();
-        await interaction.reply({ content: formatPlayoffStatus(view) });
+        const chunks = splitDiscordChunks(formatPlayoffStatus(view));
+        await interaction.reply({ content: chunks[0] });
+        for (const chunk of chunks.slice(1)) {
+          await interaction.followUp({ content: chunk });
+        }
         return;
       }
       if (!isOrganizer(member, discordId)) {
@@ -2198,8 +2450,57 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
         const n = await clearPlayoffFixtures();
         await interaction.reply(
           n === 0
-            ? "No pending playoff fixtures to clear."
-            : `Cleared **${n}** pending playoff fixtures.`,
+            ? "No pending playoff fixtures to clear. Group matches are never removed by this command."
+            : `Cleared **${n}** pending playoff fixtures. Group matches were left in place.`,
+        );
+        return;
+      }
+      if (sub === "open") {
+        await interaction.deferReply();
+        const result = await openPlayoffsFromGroups();
+        const view = await getPlayoffView();
+        if (interaction.guild) {
+          await postPlayoffToMatches(interaction.guild, {
+            botUserId: interaction.client.user?.id,
+            force: true,
+          });
+        }
+        void notifySiteRefresh();
+        const chunks = splitDiscordChunks(
+          [
+            result.created.length
+              ? `Playoffs opened. Booked **${result.created.length}** match(es): ${result.created.join(", ")}.`
+              : "Playoff slots that are already unlocked were already booked.",
+            "4th in each group is eliminated. Advancement is A3 vs B3 (Bo1). Grand Final is Bo3.",
+            "",
+            formatPlayoffStatus(view),
+          ].join("\n"),
+        );
+        await interaction.editReply({ content: chunks[0] });
+        for (const chunk of chunks.slice(1)) {
+          await interaction.followUp({ content: chunk });
+        }
+        return;
+      }
+      if (sub === "post") {
+        if (!interaction.guild) {
+          await interaction.reply({
+            content: "Run this in the cup server.",
+            flags: MessageFlags.Ephemeral,
+          });
+          return;
+        }
+        await interaction.deferReply();
+        const post = await postPlayoffToMatches(interaction.guild, {
+          botUserId: interaction.client.user?.id,
+          force: true,
+        });
+        await interaction.editReply(
+          post.posted
+            ? `Posted the playoff bracket in ${post.channel}.`
+            : post.updated
+              ? `Updated the pinned playoff bracket in ${post.channel}.`
+              : "Nothing to post yet — finish the group stage first.",
         );
         return;
       }
@@ -2273,6 +2574,10 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
       });
       void notifySiteRefresh();
       await interaction.editReply(formatMatchReply(match));
+      if (interaction.guild) {
+        await syncPlayoffMatchesChannel(interaction.guild);
+      }
+      return;
     }
   } catch (error) {
     const text = fail(error);
@@ -2306,6 +2611,17 @@ function formatMatchReply(match: Awaited<ReturnType<typeof ingestMatch>>): strin
     unknown ? `${unknown} unknown Steam account(s) — admin can \`/result assign\`.` : "All 10 players mapped.",
     lines.join("\n"),
   ].join("\n");
+}
+
+async function syncPlayoffMatchesChannel(guild: import("discord.js").Guild) {
+  try {
+    await postPlayoffToMatches(guild, { botUserId: client.user?.id });
+  } catch (error) {
+    console.warn(
+      `playoff #matches sync (${guild.name})`,
+      error instanceof Error ? error.message : error,
+    );
+  }
 }
 
 async function saveProof(message: Message, matchHint: string): Promise<string | null> {
@@ -2426,12 +2742,27 @@ async function handlePrefixResult(message: Message) {
     const match = await ingestMatch({ raw, screenshotPath });
     void notifySiteRefresh();
     await message.reply(formatMatchReply(match));
+    if (message.guild) await syncPlayoffMatchesChannel(message.guild);
   } catch (error) {
     await message.reply(fail(error));
   }
 }
 
 client.on("interactionCreate", async (interaction: Interaction) => {
+  if (interaction.isAutocomplete()) {
+    try {
+      await handleScheduleAutocomplete(interaction);
+    } catch (error) {
+      console.warn(
+        "schedule autocomplete",
+        error instanceof Error ? error.message : error,
+      );
+      if (!interaction.responded) {
+        await interaction.respond([]).catch(() => undefined);
+      }
+    }
+    return;
+  }
   if (interaction.isStringSelectMenu() && interaction.customId === "register:role") {
     if (!isRegisterChannel(interaction)) {
       await interaction.reply({
@@ -2535,6 +2866,9 @@ client.on("interactionCreate", async (interaction: Interaction) => {
         );
         if (interaction.channel?.type === ChannelType.GuildText) {
           await publishLot(interaction.channel, view);
+        }
+        if (!sandbox && spec === "confirm") {
+          await trySyncCupChannelAccess(interaction.guild);
         }
         return;
       }
@@ -2658,6 +2992,41 @@ client.once(Events.ClientReady, async () => {
     } catch (error) {
       console.warn(
         `Could not refresh #payments announcement (${guild.name}):`,
+        error instanceof Error ? error.message : error,
+      );
+    }
+    try {
+      const booked = await bookedGroupStageFromDb();
+      if (booked) {
+        const post = await postGroupStageToMatches(guild, booked, {
+          botUserId: client.user?.id,
+        });
+        if (post.posted) {
+          console.log(`Posted group stage in #${post.channel.name} (${guild.name})`);
+        }
+      }
+    } catch (error) {
+      console.warn(
+        `Could not post group stage in #${matchesChannelName()} (${guild.name}):`,
+        error instanceof Error ? error.message : error,
+      );
+    }
+    try {
+      const view = await getPlayoffView();
+      if (view.groupStageComplete) {
+        await openPlayoffsFromGroups();
+        const post = await postPlayoffToMatches(guild, {
+          botUserId: client.user?.id,
+        });
+        if (post.posted) {
+          console.log(`Posted playoffs in #${post.channel.name} (${guild.name})`);
+        } else if (post.updated) {
+          console.log(`Updated playoffs in #${post.channel.name} (${guild.name})`);
+        }
+      }
+    } catch (error) {
+      console.warn(
+        `Could not sync playoffs in #${matchesChannelName()} (${guild.name}):`,
         error instanceof Error ? error.message : error,
       );
     }

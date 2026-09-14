@@ -12,13 +12,27 @@ import {
   scheduleUtcOffsetHours,
   teamRowFromRoster,
 } from "./schedule";
+import {
+  BRACKET_META,
+  BRACKET_SLOTS,
+  advanceBracket,
+  isBracketSlot,
+  loadPlayoffSeeds,
+  maybeOpenPlayoffsFromGroups,
+  seriesWinnerLoser,
+  unlockedPairings,
+  type BracketSlot,
+} from "./playoff-bracket";
+import type { GroupStandingRow } from "./group-stage-schedule";
 
 export const PLAYOFF_TEAM_COUNT = 8;
 export const PLAYOFF_GROUP_SIZE = 4;
 
 export const PLAYOFF_KINDS = [
   "group",
+  "adv",
   "ub",
+  "ub_final",
   "lb",
   "lb_final",
   "final",
@@ -56,6 +70,7 @@ export function playoffRoundLabel(
   kind: string | null | undefined,
   slotKey?: string | null,
 ) {
+  if (isBracketSlot(slotKey)) return BRACKET_META[slotKey].label;
   switch (slotKey) {
     case "group-a-1":
       return "Group A · Match 1";
@@ -70,7 +85,7 @@ export function playoffRoundLabel(
     case "lb":
       return "Elimination";
     case "lb_final":
-      return "Elimination final";
+      return "Lower Final";
     case "final":
       return "Grand Final";
     default:
@@ -79,12 +94,16 @@ export function playoffRoundLabel(
   switch (kind) {
     case "group":
       return "Group stage";
+    case "adv":
+      return "Advancement Match";
     case "ub":
       return "Upper bracket";
+    case "ub_final":
+      return "Upper Final";
     case "lb":
-      return "Elimination";
+      return "Lower bracket";
     case "lb_final":
-      return "Elimination final";
+      return "Lower Final";
     case "final":
       return "Grand Final";
     default:
@@ -280,6 +299,15 @@ export async function generatePlayoffGroupStage(input?: {
     );
   }
 
+  const groupRoundRobin = await prisma.scheduledFixture.count({
+    where: { kind: "group", slotKey: null },
+  });
+  if (groupRoundRobin > 0) {
+    throw new Error(
+      "The 12-match group round-robin is already booked. Finish Group A and Group B, then use `/playoff open` to start the playoff bracket. Do not run `/playoff generate`.",
+    );
+  }
+
   const pending = await prisma.scheduledFixture.findMany({
     where: {
       status: "scheduled",
@@ -392,8 +420,9 @@ export async function clearPlayoffFixtures() {
     where: {
       status: "scheduled",
       OR: [
-        { kind: { in: ["group", "ub", "lb", "lb_final"] } },
-        { slotKey: { in: [...PLAYOFF_SLOTS] } },
+        { slotKey: { in: [...BRACKET_SLOTS] } },
+        { kind: { in: ["adv", "ub", "ub_final", "lb", "lb_final", "final"] } },
+        { slotKey: { in: ["ub", "lb", "lb_final", "final"] } },
       ],
     },
   });
@@ -444,7 +473,18 @@ export async function advancePlayoff(fixtureId: string) {
   const fixture = await prisma.scheduledFixture.findUnique({
     where: { id: fixtureId },
   });
-  if (!fixture || fixture.status !== "completed" || !fixture.slotKey) return;
+  if (!fixture || fixture.status !== "completed") return;
+
+  if (fixture.kind === "group" || !fixture.slotKey) {
+    await maybeOpenPlayoffsFromGroups();
+  }
+
+  if (isBracketSlot(fixture.slotKey)) {
+    await advanceBracket();
+    return;
+  }
+
+  if (!fixture.slotKey) return;
 
   const winnerId = seriesWinner(fixture);
   const loserId = seriesLoser(fixture);
@@ -528,49 +568,135 @@ export async function advancePlayoff(fixtureId: string) {
 }
 
 export type PlayoffMatchView = {
-  slotKey: PlayoffSlot;
+  slotKey: BracketSlot;
   kind: string;
   label: string;
+  round: string;
+  stage: "advancement" | "upper" | "lower" | "grand";
+  matchNumber: number | null;
   status: "empty" | "scheduled" | "completed";
+  displayStatus: "waiting" | "upcoming" | "live" | "completed";
   bestOf: number;
+  formatLabel: string;
   radiant: { id: string; name: string } | null;
   dire: { id: string; name: string } | null;
   winner: { id: string; name: string } | null;
+  loser: { id: string; name: string } | null;
   scheduledAt: Date | null;
   radiantWins: number;
   direWins: number;
+  waitingReason: string | null;
+  winnerGoes: string;
+  loserGoes: string;
+  leftLabel: string;
+  rightLabel: string;
 };
 
 export type PlayoffView = {
   groupA: { id: string; name: string }[];
   groupB: { id: string; name: string }[];
   unassigned: { id: string; name: string }[];
+  standingsA: GroupStandingRow[];
+  standingsB: GroupStandingRow[];
   matches: PlayoffMatchView[];
+  groupRoundRobin: number;
+  groupStageComplete: boolean;
+  eliminated: { id: string; name: string }[];
 };
 
-function emptyMatch(slotKey: PlayoffSlot, kind: PlayoffKind): PlayoffMatchView {
+function displayStatusFor(
+  status: PlayoffMatchView["status"],
+  scheduledAt: Date | null,
+  bestOf: number,
+  now: Date,
+): PlayoffMatchView["displayStatus"] {
+  if (status === "completed") return "completed";
+  if (status === "empty" || !scheduledAt) return "waiting";
+  const durationMs = (bestOf >= 3 ? 4 : 2) * 60 * 60 * 1000;
+  if (now.getTime() >= scheduledAt.getTime() && now.getTime() < scheduledAt.getTime() + durationMs) {
+    return "live";
+  }
+  return "upcoming";
+}
+
+function matchViewFromSlot(
+  slotKey: BracketSlot,
+  fixture:
+    | {
+        kind: string;
+        status: string;
+        bestOf: number;
+        scheduledAt: Date;
+        radiantWins: number;
+        direWins: number;
+        radiantTeamId: string;
+        direTeamId: string;
+        radiantTeam: { id: string; name: string };
+        direTeam: { id: string; name: string };
+      }
+    | undefined,
+  pairing: { left: { id: string; name: string } | null; right: { id: string; name: string } | null },
+  now: Date,
+): PlayoffMatchView {
+  const meta = BRACKET_META[slotKey];
+  const radiant = fixture?.radiantTeam ?? pairing.left;
+  const dire = fixture?.direTeam ?? pairing.right;
+  const status: PlayoffMatchView["status"] = fixture
+    ? fixture.status === "completed"
+      ? "completed"
+      : "scheduled"
+    : "empty";
+  const outcome = fixture && fixture.status === "completed"
+    ? seriesWinnerLoser({
+        radiantTeamId: fixture.radiantTeam.id,
+        direTeamId: fixture.direTeam.id,
+        radiantWins: fixture.radiantWins,
+        direWins: fixture.direWins,
+        radiantTeam: fixture.radiantTeam,
+        direTeam: fixture.direTeam,
+      })
+    : null;
+  const ready = Boolean(radiant && dire);
   return {
     slotKey,
-    kind,
-    label: playoffRoundLabel(kind, slotKey),
-    status: "empty",
-    bestOf: slotKey === "final" ? FINAL_BEST_OF : REGULAR_BEST_OF,
-    radiant: null,
-    dire: null,
-    winner: null,
-    scheduledAt: null,
-    radiantWins: 0,
-    direWins: 0,
+    kind: fixture?.kind ?? meta.kind,
+    label: meta.label,
+    round: meta.round,
+    stage: meta.stage,
+    matchNumber: meta.matchNumber,
+    status,
+    displayStatus: displayStatusFor(status, fixture?.scheduledAt ?? null, fixture?.bestOf ?? meta.bestOf, now),
+    bestOf: fixture?.bestOf ?? meta.bestOf,
+    formatLabel: (fixture?.bestOf ?? meta.bestOf) >= 3 ? "Bo3" : "Bo1",
+    radiant,
+    dire,
+    winner: outcome?.winner ?? null,
+    loser: outcome?.loser ?? null,
+    scheduledAt: fixture?.scheduledAt ?? null,
+    radiantWins: fixture?.radiantWins ?? 0,
+    direWins: fixture?.direWins ?? 0,
+    waitingReason:
+      status === "empty"
+        ? ready
+          ? "Ready once the previous results are locked in"
+          : meta.waiting
+        : null,
+    winnerGoes: meta.winnerGoes,
+    loserGoes: meta.loserGoes,
+    leftLabel: meta.leftLabel,
+    rightLabel: meta.rightLabel,
   };
 }
 
 export async function getPlayoffView(): Promise<PlayoffView> {
   const teams = await liveTeams();
+  const { groupA: standingsA, groupB: standingsB, complete, seeds } = await loadPlayoffSeeds();
+  const now = new Date();
   const fixtures = await prisma.scheduledFixture.findMany({
     where: {
       OR: [
         { kind: { in: [...PLAYOFF_KINDS] } },
-        { slotKey: { in: [...PLAYOFF_SLOTS] } },
+        { slotKey: { in: [...PLAYOFF_SLOTS, ...BRACKET_SLOTS] } },
       ],
     },
     include: {
@@ -578,38 +704,22 @@ export async function getPlayoffView(): Promise<PlayoffView> {
       direTeam: { select: { id: true, name: true } },
     },
   });
-  const bySlot = new Map(fixtures.filter((row) => row.slotKey).map((row) => [row.slotKey, row]));
-
-  const matches = PLAYOFF_SLOTS.map((slotKey) => {
-    const kind: PlayoffKind =
-      slotKey.startsWith("group")
-        ? "group"
-        : slotKey === "lb_final"
-          ? "lb_final"
-          : (slotKey as PlayoffKind);
-    const fixture = bySlot.get(slotKey);
-    if (!fixture) return emptyMatch(slotKey, kind);
-    const winnerId = fixture.status === "completed" ? seriesWinner(fixture) : null;
-    const winner =
-      winnerId === fixture.radiantTeamId
-        ? fixture.radiantTeam
-        : winnerId === fixture.direTeamId
-          ? fixture.direTeam
-          : null;
-    return {
-      slotKey,
-      kind: fixture.kind,
-      label: playoffRoundLabel(fixture.kind, slotKey),
-      status: fixture.status === "completed" ? "completed" : "scheduled",
-      bestOf: fixture.bestOf,
-      radiant: fixture.radiantTeam,
-      dire: fixture.direTeam,
-      winner,
-      scheduledAt: fixture.scheduledAt,
-      radiantWins: fixture.radiantWins,
-      direWins: fixture.direWins,
-    } satisfies PlayoffMatchView;
-  });
+  const bySlot = new Map(
+    fixtures.filter((row) => row.slotKey).map((row) => [row.slotKey as string, row]),
+  );
+  const results: Partial<
+    Record<BracketSlot, { winner: { id: string; name: string }; loser: { id: string; name: string } }>
+  > = {};
+  for (const slot of BRACKET_SLOTS) {
+    const fixture = bySlot.get(slot);
+    if (!fixture || fixture.status !== "completed") continue;
+    const outcome = seriesWinnerLoser(fixture);
+    if (outcome) results[slot] = outcome;
+  }
+  const pairings = unlockedPairings(seeds, results);
+  const matches = BRACKET_SLOTS.map((slotKey) =>
+    matchViewFromSlot(slotKey, bySlot.get(slotKey), pairings[slotKey], now),
+  );
 
   return {
     groupA: teams
@@ -622,17 +732,46 @@ export async function getPlayoffView(): Promise<PlayoffView> {
       .filter((team) => team.groupKey !== "A" && team.groupKey !== "B")
       .map((team) => ({ id: team.id, name: team.name })),
     matches,
+    groupRoundRobin: fixtures.filter((row) => row.kind === "group").length,
+    groupStageComplete: complete,
+    standingsA,
+    standingsB,
+    eliminated: complete && standingsA[3] && standingsB[3]
+      ? [
+          { id: standingsA[3].id, name: standingsA[3].name },
+          { id: standingsB[3].id, name: standingsB[3].name },
+        ]
+      : [],
+  };
+}
+
+export async function openPlayoffsFromGroups() {
+  const { complete } = await loadPlayoffSeeds();
+  if (!complete) {
+    throw new Error(
+      "Finish every Group A and Group B match first. 4th place is then eliminated and the Advancement Match (A3 vs B3) plus Upper Round 1 are booked automatically.",
+    );
+  }
+  const opened = await maybeOpenPlayoffsFromGroups();
+  const advanced = await advanceBracket();
+  return {
+    opened: opened.opened,
+    created: [...opened.created, ...advanced.created],
   };
 }
 
 export function playoffMatchesReady(view: PlayoffView) {
-  return view.matches.some((match) => match.status !== "empty");
+  return (
+    view.groupRoundRobin > 0 ||
+    view.groupStageComplete ||
+    view.matches.some((match) => match.status !== "empty")
+  );
 }
 
 export function formatPlayoffGroups(view: PlayoffView) {
   const lines = [
     "**MM Dota Cup — Group stage**",
-    "8 teams, 2 groups of 4. Matches will be posted later.",
+    "8 teams, 2 groups of 4. Single round-robin, Bo1.",
     "",
     "**Group A**",
     view.groupA.length
@@ -654,25 +793,104 @@ export function formatPlayoffGroups(view: PlayoffView) {
   return lines.join("\n").trim();
 }
 
+function formatMatchLine(match: PlayoffMatchView) {
+  const left = match.radiant?.name ?? match.leftLabel;
+  const right = match.dire?.name ?? match.rightLabel;
+  const format = match.formatLabel;
+  let state = match.waitingReason ?? "Waiting";
+  if (match.displayStatus === "upcoming" && match.scheduledAt) {
+    state = `Upcoming · ${formatScheduleWhen(match.scheduledAt)}`;
+  } else if (match.displayStatus === "live" && match.scheduledAt) {
+    state = `Live · ${formatScheduleWhen(match.scheduledAt)}`;
+  } else if (match.displayStatus === "completed" && match.winner) {
+    state = `Completed · ${match.winner.name} won`;
+    if (match.loser && match.loserGoes === "Eliminated") {
+      state += ` · ${match.loser.name} eliminated`;
+    }
+  } else if (match.scheduledAt) {
+    state = formatScheduleWhen(match.scheduledAt);
+  }
+  const score =
+    match.bestOf > 1 || match.status === "completed"
+      ? ` ${match.radiantWins}–${match.direWins}`
+      : "";
+  return `• **${match.label}** (${format}${score}) — **${left}** vs **${right}** · ${state}`;
+}
+
 export function formatPlayoffStatus(view: PlayoffView) {
-  if (!playoffMatchesReady(view)) {
-    return formatPlayoffGroups(view);
+  const lines = [formatPlayoffGroups(view)];
+
+  if (view.groupStageComplete && view.standingsA.length && view.standingsB.length) {
+    const rank = (rows: GroupStandingRow[]) =>
+      rows
+        .map((row, index) => {
+          const tag = index === 3 ? " — Eliminated" : "";
+          return `${index + 1}. ${row.name}${tag}`;
+        })
+        .join("\n");
+    lines.push(
+      "",
+      "**Final Group A standings**",
+      rank(view.standingsA),
+      "",
+      "**Final Group B standings**",
+      rank(view.standingsB),
+      "",
+      `**Eliminated:** ${view.eliminated.map((team) => team.name).join(", ")}`,
+    );
   }
 
-  const lines = [formatPlayoffGroups(view), "", "**Bracket**"];
-  for (const match of view.matches) {
-    if (match.status === "empty") continue;
-    const left = match.radiant?.name ?? "TBD";
-    const right = match.dire?.name ?? "TBD";
-    const series =
-      match.bestOf > 1 ? ` · BO${match.bestOf} ${match.radiantWins}–${match.direWins}` : "";
-    let state = "not scheduled";
-    if (match.status === "scheduled" && match.scheduledAt) {
-      state = formatScheduleWhen(match.scheduledAt);
-    } else if (match.status === "completed" && match.winner) {
-      state = `${match.winner.name} won`;
-    }
-    lines.push(`• **${match.label}** — **${left}** vs **${right}**${series} · ${state}`);
+  if (!playoffMatchesReady(view) && !view.groupStageComplete) {
+    return lines.join("\n").trim();
   }
+
+  lines.push("", formatPlayoffGraph(view));
+
+  const byStage = {
+    advancement: view.matches.filter((match) => match.stage === "advancement"),
+    upper: view.matches.filter((match) => match.stage === "upper"),
+    lower: view.matches.filter((match) => match.stage === "lower"),
+    grand: view.matches.filter((match) => match.stage === "grand"),
+  };
+
+  lines.push("", "**Advancement Match** (Bo1 · winner to playoffs, loser eliminated)");
+  for (const match of byStage.advancement) lines.push(formatMatchLine(match));
+  lines.push("", "**Upper Bracket**");
+  for (const match of byStage.upper) lines.push(formatMatchLine(match));
+  lines.push("", "**Lower Bracket**");
+  for (const match of byStage.lower) lines.push(formatMatchLine(match));
+  lines.push("", "**Grand Final** (Bo3)");
+  for (const match of byStage.grand) lines.push(formatMatchLine(match));
+
   return lines.join("\n").trim();
+}
+
+export function formatPlayoffGraph(view: PlayoffView) {
+  const label = (slot: BracketSlot) => {
+    const match = view.matches.find((row) => row.slotKey === slot);
+    if (!match) return slot;
+    const left = match.radiant?.name ?? match.leftLabel;
+    const right = match.dire?.name ?? match.rightLabel;
+    const code = match.matchNumber != null ? `M${match.matchNumber}` : "Adv";
+    const state =
+      match.displayStatus === "completed" && match.winner
+        ? ` · ${match.winner.name} won`
+        : match.displayStatus === "live"
+          ? " · Live"
+          : match.displayStatus === "upcoming"
+            ? " · Upcoming"
+            : "";
+    return `${code} ${left} vs ${right}${state}`;
+  };
+  return [
+    "**Bracket graph** (winners move right, losers drop to Lower)",
+    "```",
+    `Upper  ${label("ub1")}`,
+    "           └─► Upper Final ─► Grand Final Bo3",
+    `       ${label("ub2")}`,
+    `Lower  ${label("adv")} ─► ${label("lb1")} ─► ${label("lb2")} ─► ${label("lb_final")} ─► Grand Final`,
+    "```",
+    `Upper Final: ${label("uf")}`,
+    `Grand Final: ${label("final")}`,
+  ].join("\n");
 }

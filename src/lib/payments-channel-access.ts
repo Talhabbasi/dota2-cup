@@ -42,6 +42,7 @@ function registeredChannelSpecs(): ChannelSpec[] {
       kind: "chat",
     },
     { names: ["teams", "team"], kind: "chat" },
+    { names: ["matches", "match"], kind: "chat" },
     { names: ["results", "result"], kind: "chat" },
     { names: ["auction"], kind: "watch" },
   ];
@@ -245,7 +246,7 @@ export async function lockPaymentsChannel(
   return `registered players only${role ? ` (${registeredRoleName()})` : ""} — ${channel}`;
 }
 
-/** Hide #payments, #teams, #results, and #auction from anyone who is not registered. */
+/** Hide #payments, #teams, #matches, #results, and #auction from anyone who is not registered. */
 export async function lockRegisteredPlayerChannels(guild: Guild) {
   await guild.channels.fetch();
   await guild.roles.fetch();

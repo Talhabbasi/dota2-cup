@@ -112,6 +112,7 @@ export async function getTeam(id: string) {
           isCaptain: true,
           rosterRole: true,
           createdAt: true,
+          teamJoinedAt: true,
         },
         orderBy: [{ isCaptain: "desc" }, { steamName: "asc" }],
       },

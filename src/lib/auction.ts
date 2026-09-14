@@ -249,6 +249,7 @@ async function persistSale(auction: LiveAuction, kind: "sold" | "unsold") {
         where: { id: playerId },
         data: {
           teamId: team.id,
+          teamJoinedAt: new Date(),
           rosterRole: team.rosterCount > MIN_ROSTER ? "sub" : null,
         },
       }),
@@ -533,7 +534,7 @@ export async function revertSoldAuctionPlayers(steamNames: string[]) {
     await prisma.auctionLot.deleteMany({ where: { playerId: player.id } });
     await prisma.player.update({
       where: { id: player.id },
-      data: { teamId: null, rosterRole: null },
+      data: { teamId: null, rosterRole: null, teamJoinedAt: null },
     });
     if (teamId) await rebalanceTeamRoster(teamId);
 
@@ -629,6 +630,7 @@ export async function restoreSoldAuctionPlayers(
         where: { id: player.id },
         data: {
           teamId: team.id,
+          teamJoinedAt: new Date(),
           rosterRole: team.players.length >= MIN_ROSTER ? "sub" : null,
         },
       });

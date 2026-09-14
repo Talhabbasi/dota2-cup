@@ -10,6 +10,7 @@ import { adminRoleName } from "./constants";
 import { fullHelpText, splitDiscordChunks } from "./help";
 import { lockPaymentsChannel, lockRegisteredPlayerChannels } from "./payments-channel-access";
 import { rulesChannelName } from "./rules";
+import { syncTeamChatChannels } from "./team-chat";
 import { syncTeamVoiceChannels } from "./team-voice";
 import { dummyAuctionChannelName, ensureDummyAuctionChannel } from "./dummy-auction-channel";
 import {
@@ -49,6 +50,10 @@ export function botInviteUrl(clientId: string) {
 
 export function adminChannelName() {
   return process.env.ADMIN_CHANNEL_NAME?.trim() || "admin";
+}
+
+export function matchesChannelName() {
+  return process.env.MATCHES_CHANNEL_NAME?.trim() || "matches";
 }
 
 function findTextChannel(guild: Guild, name: string): TextChannel | null {
@@ -329,6 +334,28 @@ export async function ensurePaymentsChannel(guild: Guild): Promise<TextChannel> 
   return created;
 }
 
+export async function ensureMatchesChannel(guild: Guild): Promise<TextChannel> {
+  await guild.channels.fetch();
+  const name = matchesChannelName();
+  const existing = findNamedTextChannel(guild, [name, "match", "matches"]);
+  if (existing) {
+    return existing;
+  }
+
+  return guild.channels.create({
+    name,
+    type: ChannelType.GuildText,
+    topic: "MM Dota Cup — group-stage fixtures. Registered players only.",
+    permissionOverwrites: [
+      {
+        id: guild.roles.everyone.id,
+        deny: [PermissionFlagsBits.ViewChannel],
+      },
+    ],
+    reason: "MM Dota Cup registered-only match schedule",
+  });
+}
+
 export function describeDiscordChannelError(
   error: unknown,
   channelName: string,
@@ -520,6 +547,24 @@ export async function setupCupDiscord(
   }
 
   try {
+    const matches = await ensureMatchesChannel(guild);
+    results.push({
+      channel: matches.name,
+      ok: true,
+      detail: `registered players only — ${matches}`,
+    });
+  } catch (error) {
+    results.push({
+      channel: matchesChannelName(),
+      ok: false,
+      detail:
+        error instanceof Error
+          ? `${error.message} — the bot needs **Manage Channels** to create #${matchesChannelName()}.`
+          : "Could not create #matches (need Manage Channels)",
+    });
+  }
+
+  try {
     await lockRegisteredPlayerChannels(guild);
     results.push({
       channel: "teams / results / auction",
@@ -548,6 +593,20 @@ export async function setupCupDiscord(
         error instanceof Error
           ? error.message
           : "Could not create team voice channels",
+    });
+  }
+
+  try {
+    const chats = await syncTeamChatChannels(guild);
+    results.push(...chats);
+  } catch (error) {
+    results.push({
+      channel: "team chat",
+      ok: false,
+      detail:
+        error instanceof Error
+          ? error.message
+          : "Could not create team chat channels",
     });
   }
 

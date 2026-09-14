@@ -6,12 +6,17 @@ import {
   type TextChannel,
 } from "discord.js";
 import { adminRoleName } from "./constants";
-import { ensurePaymentsChannel } from "./cup-announcements";
-import { lockRegisteredPlayerChannels } from "./payments-channel-access";
+import { ensureMatchesChannel, ensurePaymentsChannel } from "./cup-announcements";
+import {
+  lockRegisteredPlayerChannels,
+  trySetMemberRegisteredRole,
+} from "./payments-channel-access";
 import { ensureDummyAuctionChannel } from "./dummy-auction-channel";
+import { stripMemberTeamRoles, syncTeamChatChannels } from "./team-chat";
 import { syncTeamVoiceChannels } from "./team-voice";
 import {
   PLAY_WINDOW_ROLE_NAMES,
+  playWindowOrBoth,
   type KickoffWindow,
   type PlayWindow,
 } from "./play-window";
@@ -123,6 +128,15 @@ export async function syncCupChannelAccess(guild: Guild) {
   }
 
   try {
+    await ensureMatchesChannel(guild);
+  } catch (error) {
+    console.warn(
+      "Could not create #matches (bot needs Manage Channels):",
+      error instanceof Error ? error.message : error,
+    );
+  }
+
+  try {
     await lockRegisteredPlayerChannels(guild);
   } catch (error) {
     console.warn(
@@ -136,6 +150,15 @@ export async function syncCupChannelAccess(guild: Guild) {
   } catch (error) {
     console.warn(
       "Could not sync team voice channels:",
+      error instanceof Error ? error.message : error,
+    );
+  }
+
+  try {
+    await syncTeamChatChannels(guild);
+  } catch (error) {
+    console.warn(
+      "Could not sync team chat channels:",
       error instanceof Error ? error.message : error,
     );
   }
@@ -300,11 +323,75 @@ export async function syncCaptainRolesFromDb(guild: Guild) {
   }
 }
 
+export async function trySyncCupChannelAccess(guild: Guild | null) {
+  if (!guild) return;
+  try {
+    await syncCupChannelAccess(guild);
+  } catch (error) {
+    console.warn(
+      "Could not sync cup channel access:",
+      error instanceof Error ? error.message : error,
+    );
+  }
+}
+
+/** Registered + weekend roles — the same Discord access every other player gets. */
+export async function tryGrantCupPlayerAccess(
+  guild: Guild | null,
+  discordId: string,
+  playWindow?: string | null,
+) {
+  await trySetMemberRegisteredRole(guild, discordId, true);
+  await trySetPlayWindowRoles(guild, discordId, playWindowOrBoth(playWindow));
+}
+
+export async function tryClearPlayWindowRoles(
+  guild: Guild | null,
+  discordId: string,
+) {
+  if (!guild) return;
+  try {
+    const member = await guild.members
+      .fetch(discordId.split(":")[0])
+      .catch(() => null);
+    if (!member) return;
+    for (const name of Object.values(PLAY_WINDOW_ROLE_NAMES)) {
+      const role = findRole(guild, name);
+      if (role && member.roles.cache.has(role.id)) {
+        await member.roles.remove(role, "Removed from cup");
+      }
+    }
+  } catch (error) {
+    console.warn(
+      "Could not clear play-window Discord roles:",
+      error instanceof Error ? error.message : error,
+    );
+  }
+}
+
+/** Drop registered / weekend / team roles (player delete). */
+export async function tryRevokeCupPlayerAccess(
+  guild: Guild | null,
+  discordId: string,
+) {
+  await trySetMemberRegisteredRole(guild, discordId, false);
+  await tryClearPlayWindowRoles(guild, discordId);
+  try {
+    await stripMemberTeamRoles(guild, discordId);
+  } catch (error) {
+    console.warn(
+      "Could not remove team Discord roles:",
+      error instanceof Error ? error.message : error,
+    );
+  }
+}
+
 export function describeChannelAccess() {
   return [
     `#captains — only **${captainRoleName()}** and **${adminRoleName()}** can see and chat.`,
     `#auction — only **registered** players can watch; only **${captainRoleName()}** and **${adminRoleName()}** can send messages.`,
-    `#payments · #teams · #results — only **registered** players (and **${adminRoleName()}**) can see them.`,
+    `#payments · #teams · #matches · #results — only **registered** players (and **${adminRoleName()}**) can see them.`,
+    `Team chat — only that team's roster can see their private channel. \`/player add\` and \`/captain add\` give the team role plus registered-player access; \`/player remove\` and \`/captain remove\` take the team role off.`,
     `Team voice — only that team's roster can see their room (5 players). Their captain and **${adminRoleName()}** can drag members.`,
   ].join("\n");
 }

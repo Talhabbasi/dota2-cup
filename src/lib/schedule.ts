@@ -19,6 +19,22 @@ export const SERIES_WINS_FOR_FINAL = 2;
 
 function fixtureRoundLabel(kind: string, slotKey?: string | null) {
   switch (slotKey) {
+    case "adv":
+      return "Advancement Match";
+    case "ub1":
+      return "Match 1 · Upper Round 1";
+    case "ub2":
+      return "Match 2 · Upper Round 1";
+    case "lb1":
+      return "Match 3 · Lower Round 1";
+    case "lb2":
+      return "Match 4 · Lower Round 2";
+    case "uf":
+      return "Match 5 · Upper Final";
+    case "lb_final":
+      return "Match 6 · Lower Final";
+    case "final":
+      return "Grand Final";
     case "group-a-1":
       return "Group A · Match 1";
     case "group-a-2":
@@ -30,19 +46,17 @@ function fixtureRoundLabel(kind: string, slotKey?: string | null) {
     case "ub":
       return "Upper bracket";
     case "lb":
-      return "Elimination";
-    case "lb_final":
-      return "Elimination final";
-    case "final":
-      return "Grand Final";
+      return "Lower bracket";
     default:
       break;
   }
   if (kind === "final") return "Grand Final";
+  if (kind === "adv") return "Advancement Match";
   if (kind === "group") return "Group stage";
+  if (kind === "ub_final") return "Upper Final";
   if (kind === "ub") return "Upper bracket";
-  if (kind === "lb") return "Elimination";
-  if (kind === "lb_final") return "Elimination final";
+  if (kind === "lb") return "Lower bracket";
+  if (kind === "lb_final") return "Lower Final";
   return weekendSlotLabel(0);
 }
 
@@ -92,7 +106,7 @@ export function localParts(date: Date, offsetH: number) {
   };
 }
 
-function localToUtc(
+export function localToUtc(
   year: number,
   month: number,
   day: number,
@@ -454,7 +468,7 @@ export async function listScheduledFixtures(limit = 20) {
     prisma.scheduledFixture.findMany({
       where: { status: "scheduled" },
       include: { radiantTeam: true, direTeam: true },
-      orderBy: [{ weekendIndex: "asc" }, { slotIndex: "asc" }],
+      orderBy: { scheduledAt: "asc" },
       take: limit,
     }),
   );
@@ -482,7 +496,7 @@ export async function getWeekendFixtures(weekendIndex: number) {
         direTeam: { select: { id: true, name: true } },
         match: { include: { winnerTeam: { select: { id: true, name: true } } } },
       },
-      orderBy: { slotIndex: "asc" },
+      orderBy: { scheduledAt: "asc" },
     }),
   );
 }
