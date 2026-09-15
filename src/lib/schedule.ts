@@ -10,6 +10,7 @@ import {
 } from "./play-window";
 import { prisma } from "./prisma";
 import { hasScheduleTable, safeScheduleQuery } from "./schedule-db";
+import { publicFixtureWhere } from "./dummy";
 
 export const MAX_GAMES_PER_TEAM_PER_WEEKEND = 2;
 export const MATCHES_PER_WEEKEND = 3;
@@ -477,7 +478,7 @@ export async function listScheduledFixtures(limit = 20) {
 export async function getNextScheduledFixture() {
   return safeScheduleQuery(null, () =>
     prisma.scheduledFixture.findFirst({
-      where: { status: "scheduled" },
+      where: { status: "scheduled", ...publicFixtureWhere },
       include: {
         radiantTeam: { select: { id: true, name: true } },
         direTeam: { select: { id: true, name: true } },
@@ -490,7 +491,7 @@ export async function getNextScheduledFixture() {
 export async function getWeekendFixtures(weekendIndex: number) {
   return safeScheduleQuery([], () =>
     prisma.scheduledFixture.findMany({
-      where: { weekendIndex },
+      where: { weekendIndex, ...publicFixtureWhere },
       include: {
         radiantTeam: { select: { id: true, name: true } },
         direTeam: { select: { id: true, name: true } },

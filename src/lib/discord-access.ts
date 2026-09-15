@@ -12,8 +12,12 @@ import {
   trySetMemberRegisteredRole,
 } from "./payments-channel-access";
 import { ensureDummyAuctionChannel } from "./dummy-auction-channel";
-import { stripMemberTeamRoles, syncTeamChatChannels } from "./team-chat";
-import { syncTeamVoiceChannels } from "./team-voice";
+import {
+  renameTeamChatLabels,
+  stripMemberTeamRoles,
+  syncTeamChatChannels,
+} from "./team-chat";
+import { renameTeamVoiceLabel, syncTeamVoiceChannels } from "./team-voice";
 import {
   PLAY_WINDOW_ROLE_NAMES,
   playWindowOrBoth,
@@ -332,6 +336,25 @@ export async function trySyncCupChannelAccess(guild: Guild | null) {
       "Could not sync cup channel access:",
       error instanceof Error ? error.message : error,
     );
+  }
+}
+
+/** Rename Discord role/chat/voice to match a DB rename so sync does not recreate them. */
+export async function tryRenameTeamDiscordLabels(
+  guild: Guild | null,
+  oldName: string,
+  newName: string,
+  captainName: string | null,
+): Promise<string | null> {
+  if (!guild || oldName === newName) return null;
+  try {
+    await renameTeamChatLabels(guild, oldName, newName);
+    await renameTeamVoiceLabel(guild, oldName, newName, captainName);
+    return null;
+  } catch (error) {
+    const raw = error instanceof Error ? error.message : "Missing Permissions";
+    console.warn("Team Discord rename:", raw);
+    return `The cup name is **${newName}**, but Discord did not rename the team role/chat/voice (${raw}). Rename those Discord labels to **${newName}** manually so the private chat is not recreated. Scheduled matches are already unchanged.`;
   }
 }
 

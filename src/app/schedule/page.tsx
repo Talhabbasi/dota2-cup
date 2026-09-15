@@ -7,7 +7,7 @@ export const revalidate = 30;
 
 export default async function SchedulePage() {
   const [fixtures, groupA, groupB] = await Promise.all([
-    listCupSchedule(),
+    listCupSchedule({ publicOnly: true }),
     getGroupStandings("A"),
     getGroupStandings("B"),
   ]);

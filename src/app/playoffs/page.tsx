@@ -13,7 +13,7 @@ export default async function PlayoffsPage() {
     getPlayoffView(),
     getGroupStandings("A"),
     getGroupStandings("B"),
-    listCupSchedule(),
+    listCupSchedule({ publicOnly: true }),
   ]);
   const groupIdsA = new Set(groupA.map((row) => row.id));
   const groupMatches: GroupGraphMatch[] = fixtures

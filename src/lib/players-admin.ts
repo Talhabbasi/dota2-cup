@@ -48,7 +48,9 @@ async function requirePlayer(discordId: string) {
 export async function adminDeletePlayer(discordId: string) {
   const player = await requirePlayer(discordId);
   if (player.isCaptain) {
-    throw new Error("Remove the captain first with `/captain remove`.");
+    throw new Error(
+      "That player is a captain. Use `/captain change` to appoint someone else, or `/captain remove` to dissolve the team.",
+    );
   }
 
   const teamName = player.team?.name;
@@ -117,7 +119,9 @@ export async function adminAddPlayerToTeam(input: {
 export async function adminRemovePlayerFromTeam(discordId: string) {
   const player = await requirePlayer(discordId);
   if (player.isCaptain) {
-    throw new Error("Use `/captain remove` for captains.");
+    throw new Error(
+      "That player is a captain. Use `/captain change` first if you want to keep the team, or `/captain remove` to dissolve it.",
+    );
   }
   if (!player.teamId) {
     throw new Error(`${player.discordName} is not on a team.`);

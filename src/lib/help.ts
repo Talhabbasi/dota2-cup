@@ -1,59 +1,84 @@
-export const HELP_COMMANDS = `**Anyone**
+export const HELP_PIN_PREFIX = "**MM Dota Cup — pinned command sheet**";
+
+export const HELP_COMMANDS = `${HELP_PIN_PREFIX}
+Pinned in **#admin** for every Admin. Re-post anytime with \`/admin help\`.
+
+**Anyone**
 \`/register\` — public sign-up in #register (admins can close this)
 \`/when window:<evening|late|both>\` — weekend play window (8pm–12am, after 12am, or either)
-\`/me\` — your medal, role, and team card in chat (\`user:@x\` optional)
+\`/me\` — your medal, role, and team card (\`user:@x\` optional)
 \`/pool\` — all players except captains, grouped by role with medal
-\`/unsigned\` — registered players who are not on a team yet (auction pool), grouped by rank
-\`/pay collected\` — total money in, still owed, and expected
-\`/pay unpaid\` — starters who still owe, grouped by team (subs are free)
-\`/pay teams\` — which teams have collected exactly **5000 PKR** (min and max)
+\`/unsigned\` — registered players not on a team yet (auction pool)
+\`/pay collected\` — money in, still owed, expected
+\`/pay unpaid\` — starters who still owe (subs are free)
+\`/pay teams\` — which teams have collected exactly **5000 PKR**
 \`/pay team name:<team>\` — who on that team has not paid
 \`/help\` — this list
 \`/schedule list\` — upcoming fixtures
-\`/playoff status\` — groups and the playoff bracket
+\`/playoff status\` — groups, bracket graph, times, Bo1/Bo3
 
 **Captain**
 \`/bid amount:<number>\` or the +100 / +500 buttons
 \`/purse\` — points left
 \`/roster\` — your 5–7 and empty slots
 
-**Admin** (Discord role **Admin**)
-\`/admin setup\` — create **#payments** (registered players only), private team chats, team voice rooms, and post this help in **#admin**
-\`/admin help\` — post this command list into **#admin** again
-\`/registration close\` — close website + Discord sign-ups (posts 3 announcements + creates #payments)
+**Admin — setup**
+\`/admin setup\` — #payments, team chats, team voice, and this sheet in **#admin**
+\`/admin help\` — post & pin this sheet in **#admin** again
+\`/registration close\` — close website + Discord sign-ups
 \`/registration open\` — re-open public registration
 \`/registration status\`
 \`/rules post\` — post & pin full cup rules in #general
-\`/rules channels\` — pin a short guide in every cup channel (+ full rules in #general)
-\`/rules closed\` — create **#payments** and post closed / indoor / payment messages
-\`/captain add user:@x team:<name>\`
-\`/captain remove user:@x\`
+\`/rules channels\` — pin a short guide in every cup channel
+\`/rules closed\` — #payments + closed / indoor / payment messages
+\`/rules clear\` — remove bot-posted channel guides
+
+**Admin — players & captains**
+\`/captain add user:@x team:<name>\` — create a new franchise
+\`/captain change team:<name> user:@x\` — swap captain; roster + schedule stay
+\`/captain rename team:<old> name:<new>\` — name only; fixtures stay on the same team
+\`/captain remove user:@x\` — **dissolves the team** (not a captain swap)
 \`/player list\` — every registered player (team, role, paid/unpaid)
 \`/player unsigned\` — players not on a team, grouped by rank
 \`/player register user:@x steam:<url> rank: role: when:\` — late add
-\`/player add user:@x team:<name>\` — add unsigned player to a team (team chat + registered-player roles)
-\`/player remove user:@x\` — take player off a team and remove their team Discord role (keeps registration)
-\`/player delete user:@x\` — remove player from the cup (also off their team)
-\`/player edit user:@x rank:<medal> role:<role> when:<evening|late|both>\` — fix rank, role, and/or weekend window (or \`discord_id:<id>\`)
+\`/player add user:@x team:<name>\` — add unsigned player to a team
+\`/player remove user:@x\` — take them off the team (keeps registration)
+\`/player delete user:@x\` — remove from the cup
+\`/player edit user:@x rank: role: when:\` — or \`discord_id:<id>\`
 \`/player resync user:@x\` — fix roster slot from registration
-\`/pay mark user:@x\` — mark paid without waiting for a screenshot tick
-\`/playoff groups\` — randomly split 8 teams into Group A / Group B
-\`/playoff assign team:<name> group:<A|B>\`
-\`/playoff open\` — book playoffs from final group standings (does not touch group matches)
-\`/playoff post\` — post or refresh the bracket in **#matches**
-\`/playoff status\` · \`/playoff clear\` (clear keeps the group-stage grid)
-\`/schedule groups\` — book Group A Saturday + Group B Sunday round-robin (posts in **#matches**)
-\`/schedule add team_a: team_b: date:YYYY-MM-DD time:\` — book a Sat/Sun match (group 10pm–6am · playoffs 10am–3am PKT)
-\`/schedule edit fixture:\` — change teams or kickoff on a booked match (including auto-generated ones)
+
+**Admin — payments**
+Screenshot in **#payments**, then an Admin clicks **✅**.
+\`/pay mark user:@x\` — mark paid without a screenshot
+\`/pay collected\` · \`/pay unpaid\` · \`/pay teams\` · \`/pay team name:<team>\`
+Subs do **not** pay. Each team must be exactly **5000 PKR** (5 starters).
+
+**Admin — schedule & playoffs**
+\`/schedule groups\` — book Group A Saturday + Group B Sunday (posts in **#matches**)
+\`/schedule add team_a: team_b: date:YYYY-MM-DD time:\` — Sat/Sun (group 10pm–6am · playoffs 10am–3am PKT)
+\`/schedule edit fixture:\` — change teams or kickoff
 \`/schedule remove fixture:\` — delete one booked match
-\`/schedule list\` · \`/schedule clear\`
-\`/schedule generate\` — old round-robin (only if you are not using playoffs)
-\`/auction start rank:<immortal|divine|ancient|legend|archon|crusader|guardian|herald|uncalibrated>\` — live cup in **#auction** (same rank together, any role)
-\`/auction pause\` · \`/auction resume\` · \`/auction skip\` · \`/auction confirm\`
-\`/auction revert user:@x\` or \`name:<steam>\` — return a sold player to the pool and refund the team points
-In **#auction-test** (Admin only): same commands, fake teams/players, **does not touch live data**. Admins bid with buttons or \`/bid\`
+\`/schedule list\` · \`/schedule clear\` — clear deletes **pending** fixtures (careful)
+\`/schedule final\` — book a Bo3 grand final (legacy helper)
+\`/playoff groups\` — randomly split 8 teams into A/B (groups are already set)
+\`/playoff assign team:<name> group:<A|B>\`
+\`/playoff open\` — book playoffs from **final group standings** (does not touch group matches)
+\`/playoff post\` — post/refresh the bracket graph in **#matches**
+\`/playoff status\` — same data as the website Playoffs page
+\`/playoff clear\` — pending playoff fixtures only (keeps the group-stage grid)
+Website: **Schedule** + **Playoffs** (tournament graph). After groups: 4th out, A3 vs B3 Advancement Bo1, then double-elim. Grand Final **Bo3**.
+
+**Admin — results**
 \`/result match_id:<id>\` or in #results: \`!result 8123456789\`
-\`/result assign steam32:<id> user:@player\` — map a stand-in / smurf`;
+\`/result assign steam32:<id> user:@player\` — map a stand-in / smurf
+The last group \`!result\` opens the first playoff matches automatically.
+
+**Admin — auction**
+\`/auction start rank:<immortal|divine|ancient|legend|archon|crusader|guardian|herald|uncalibrated>\`
+\`/auction pause\` · \`/auction resume\` · \`/auction skip\` · \`/auction confirm\`
+\`/auction revert user:@x\` or \`name:<steam>\` — return a sold player, refund purse
+\`/auction undo\` — undo the last sale
+**#auction-test** is Admin only and never writes live cup data. Bid with buttons or \`/bid\`.`;
 
 export const HELP_GUIDE = `## How to run the cup
 
@@ -63,7 +88,7 @@ export const HELP_GUIDE = `## How to run the cup
 
 **Channels.** **#register**, **#captains**, and **#auction** are **commands only**. **#payments**, **#teams**, **#matches**, **#results**, and **#auction** are visible to **registered players only**. Each franchise also gets a **private team chat** (only that roster) and a **5-player voice** room (captain + Admin can drag). **#auction-test** is **Admin only** and never writes live cup data. **#payments** is screenshots only. Use **#general** for conversation.
 
-**Captains.** Only admins assign captains with \`/captain add user:@player team:<name>\`. Players cannot self-claim. Captains get **20,000** auction points in Discord.
+**Captains.** Only admins assign captains with \`/captain add\`. To replace a captain without deleting the franchise, use \`/captain change\` — the old captain stays on the roster, and scheduled matches do not change. \`/captain rename\` changes the display name only (same team id, same fixtures). \`/captain remove\` **dissolves the whole team**. Players cannot self-claim. Captains get **20,000** auction points in Discord.
 
 **Rosters.** Admins can manually add unsigned players with \`/player add\` — they get that team's Discord role, private chat, and the same registered-player permissions as everyone else. \`/player remove\` takes the team role and chat away. Role slots always follow what the player picked at registration. Players 6–7 on a roster are **subs** and skip the fee.
 

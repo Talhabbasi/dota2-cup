@@ -1,4 +1,5 @@
 import { prisma } from "./prisma";
+import { publicTeamWhere } from "./dummy";
 import { formatScheduleWhen, scheduleUtcOffsetHours } from "./schedule";
 import {
   createScheduledMatch,
@@ -141,7 +142,7 @@ export async function bookGroupStageRoundRobin(input?: {
 
 export async function getGroupStandings(groupKey: "A" | "B"): Promise<GroupStandingRow[]> {
   const teams = await prisma.team.findMany({
-    where: { groupKey },
+    where: { groupKey, ...publicTeamWhere },
     select: { id: true, name: true },
     orderBy: { name: "asc" },
   });

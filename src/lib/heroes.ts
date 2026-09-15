@@ -6,6 +6,7 @@ import {
   heroIconUrl,
   type HeroInfo,
 } from "./opendota";
+import { publicMatchWhere, publicPlayerWhere } from "./dummy";
 
 export type HeroTournamentStat = HeroInfo & {
   plays: number;
@@ -42,11 +43,19 @@ export async function getHeroTournamentStats(): Promise<HeroTournamentStat[]> {
     loadHeroCatalog(),
     prisma.matchPlayer.groupBy({
       by: ["heroId"],
-      where: { heroId: { gt: 0 } },
+      where: {
+        heroId: { gt: 0 },
+        match: publicMatchWhere,
+        OR: [{ playerId: null }, { player: publicPlayerWhere }],
+      },
       _count: { _all: true },
     }),
     prisma.matchPlayer.findMany({
-      where: { heroId: 0 },
+      where: {
+        heroId: 0,
+        match: publicMatchWhere,
+        OR: [{ playerId: null }, { player: publicPlayerWhere }],
+      },
       select: { hero: true },
     }),
   ]);
@@ -79,7 +88,11 @@ export async function getHeroBySlug(slug: string) {
 export async function getHeroMatchAppearances(heroId: number, heroName: string) {
   const players = await prisma.matchPlayer.findMany({
     where: {
-      OR: [{ heroId }, { hero: heroName, heroId: 0 }],
+      AND: [
+        { OR: [{ heroId }, { hero: heroName, heroId: 0 }] },
+        { match: publicMatchWhere },
+        { OR: [{ playerId: null }, { player: publicPlayerWhere }] },
+      ],
     },
     include: {
       player: { include: { team: { select: { id: true, name: true } } } },

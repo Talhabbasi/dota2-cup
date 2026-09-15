@@ -181,6 +181,46 @@ async function lockCategoryFromEveryone(
   await allowStaffRoles(category, guild);
 }
 
+/** Keep the same Discord role + chat when a team is renamed (schedule uses team ids). */
+export async function renameTeamChatLabels(
+  guild: Guild,
+  oldName: string,
+  newName: string,
+) {
+  if (oldName === newName) return;
+  await guild.roles.fetch();
+  await guild.channels.fetch();
+
+  const oldRole = findRole(guild, teamRoleName(oldName));
+  const nextRoleName = teamRoleName(newName);
+  if (oldRole && oldRole.name !== nextRoleName) {
+    await oldRole.setName(nextRoleName, "Team renamed");
+  }
+
+  const categoryName = teamChatCategoryName().toLowerCase();
+  const category = guild.channels.cache.find(
+    (ch) =>
+      ch.type === ChannelType.GuildCategory &&
+      ch.name.toLowerCase() === categoryName,
+  );
+  if (category?.type !== ChannelType.GuildCategory) return;
+
+  const existing = category.children.cache.find(
+    (ch) =>
+      ch.type === ChannelType.GuildText && matchesTeamChat(ch.name, oldName),
+  );
+  if (existing?.type !== ChannelType.GuildText) return;
+
+  const nextChannel = textChannelName(newName);
+  if (existing.name !== nextChannel) {
+    await existing.setName(nextChannel, "Team renamed");
+  }
+  const topic = `Private chat for ${newName}. Only this roster can see it.`;
+  if (existing.topic !== topic) {
+    await existing.setTopic(topic, "Team renamed");
+  }
+}
+
 async function ensureTeamRole(guild: Guild, teamName: string): Promise<Role> {
   const name = teamRoleName(teamName);
   const existing = findRole(guild, name);

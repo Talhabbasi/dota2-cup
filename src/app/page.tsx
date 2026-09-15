@@ -1,11 +1,8 @@
 import Link from "next/link";
-import Image from "next/image";
 import { Suspense } from "react";
 import { MatchCard } from "@/components/match-card";
-import {
-  LatestMatchSpotlight,
-  UpcomingMatchSpotlight,
-} from "@/components/home-spotlight";
+import { LatestMatchSpotlight } from "@/components/home-spotlight";
+import { HomeHero } from "@/components/home-hero";
 import { LoginErrorBanner } from "@/components/login-error-banner";
 import { WeekendScheduleBlock } from "@/components/weekend-schedule";
 import { StandingsBoard } from "@/components/standings-board";
@@ -61,54 +58,43 @@ export default async function Home() {
 
   const latest = matches[0] ?? null;
   const recent = latest ? matches.slice(1, 5) : matches.slice(0, 4);
-  const showSpotlight = Boolean(latest || upcoming);
+  const marquee = [...playoff.groupA, ...playoff.groupB].map((team) => team.name);
 
   return (
     <>
-      <section className="hero-bleed hero-bleed-compact hero-bleed-dota">
-        <div className="hero-bleed-shade" />
-        <div className="hero-bleed-content">
-          <p className="brand-hero animate-rise">
-            <Image
-              src="/mm-dota-cup-icon.png"
-              alt=""
-              width={72}
-              height={72}
-              className="brand-hero-icon"
-              priority
-            />
-            MM Dota Cup
-          </p>
-        </div>
-      </section>
+      <HomeHero
+        upcoming={upcoming}
+        teamCount={teamCount}
+        matchCount={matchCount}
+        marquee={marquee}
+      />
 
       <div className="page home-body">
         <Suspense>
           <LoginErrorBanner />
         </Suspense>
-        <div className="home-stats">
-          <div className="home-stat">
-            <span className="home-stat-label">Teams registered</span>
-            <strong>{teamCount}</strong>
-          </div>
-          <div className="home-stat">
-            <span className="home-stat-label">Matches played</span>
-            <strong>{matchCount}</strong>
-          </div>
-        </div>
 
-        {showSpotlight ? (
-          <section
-            className={
-              latest && upcoming
-                ? "home-spotlight"
-                : "home-spotlight home-spotlight-solo"
-            }
-          >
-            {latest ? <LatestMatchSpotlight match={latest} /> : null}
-            {upcoming ? (
-              <UpcomingMatchSpotlight fixture={upcoming} />
-            ) : null}
+        <section className="format-strip" aria-label="Cup format">
+          <article>
+            <span>01</span>
+            <h2>Group stage</h2>
+            <p>Two groups of four. Round-robin Bo1. Fourth place is out.</p>
+          </article>
+          <article>
+            <span>02</span>
+            <h2>Advancement</h2>
+            <p>A3 vs B3 in a single match. Winner keeps the run alive.</p>
+          </article>
+          <article>
+            <span>03</span>
+            <h2>Playoffs</h2>
+            <p>Double-elim graph. Grand Final is Bo3. Everything else Bo1.</p>
+          </article>
+        </section>
+
+        {latest ? (
+          <section className="home-spotlight home-spotlight-solo">
+            <LatestMatchSpotlight match={latest} />
           </section>
         ) : null}
 

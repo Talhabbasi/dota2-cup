@@ -1,10 +1,10 @@
 import type { Metadata, Viewport } from "next";
-import Image from "next/image";
-import { Oxanium, Sora } from "next/font/google";
+import { Bebas_Neue, Oxanium, Sora } from "next/font/google";
 import { Nav } from "@/components/nav";
 import { ClosedBanner } from "@/components/closed-banner";
 import { NavigationLoader } from "@/components/navigation-loader";
 import { Providers } from "@/components/providers";
+import { SiteFooter } from "@/components/site-footer";
 import "./globals.css";
 
 const oxanium = Oxanium({
@@ -17,16 +17,24 @@ const sora = Sora({
   subsets: ["latin"],
 });
 
+const bebas = Bebas_Neue({
+  weight: "400",
+  variable: "--font-bebas",
+  subsets: ["latin"],
+});
+
 export const metadata: Metadata = {
   title: "MM Dota Cup",
-  description: "Auction, teams, and standings for MM Dota Cup.",
+  description:
+    "Indoor MM Dota cup — eight franchises, group stage, live playoff graph, and weekend kickoffs in Pakistan time.",
   icons: {
     icon: "/mm-dota-cup-icon.png",
     apple: "/mm-dota-cup-icon.png",
   },
   openGraph: {
     title: "MM Dota Cup",
-    description: "Auction, teams, and standings for MM Dota Cup.",
+    description:
+      "Indoor MM Dota cup — eight franchises, group stage, live playoff graph, and weekend kickoffs in Pakistan time.",
     images: ["/mm-dota-cup-icon.png"],
   },
   twitter: {
@@ -46,7 +54,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${oxanium.variable} ${sora.variable} h-full antialiased`}
+      className={`${oxanium.variable} ${sora.variable} ${bebas.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
         <Providers>
@@ -54,19 +62,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           <Nav />
           <ClosedBanner />
           <main className="flex-1">{children}</main>
-          <footer className="footer">
-            <strong className="footer-brand">
-              <Image
-                src="/mm-dota-cup-icon.png"
-                alt=""
-                width={22}
-                height={22}
-                className="footer-brand-icon"
-              />
-              MM Dota Cup
-            </strong>
-          </footer>
+          <SiteFooter />
         </Providers>
+        <div className="film-grain" aria-hidden />
       </body>
     </html>
   );

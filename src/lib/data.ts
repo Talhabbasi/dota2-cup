@@ -1,4 +1,10 @@
 import { prisma } from "./prisma";
+import {
+  isDummyDiscordId,
+  publicMatchWhere,
+  publicPlayerWhere,
+  publicTeamWhere,
+} from "./dummy";
 import { getNextScheduledFixture } from "./schedule";
 import { parseRolesJson } from "./roles";
 import { ROLE_LABELS, basePriceFor, type PlayerRole } from "./constants";
@@ -19,6 +25,7 @@ const teamRefSelect = { select: { id: true, name: true } } as const;
 
 export async function getPlayers() {
   const players = await prisma.player.findMany({
+    where: publicPlayerWhere,
     select: {
       id: true,
       steamName: true,
@@ -41,15 +48,16 @@ export async function getPlayers() {
 }
 
 export async function getPlayer(id: string) {
-  const player = await prisma.player.findUnique({
-    where: { id },
+  const player = await prisma.player.findFirst({
+    where: { id, ...publicPlayerWhere },
     include: { team: { select: { id: true, name: true } } },
   });
-  if (!player) return null;
+  if (!player || isDummyDiscordId(player.discordId)) return null;
 
   const matchPlayers = await prisma.matchPlayer.findMany({
     where: {
       OR: [{ playerId: player.id }, { steam32: player.steam32 }],
+      match: publicMatchWhere,
     },
     include: {
       match: {
@@ -76,12 +84,14 @@ export async function getPlayer(id: string) {
 
 export async function getTeams() {
   return prisma.team.findMany({
+    where: publicTeamWhere,
     select: {
       id: true,
       name: true,
       purse: true,
       groupKey: true,
       players: {
+        where: publicPlayerWhere,
         select: {
           id: true,
           steamName: true,
@@ -95,14 +105,15 @@ export async function getTeams() {
 }
 
 export async function getTeamCount() {
-  return prisma.team.count();
+  return prisma.team.count({ where: publicTeamWhere });
 }
 
 export async function getTeam(id: string) {
-  return prisma.team.findUnique({
-    where: { id },
+  const team = await prisma.team.findFirst({
+    where: { id, ...publicTeamWhere },
     include: {
       players: {
+        where: publicPlayerWhere,
         select: {
           id: true,
           steamName: true,
@@ -117,6 +128,7 @@ export async function getTeam(id: string) {
         orderBy: [{ isCaptain: "desc" }, { steamName: "asc" }],
       },
       radiantMatches: {
+        where: publicMatchWhere,
         include: {
           radiantTeam: teamRefSelect,
           direTeam: teamRefSelect,
@@ -126,6 +138,7 @@ export async function getTeam(id: string) {
         take: 8,
       },
       direMatches: {
+        where: publicMatchWhere,
         include: {
           radiantTeam: teamRefSelect,
           direTeam: teamRefSelect,
@@ -136,10 +149,12 @@ export async function getTeam(id: string) {
       },
     },
   });
+  return team;
 }
 
 export async function getMatches() {
   return prisma.match.findMany({
+    where: publicMatchWhere,
     select: matchListSelect,
     orderBy: { createdAt: "desc" },
   });
@@ -147,6 +162,7 @@ export async function getMatches() {
 
 export async function getRecentMatches(take = 5) {
   return prisma.match.findMany({
+    where: publicMatchWhere,
     select: matchListSelect,
     orderBy: { createdAt: "desc" },
     take,
@@ -154,12 +170,12 @@ export async function getRecentMatches(take = 5) {
 }
 
 export async function getMatchCount() {
-  return prisma.match.count();
+  return prisma.match.count({ where: publicMatchWhere });
 }
 
 export async function getMatch(id: string) {
-  return prisma.match.findUnique({
-    where: { id },
+  const match = await prisma.match.findFirst({
+    where: { id, ...publicMatchWhere },
     include: {
       radiantTeam: teamRefSelect,
       direTeam: teamRefSelect,
@@ -167,16 +183,18 @@ export async function getMatch(id: string) {
       players: { include: { player: { select: { id: true, steamName: true } } } },
     },
   });
+  return match;
 }
 
 export async function getStandings() {
   const [teams, decided] = await Promise.all([
     prisma.team.findMany({
+      where: publicTeamWhere,
       select: { id: true, name: true, purse: true },
       orderBy: { name: "asc" },
     }),
     prisma.match.findMany({
-      where: { winnerTeamId: { not: null } },
+      where: { winnerTeamId: { not: null }, ...publicMatchWhere },
       select: {
         id: true,
         radiantTeamId: true,

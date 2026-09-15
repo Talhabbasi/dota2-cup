@@ -5,6 +5,7 @@ import {
 } from "./constants";
 import { formatRoles } from "./data";
 import { PLAY_WINDOW_SHORT, playWindowOrBoth } from "./play-window";
+import { rebalanceTeamRoster } from "./players-admin";
 import { prisma } from "./prisma";
 import { parseRolesJson } from "./roles";
 
@@ -113,6 +114,151 @@ export async function adminRemoveCaptain(discordId: string) {
   const name = player.team?.name ?? "the team";
   await prisma.team.delete({ where: { id: teamId } });
   return { teamName: name };
+}
+
+async function findTeamByName(name: string) {
+  const trimmed = name.trim();
+  if (!trimmed) throw new Error("Team name cannot be empty.");
+  const team = await prisma.team.findFirst({
+    where: { name: { equals: trimmed, mode: "insensitive" } },
+    include: { players: true },
+  });
+  if (!team) throw new Error(`No team named "${trimmed}".`);
+  return team;
+}
+
+export async function listTeamNames() {
+  return prisma.team.findMany({
+    select: { name: true },
+    orderBy: { name: "asc" },
+  });
+}
+
+/**
+ * Swap who captains a franchise. Roster, purse, group, and scheduled
+ * matches stay on the same team id — only captainId / isCaptain change.
+ * The previous captain stays on the roster as a regular player.
+ */
+export async function adminChangeCaptain(input: {
+  teamName: string;
+  discordId: string;
+}) {
+  const team = await findTeamByName(input.teamName);
+  const next = await requirePlayer(input.discordId);
+
+  if (next.isCaptain && next.teamId === team.id) {
+    throw new Error(`${next.discordName} is already captain of **${team.name}**.`);
+  }
+  if (next.isCaptain) {
+    throw new Error(
+      `${next.discordName} already captains **${next.team?.name ?? "another team"}**. Change that team first.`,
+    );
+  }
+  if (next.teamId && next.teamId !== team.id) {
+    throw new Error(
+      `${next.discordName} is already on **${next.team?.name}**. Use \`/player remove\` first.`,
+    );
+  }
+
+  const joining = next.teamId !== team.id;
+  if (joining && team.players.length >= MAX_ROSTER) {
+    throw new Error(
+      `**${team.name}** already has ${MAX_ROSTER} players. Remove someone, then change captain.`,
+    );
+  }
+
+  const previous =
+    team.players.find((player) => player.id === team.captainId) ??
+    team.players.find((player) => player.isCaptain) ??
+    null;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.player.updateMany({
+      where: { teamId: team.id, isCaptain: true },
+      data: { isCaptain: false },
+    });
+    await tx.player.update({
+      where: { id: next.id },
+      data: {
+        teamId: team.id,
+        isCaptain: true,
+        teamJoinedAt: joining ? new Date() : next.teamJoinedAt,
+      },
+    });
+    await tx.team.update({
+      where: { id: team.id },
+      data: { captainId: next.id },
+    });
+  });
+
+  await rebalanceTeamRoster(team.id);
+
+  const updated = await prisma.team.findUniqueOrThrow({
+    where: { id: team.id },
+    include: { players: true },
+  });
+
+  return {
+    team: updated,
+    joinedRoster: joining,
+    previousCaptain: previous
+      ? {
+          discordId: previous.discordId,
+          discordName: previous.discordName,
+          steamName: previous.steamName,
+        }
+      : null,
+    nextCaptain: {
+      discordId: next.discordId,
+      discordName: next.discordName,
+      steamName: next.steamName,
+      playWindow: next.playWindow,
+    },
+  };
+}
+
+/**
+ * Rename a franchise only. Match and fixture rows keep the same team ids,
+ * times, and opponents — website/Discord just show the new name.
+ */
+export async function adminRenameTeam(input: {
+  teamName: string;
+  newName: string;
+}) {
+  const team = await findTeamByName(input.teamName);
+  const newName = input.newName.trim();
+  if (!newName) throw new Error("New team name cannot be empty.");
+  if (newName.length > 80) {
+    throw new Error("Team name is too long (80 characters max).");
+  }
+  if (team.name.toLowerCase() === newName.toLowerCase()) {
+    throw new Error(`That team is already named **${team.name}**.`);
+  }
+
+  const taken = await prisma.team.findFirst({
+    where: {
+      name: { equals: newName, mode: "insensitive" },
+      NOT: { id: team.id },
+    },
+  });
+  if (taken) throw new Error(`Team **${taken.name}** already exists.`);
+
+  await prisma.team.update({
+    where: { id: team.id },
+    data: { name: newName },
+  });
+
+  const captain =
+    team.players.find((player) => player.id === team.captainId) ??
+    team.players.find((player) => player.isCaptain) ??
+    null;
+
+  return {
+    id: team.id,
+    oldName: team.name,
+    newName,
+    captainName: captain?.steamName ?? null,
+  };
 }
 
 async function ensureAuctionState() {

@@ -23,7 +23,10 @@ import {
   unlockedPairings,
   type BracketSlot,
 } from "./playoff-bracket";
+import { isLiveCupTeam, publicFixtureWhere } from "./dummy";
 import type { GroupStandingRow } from "./group-stage-schedule";
+
+export { isLiveCupTeam };
 
 export const PLAYOFF_TEAM_COUNT = 8;
 export const PLAYOFF_GROUP_SIZE = 4;
@@ -52,15 +55,6 @@ export const PLAYOFF_SLOTS = [
 ] as const;
 
 export type PlayoffSlot = (typeof PLAYOFF_SLOTS)[number];
-
-const LIVE_DUMMY_PREFIX = "test-dummy";
-
-export function isLiveCupTeam(team: { name: string; captainId: string }) {
-  return (
-    !team.captainId.startsWith(LIVE_DUMMY_PREFIX) &&
-    !team.name.startsWith("Test ")
-  );
-}
 
 export function isPlayoffKind(kind: string | null | undefined) {
   return Boolean(kind && (PLAYOFF_KINDS as readonly string[]).includes(kind));
@@ -694,9 +688,14 @@ export async function getPlayoffView(): Promise<PlayoffView> {
   const now = new Date();
   const fixtures = await prisma.scheduledFixture.findMany({
     where: {
-      OR: [
-        { kind: { in: [...PLAYOFF_KINDS] } },
-        { slotKey: { in: [...PLAYOFF_SLOTS, ...BRACKET_SLOTS] } },
+      AND: [
+        publicFixtureWhere,
+        {
+          OR: [
+            { kind: { in: [...PLAYOFF_KINDS] } },
+            { slotKey: { in: [...PLAYOFF_SLOTS, ...BRACKET_SLOTS] } },
+          ],
+        },
       ],
     },
     include: {

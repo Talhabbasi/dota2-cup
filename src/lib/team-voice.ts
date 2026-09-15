@@ -81,6 +81,36 @@ async function ensureTeamVoiceCategory(guild: Guild): Promise<CategoryChannel> {
   return category;
 }
 
+/** Keep the same voice room when a team is renamed (does not recreate fixtures). */
+export async function renameTeamVoiceLabel(
+  guild: Guild,
+  oldName: string,
+  newName: string,
+  captainName: string | null,
+) {
+  if (oldName === newName) return;
+  await guild.channels.fetch();
+
+  const categoryName = teamVoiceCategoryName().toLowerCase();
+  const category = guild.channels.cache.find(
+    (ch) =>
+      ch.type === ChannelType.GuildCategory &&
+      ch.name.toLowerCase() === categoryName,
+  );
+  if (category?.type !== ChannelType.GuildCategory) return;
+
+  const existing = category.children.cache.find(
+    (ch) =>
+      ch.type === ChannelType.GuildVoice && matchesTeam(ch.name, oldName),
+  );
+  if (existing?.type !== ChannelType.GuildVoice) return;
+
+  const next = voiceChannelName(newName, captainName);
+  if (existing.name !== next) {
+    await existing.setName(next, "Team renamed");
+  }
+}
+
 function findRole(guild: Guild, name: string) {
   return (
     guild.roles.cache.find(

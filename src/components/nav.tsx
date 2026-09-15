@@ -9,11 +9,12 @@ const LINKS = [
   ["/", "Home"],
   ["/teams", "Teams"],
   ["/schedule", "Schedule"],
-  ["/matches", "Matches"],
   ["/playoffs", "Playoffs"],
+  ["/matches", "Matches"],
   ["/table", "Table"],
   ["/players", "Players"],
   ["/heroes", "Heroes"],
+  ["/register", "Register"],
 ] as const;
 
 export function Nav() {
@@ -78,7 +79,13 @@ export function Nav() {
             <Link
               key={href}
               href={href}
-              className={active ? "nav-link nav-active" : "nav-link"}
+              className={[
+                "nav-link",
+                active ? "nav-active" : "",
+                href === "/register" ? "nav-cta" : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
             >
               {label}
             </Link>

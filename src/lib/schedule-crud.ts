@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import { hasScheduleTable, safeScheduleQuery } from "./schedule-db";
+import { publicFixtureWhere } from "./dummy";
 import {
   formatScheduleWhen,
   localParts,
@@ -371,9 +372,10 @@ export async function listEditableFixtures(limit = 25) {
   );
 }
 
-export async function listCupSchedule() {
+export async function listCupSchedule(opts?: { publicOnly?: boolean }) {
   return safeScheduleQuery([], () =>
     prisma.scheduledFixture.findMany({
+      where: opts?.publicOnly ? publicFixtureWhere : undefined,
       include: FIXTURE_INCLUDE,
       orderBy: { scheduledAt: "asc" },
     }),

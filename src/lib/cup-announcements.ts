@@ -7,7 +7,7 @@ import {
   type TextChannel,
 } from "discord.js";
 import { adminRoleName } from "./constants";
-import { fullHelpText, splitDiscordChunks } from "./help";
+import { HELP_PIN_PREFIX, fullHelpText, splitDiscordChunks } from "./help";
 import { lockPaymentsChannel, lockRegisteredPlayerChannels } from "./payments-channel-access";
 import { rulesChannelName } from "./rules";
 import { syncTeamChatChannels } from "./team-chat";
@@ -478,16 +478,46 @@ export async function ensureAdminChannel(guild: Guild): Promise<TextChannel> {
   });
 }
 
+function isPinnedHelpContent(content: string) {
+  return (
+    content.startsWith(HELP_PIN_PREFIX) ||
+    content.startsWith("**Anyone**") ||
+    content.startsWith("**MM Dota Cup — Group stage**")
+  );
+}
+
 async function alreadyPinnedHelp(channel: TextChannel, botUserId: string) {
   try {
     const { items } = await channel.messages.fetchPins();
     return items.some(
       (pin) =>
         pin.message.author.id === botUserId &&
-        pin.message.content.startsWith("**Anyone**"),
+        isPinnedHelpContent(pin.message.content),
     );
   } catch {
     return false;
+  }
+}
+
+async function replaceOldHelpPins(channel: TextChannel, botUserId?: string) {
+  if (!botUserId) return;
+  try {
+    const { items } = await channel.messages.fetchPins();
+    for (const pin of items) {
+      if (
+        pin.message.author.id !== botUserId ||
+        !isPinnedHelpContent(pin.message.content)
+      ) {
+        continue;
+      }
+      try {
+        await pin.message.delete();
+      } catch {
+        await pin.message.unpin().catch(() => undefined);
+      }
+    }
+  } catch {
+    /* pins optional */
   }
 }
 
@@ -503,18 +533,20 @@ export async function postAdminCommandHelp(
     return { posted: 0, skipped: true };
   }
 
+  if (options?.force) {
+    await replaceOldHelpPins(channel, options.botUserId);
+  }
+
   const chunks = splitDiscordChunks(fullHelpText());
-  for (const [index, chunk] of chunks.entries()) {
+  for (const chunk of chunks) {
     const sent = await channel.send({
       content: chunk,
       allowedMentions: { parse: [] },
     });
-    if (index === 0) {
-      try {
-        await sent.pin();
-      } catch {
-        /* pin optional */
-      }
+    try {
+      await sent.pin();
+    } catch {
+      /* pin optional */
     }
   }
   return { posted: chunks.length, skipped: false };

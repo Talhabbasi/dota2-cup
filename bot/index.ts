@@ -72,8 +72,11 @@ import {
 } from "../src/lib/channel-moderation";
 import {
   adminAddCaptain,
+  adminChangeCaptain,
   adminRemoveCaptain,
+  adminRenameTeam,
   getTeamByCaptainDiscord,
+  listTeamNames,
   rosterSummary,
 } from "../src/lib/captains";
 import {
@@ -167,6 +170,7 @@ import {
   syncCaptainRolesFromDb,
   syncCupChannelAccess,
   tryGrantCupPlayerAccess,
+  tryRenameTeamDiscordLabels,
   tryRevokeCupPlayerAccess,
   trySetMemberCaptainRole,
   trySetPlayWindowRoles,
@@ -288,22 +292,52 @@ const commands = [
     .setDescription("Commands and how to run the cup"),
   new SlashCommandBuilder()
     .setName("captain")
-    .setDescription("Admin: appoint or remove a franchise captain")
+    .setDescription("Admin: appoint, change, rename, or dissolve a franchise")
     .addSubcommand((s) =>
       s
         .setName("add")
-        .setDescription("Admin: appoint a captain")
+        .setDescription("Admin: create a new team and appoint its captain")
         .addUserOption((o) =>
           o.setName("user").setDescription("Player").setRequired(true),
         )
         .addStringOption((o) =>
-          o.setName("team").setDescription("Team name").setRequired(true),
+          o.setName("team").setDescription("New team name").setRequired(true),
+        ),
+    )
+    .addSubcommand((s) =>
+      s
+        .setName("change")
+        .setDescription("Admin: swap captain — team, roster, and schedule stay")
+        .addStringOption((o) =>
+          o
+            .setName("team")
+            .setDescription("Existing team")
+            .setRequired(true)
+            .setAutocomplete(true),
+        )
+        .addUserOption((o) =>
+          o.setName("user").setDescription("New captain").setRequired(true),
+        ),
+    )
+    .addSubcommand((s) =>
+      s
+        .setName("rename")
+        .setDescription("Admin: rename a team only (schedule stays the same)")
+        .addStringOption((o) =>
+          o
+            .setName("team")
+            .setDescription("Current team name")
+            .setRequired(true)
+            .setAutocomplete(true),
+        )
+        .addStringOption((o) =>
+          o.setName("name").setDescription("New team name").setRequired(true),
         ),
     )
     .addSubcommand((s) =>
       s
         .setName("remove")
-        .setDescription("Admin: remove a captain and release the roster")
+        .setDescription("Admin: dissolve the team (deletes franchise + roster)")
         .addUserOption((o) =>
           o.setName("user").setDescription("Captain").setRequired(true),
         ),
@@ -898,6 +932,21 @@ function isOrganizerInteraction(interaction: {
 function fail(error: unknown): string {
   console.error(error);
   return publicErrorMessage(error);
+}
+
+async function handleTeamNameAutocomplete(interaction: AutocompleteInteraction) {
+  const focused = interaction.options.getFocused(true);
+  if (focused.name !== "team") {
+    await interaction.respond([]);
+    return;
+  }
+  const query = focused.value.trim().toLowerCase();
+  const teams = await listTeamNames();
+  const choices = teams
+    .filter((team) => !query || team.name.toLowerCase().includes(query))
+    .slice(0, 25)
+    .map((team) => ({ name: team.name.slice(0, 100), value: team.name }));
+  await interaction.respond(choices);
 }
 
 async function handleScheduleAutocomplete(interaction: AutocompleteInteraction) {
@@ -1756,6 +1805,77 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
         );
         return;
       }
+      if (sub === "change") {
+        const user = interaction.options.getUser("user", true);
+        const changed = await adminChangeCaptain({
+          discordId: user.id,
+          teamName: interaction.options.getString("team", true),
+        });
+        if (changed.joinedRoster) {
+          await tryGrantCupPlayerAccess(
+            interaction.guild,
+            user.id,
+            changed.nextCaptain.playWindow,
+          );
+        }
+        const oldId = changed.previousCaptain?.discordId.split(":")[0];
+        const newId = changed.nextCaptain.discordId.split(":")[0];
+        const notes: string[] = [];
+        if (oldId && oldId !== newId) {
+          const oldNote = await trySetMemberCaptainRole(
+            interaction.guild,
+            oldId,
+            false,
+          );
+          if (oldNote) notes.push(oldNote);
+        }
+        const newNote = await trySetMemberCaptainRole(
+          interaction.guild,
+          newId,
+          true,
+        );
+        if (newNote) notes.push(newNote);
+        await trySyncCupChannelAccess(interaction.guild);
+        void notifySiteRefresh();
+        const prev = changed.previousCaptain
+          ? ` Previous captain **${changed.previousCaptain.steamName}** stays on the roster.`
+          : "";
+        const joined = changed.joinedRoster
+          ? ` ${user} was unsigned and is now on **${changed.team.name}**.`
+          : "";
+        await interaction.editReply(
+          [
+            `${user} is now captain of **${changed.team.name}**. Roster, purse, group, and scheduled matches are unchanged.${prev}${joined}`,
+            ...notes,
+          ].join("\n"),
+        );
+        return;
+      }
+      if (sub === "rename") {
+        const renamed = await adminRenameTeam({
+          teamName: interaction.options.getString("team", true),
+          newName: interaction.options.getString("name", true),
+        });
+        const renameNote = await tryRenameTeamDiscordLabels(
+          interaction.guild,
+          renamed.oldName,
+          renamed.newName,
+          renamed.captainName,
+        );
+        if (!renameNote) {
+          await trySyncCupChannelAccess(interaction.guild);
+        }
+        void notifySiteRefresh();
+        await interaction.editReply(
+          [
+            `**${renamed.oldName}** is now **${renamed.newName}**. Scheduled matches, opponents, and times are the same — only the name changed.`,
+            renameNote,
+          ]
+            .filter(Boolean)
+            .join("\n"),
+        );
+        return;
+      }
       const user = interaction.options.getUser("user", true);
       const removed = await adminRemoveCaptain(user.id);
       const roleNote = await trySetMemberCaptainRole(
@@ -1767,7 +1887,7 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
       void notifySiteRefresh();
       await interaction.editReply(
         [
-          `Removed captain ${user}. **${removed.teamName}** is dissolved; players are unsigned again and lost that team's Discord role and private chat.`,
+          `Removed captain ${user}. **${removed.teamName}** is dissolved; players are unsigned again and lost that team's Discord role and private chat. To keep a team, use \`/captain change\` instead.`,
           roleNote,
         ]
           .filter(Boolean)
@@ -1800,7 +1920,7 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
         const count = interaction.options.getInteger("count", true);
         const result = await adminCreateDummyPlayers(count);
         await interaction.editReply(
-          `Created **${result.created.length}** dummy players:\n${result.created.map((n) => `• ${n}`).join("\n")}\nThey appear on the site and in \`/auction start\`.`,
+          `Created **${result.created.length}** dummy players:\n${result.created.map((n) => `• ${n}`).join("\n")}\nThey are for Discord auction testing only and do not appear on the website.`,
         );
         return;
       }
@@ -1821,7 +1941,7 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
           .map((t) => `• **${t.name}** — ${t.players.length}/7`)
           .join("\n");
         await interaction.editReply(
-          `Created **${result.created.length}** dummy teams:\n${body}\nNext: \`/schedule generate\` when every team has 5+ players.`,
+          `Created **${result.created.length}** dummy teams:\n${body}\nThey stay off the website. Next: \`/schedule generate\` when every team has 5+ players.`,
         );
         return;
       }
@@ -2751,7 +2871,11 @@ async function handlePrefixResult(message: Message) {
 client.on("interactionCreate", async (interaction: Interaction) => {
   if (interaction.isAutocomplete()) {
     try {
-      await handleScheduleAutocomplete(interaction);
+      if (interaction.commandName === "captain") {
+        await handleTeamNameAutocomplete(interaction);
+      } else {
+        await handleScheduleAutocomplete(interaction);
+      }
     } catch (error) {
       console.warn(
         "schedule autocomplete",
