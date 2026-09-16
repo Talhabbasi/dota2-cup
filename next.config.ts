@@ -24,6 +24,11 @@ const nextConfig: NextConfig = {
         hostname: "cdn.dota2.com",
         pathname: "/**",
       },
+      {
+        protocol: "https",
+        hostname: "cdn.cloudflare.steamstatic.com",
+        pathname: "/steam/apps/**",
+      },
     ],
   },
 };

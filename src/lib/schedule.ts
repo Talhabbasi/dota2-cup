@@ -11,6 +11,7 @@ import {
 import { prisma } from "./prisma";
 import { hasScheduleTable, safeScheduleQuery } from "./schedule-db";
 import { publicFixtureWhere } from "./dummy";
+import { currentSeasonId, currentSeasonFilter, recordSeasonChampion } from "./seasons";
 
 export const MAX_GAMES_PER_TEAM_PER_WEEKEND = 2;
 export const MATCHES_PER_WEEKEND = 3;
@@ -195,8 +196,10 @@ function pairKey(a: string, b: string) {
 }
 
 async function completedPairKeys() {
+  const season = await currentSeasonFilter();
   const keys = new Set<string>();
   const matches = await prisma.match.findMany({
+    where: season,
     select: { radiantTeamId: true, direTeamId: true },
   });
   for (const match of matches) {
@@ -205,7 +208,7 @@ async function completedPairKeys() {
     }
   }
   const fixtures = await prisma.scheduledFixture.findMany({
-    where: { status: "completed" },
+    where: { status: "completed", ...season },
     select: { radiantTeamId: true, direTeamId: true },
   });
   for (const fixture of fixtures) {
@@ -378,7 +381,9 @@ export function teamRowFromRoster(team: {
 }
 
 export async function validateTeamsForSchedule() {
+  const season = await currentSeasonFilter();
   const teams = await prisma.team.findMany({
+    where: season,
     include: { players: true },
     orderBy: { name: "asc" },
   });
@@ -405,8 +410,9 @@ export async function generateWeekendSchedule(input?: {
   force?: boolean;
 }) {
   const teams = await validateTeamsForSchedule();
+  const season = await currentSeasonFilter();
   const pending = await prisma.scheduledFixture.count({
-    where: { status: "scheduled" },
+    where: { status: "scheduled", ...season },
   });
 
   if (pending > 0 && !input?.force) {
@@ -430,13 +436,17 @@ export async function generateWeekendSchedule(input?: {
   }
 
   const fixtures = distributeWeekendSlots(pairs, firstFriday);
+  const seasonId = await currentSeasonId();
 
   await prisma.$transaction(async (tx) => {
     if (input?.force || pending > 0) {
-      await tx.scheduledFixture.deleteMany({ where: { status: "scheduled" } });
+      await tx.scheduledFixture.deleteMany({
+        where: { status: "scheduled", seasonId },
+      });
     }
     await tx.scheduledFixture.createMany({
       data: fixtures.map((f) => ({
+        seasonId,
         radiantTeamId: f.radiantTeamId,
         direTeamId: f.direTeamId,
         scheduledAt: f.scheduledAt,
@@ -458,16 +468,18 @@ export async function generateWeekendSchedule(input?: {
 }
 
 export async function clearScheduledFixtures() {
+  const season = await currentSeasonFilter();
   const removed = await prisma.scheduledFixture.deleteMany({
-    where: { status: "scheduled" },
+    where: { status: "scheduled", ...season },
   });
   return removed.count;
 }
 
 export async function listScheduledFixtures(limit = 20) {
+  const season = await currentSeasonFilter();
   return safeScheduleQuery([], () =>
     prisma.scheduledFixture.findMany({
-      where: { status: "scheduled" },
+      where: { status: "scheduled", ...season },
       include: { radiantTeam: true, direTeam: true },
       orderBy: { scheduledAt: "asc" },
       take: limit,
@@ -476,9 +488,10 @@ export async function listScheduledFixtures(limit = 20) {
 }
 
 export async function getNextScheduledFixture() {
+  const season = await currentSeasonFilter();
   return safeScheduleQuery(null, () =>
     prisma.scheduledFixture.findFirst({
-      where: { status: "scheduled", ...publicFixtureWhere },
+      where: { status: "scheduled", ...publicFixtureWhere, ...season },
       include: {
         radiantTeam: { select: { id: true, name: true } },
         direTeam: { select: { id: true, name: true } },
@@ -489,9 +502,10 @@ export async function getNextScheduledFixture() {
 }
 
 export async function getWeekendFixtures(weekendIndex: number) {
+  const season = await currentSeasonFilter();
   return safeScheduleQuery([], () =>
     prisma.scheduledFixture.findMany({
-      where: { weekendIndex, ...publicFixtureWhere },
+      where: { weekendIndex, ...publicFixtureWhere, ...season },
       include: {
         radiantTeam: { select: { id: true, name: true } },
         direTeam: { select: { id: true, name: true } },
@@ -639,6 +653,7 @@ export async function generateGrandFinal(input?: {
 
   const fixture = await prisma.scheduledFixture.create({
     data: {
+      seasonId: await currentSeasonId(),
       radiantTeamId: oriented.radiant.id,
       direTeamId: oriented.dire.id,
       scheduledAt,
@@ -702,6 +717,20 @@ export async function completeScheduledFixture(input: {
     if (seriesOver) {
       const { advancePlayoff } = await import("./playoff");
       await advancePlayoff(fixture.id);
+      if (fixture.kind === "final" || fixture.slotKey === "final") {
+        const winnerTeamId =
+          radiantWins > direWins
+            ? fixture.radiantTeamId
+            : direWins > radiantWins
+              ? fixture.direTeamId
+              : input.winnerTeamId;
+        if (winnerTeamId) {
+          await recordSeasonChampion(
+            fixture.seasonId ?? (await currentSeasonId()),
+            winnerTeamId,
+          );
+        }
+      }
     }
   } catch {
     /* schedule optional until admin runs /schedule generate */

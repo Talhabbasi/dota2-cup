@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { formatScheduleWhen } from "@/lib/schedule";
+import { HeroSlideshow } from "@/components/hero-slideshow";
 import { MatchCountdown } from "@/components/match-countdown";
 import type { FixturePreview } from "@/lib/data";
 
@@ -31,24 +32,19 @@ export function HomeHero({
   teamCount,
   matchCount,
   marquee,
+  seasonLabel,
 }: {
   upcoming: FixturePreview | null;
   teamCount: number;
   matchCount: number;
   marquee: string[];
+  seasonLabel?: string | null;
 }) {
   const names = marquee.length > 0 ? [...marquee, ...marquee] : [];
 
   return (
     <section className="hero-stage">
-      <Image
-        src="/hero-dota-battlefield.png"
-        alt=""
-        fill
-        priority
-        sizes="100vw"
-        className="hero-stage-photo"
-      />
+      <HeroSlideshow />
       <div className="hero-stage-shade" aria-hidden />
       <div className="hero-stage-fx" aria-hidden>
         <span className="hero-orb hero-orb-gold" />
@@ -63,7 +59,7 @@ export function HomeHero({
           <span className="hero-kicker-dot" />
           Indoor MM · Pakistan · Eight franchises
         </p>
-        <p className="hero-title animate-rise delay-1">
+        <h1 className="hero-title animate-rise delay-1">
           <Image
             src="/mm-dota-cup-icon.png"
             alt=""
@@ -74,12 +70,14 @@ export function HomeHero({
           />
           <span className="hero-title-text">
             <span>MM Dota</span>
-            <span>Cup</span>
+            <span>
+              Cup{seasonLabel ? ` ${seasonLabel}` : ""}
+            </span>
           </span>
-        </p>
-        <h1 className="hero-tagline animate-rise delay-2">
-          Two groups. One bracket. Every night on the clock.
         </h1>
+        <p className="hero-tagline animate-rise delay-2">
+          Two groups. One bracket. Every night on the clock.
+        </p>
         <p className="hero-lead animate-rise delay-2">
           Saturday and Sunday indoor matches, group stage into a live playoff
           graph. Captains, rosters, and kickoffs — all in one place.

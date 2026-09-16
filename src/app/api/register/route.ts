@@ -4,6 +4,7 @@ import { publicErrorMessage } from "@/lib/public-error";
 import { revalidatePublicPages } from "@/lib/page-cache";
 import { isRegistrationOpen } from "@/lib/registration-status";
 import { registerPlayer } from "@/lib/register";
+import { getCurrentSeasonSafe } from "@/lib/seasons";
 
 export async function POST(request: Request) {
   const session = await authSession();
@@ -44,10 +45,14 @@ export async function POST(request: Request) {
       playWindow: body.playWindow,
     });
     revalidatePublicPages();
+    const season = await getCurrentSeasonSafe();
     return NextResponse.json({
       id: result.player.id,
       created: result.created,
       openDotaLinked: result.openDotaLinked,
+      season: season
+        ? { number: season.number, name: season.name, status: season.status }
+        : null,
     });
   } catch (error) {
     console.error(error);

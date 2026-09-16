@@ -16,6 +16,7 @@ import {
 import { PlayoffGraph } from "@/components/playoff-graph";
 import { getPlayoffView } from "@/lib/playoff";
 import { getActiveWeekendBundle } from "@/lib/schedule";
+import { getCurrentSeasonSafe } from "@/lib/seasons";
 
 export const revalidate = 30;
 
@@ -45,7 +46,7 @@ function HomeGroupColumn({
 }
 
 export default async function Home() {
-  const [table, matches, teamCount, matchCount, upcoming, weekend, playoff] =
+  const [table, matches, teamCount, matchCount, upcoming, weekend, playoff, season] =
     await Promise.all([
       getStandings(),
       getRecentMatches(5),
@@ -54,6 +55,7 @@ export default async function Home() {
       getUpcomingFixture(),
       getActiveWeekendBundle(),
       getPlayoffView(),
+      getCurrentSeasonSafe(),
     ]);
 
   const latest = matches[0] ?? null;
@@ -67,6 +69,7 @@ export default async function Home() {
         teamCount={teamCount}
         matchCount={matchCount}
         marquee={marquee}
+        seasonLabel={season ? `Season ${season.number}` : null}
       />
 
       <div className="page home-body">

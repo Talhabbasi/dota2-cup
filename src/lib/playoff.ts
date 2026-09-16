@@ -12,6 +12,7 @@ import {
   scheduleUtcOffsetHours,
   teamRowFromRoster,
 } from "./schedule";
+import { currentSeasonId, currentSeasonFilter } from "./seasons";
 import {
   BRACKET_META,
   BRACKET_SLOTS,
@@ -131,7 +132,9 @@ function seriesLoser<T extends { radiantTeamId: string; direTeamId: string; radi
 }
 
 async function liveTeams() {
+  const season = await currentSeasonFilter();
   const teams = await prisma.team.findMany({
+    where: season,
     include: { players: { select: { playWindow: true } } },
     orderBy: { name: "asc" },
   });
@@ -257,6 +260,7 @@ async function createPlayoffFixture(input: {
 
   return prisma.scheduledFixture.create({
     data: {
+      seasonId: await currentSeasonId(),
       radiantTeamId: input.radiantTeamId,
       direTeamId: input.direTeamId,
       scheduledAt: kickoffAt(
@@ -690,6 +694,7 @@ export async function getPlayoffView(): Promise<PlayoffView> {
     where: {
       AND: [
         publicFixtureWhere,
+        await currentSeasonFilter(),
         {
           OR: [
             { kind: { in: [...PLAYOFF_KINDS] } },

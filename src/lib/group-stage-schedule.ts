@@ -1,6 +1,7 @@
 import { prisma } from "./prisma";
 import { publicTeamWhere } from "./dummy";
 import { formatScheduleWhen, scheduleUtcOffsetHours } from "./schedule";
+import { currentSeasonFilter } from "./seasons";
 import {
   createScheduledMatch,
   upcomingWeekendDates,
@@ -141,8 +142,9 @@ export async function bookGroupStageRoundRobin(input?: {
 }
 
 export async function getGroupStandings(groupKey: "A" | "B"): Promise<GroupStandingRow[]> {
+  const season = await currentSeasonFilter();
   const teams = await prisma.team.findMany({
-    where: { groupKey, ...publicTeamWhere },
+    where: { groupKey, ...publicTeamWhere, ...season },
     select: { id: true, name: true },
     orderBy: { name: "asc" },
   });
@@ -155,7 +157,7 @@ export async function getGroupStandings(groupKey: "A" | "B"): Promise<GroupStand
   );
 
   const fixtures = await prisma.scheduledFixture.findMany({
-    where: { kind: "group", status: "completed" },
+    where: { kind: "group", status: "completed", ...season },
     include: { match: true },
   });
 

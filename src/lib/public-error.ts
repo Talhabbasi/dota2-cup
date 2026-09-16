@@ -32,6 +32,9 @@ export function publicErrorMessage(
     if (fields.includes("discordId")) {
       return "This Discord account is already registered.";
     }
+    if (fields.includes("number")) {
+      return "That season number already exists.";
+    }
     return "That account is already registered.";
   }
   if (code?.startsWith("P")) {

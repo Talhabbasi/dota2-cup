@@ -14,6 +14,11 @@ import { syncTeamChatChannels } from "./team-chat";
 import { syncTeamVoiceChannels } from "./team-voice";
 import { dummyAuctionChannelName, ensureDummyAuctionChannel } from "./dummy-auction-channel";
 import {
+  ensureUpdatesChannel,
+  postPendingReleases,
+  updatesChannelName,
+} from "./updates";
+import {
   formatEntryFee,
   formatTeamFee,
   paymentAccountName,
@@ -680,6 +685,26 @@ export async function setupCupDiscord(
       channel: adminChannelName(),
       ok: false,
       detail: describeDiscordChannelError(error, adminChannelName()),
+    });
+  }
+
+  try {
+    const updates = await ensureUpdatesChannel(guild);
+    const posted = await postPendingReleases(guild);
+    const fresh = posted.filter((row) => !row.skipped).length;
+    results.push({
+      channel: updates.name,
+      ok: true,
+      detail:
+        fresh > 0
+          ? `admin-only changelog — posted ${fresh} release${fresh === 1 ? "" : "s"} — ${updates}`
+          : `admin-only changelog — ${updates}`,
+    });
+  } catch (error) {
+    results.push({
+      channel: updatesChannelName(),
+      ok: false,
+      detail: describeDiscordChannelError(error, updatesChannelName()),
     });
   }
 

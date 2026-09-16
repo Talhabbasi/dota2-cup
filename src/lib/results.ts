@@ -1,4 +1,5 @@
 import { prisma } from "./prisma";
+import { currentSeasonId } from "./seasons";
 import {
   fetchOpenDotaMatch,
   itemIdsOf,
@@ -96,6 +97,7 @@ export async function ingestMatch(input: {
 
   const match = await prisma.match.create({
     data: {
+      seasonId: await currentSeasonId(),
       openDotaId: matchId,
       duration: raw.duration,
       radiantWin: raw.radiant_win,

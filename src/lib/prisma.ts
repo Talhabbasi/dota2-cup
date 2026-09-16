@@ -7,7 +7,18 @@ function createPrismaClient() {
 }
 
 function prismaClientIsCurrent(client: PrismaClient) {
-  return typeof (client as PrismaClient & { scheduledFixture?: unknown }).scheduledFixture !== "undefined";
+  const tables = client as PrismaClient & {
+    scheduledFixture?: unknown;
+    season?: unknown;
+    seasonPlayer?: unknown;
+    postedRelease?: unknown;
+  };
+  return (
+    typeof tables.scheduledFixture !== "undefined" &&
+    typeof tables.season !== "undefined" &&
+    typeof tables.seasonPlayer !== "undefined" &&
+    typeof tables.postedRelease !== "undefined"
+  );
 }
 
 function getPrismaClient(): PrismaClient {

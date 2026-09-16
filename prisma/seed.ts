@@ -13,9 +13,26 @@ async function main() {
   await prisma.auctionState.deleteMany();
   await prisma.auctionState.create({ data: { id: "singleton" } });
 
+  const season = await prisma.season.upsert({
+    where: { number: 1 },
+    create: {
+      number: 1,
+      name: "Season 1",
+      status: "live",
+      startedAt: new Date(),
+    },
+    update: {},
+  });
+  await prisma.cupSettings.upsert({
+    where: { id: "singleton" },
+    create: { id: "singleton", currentSeasonId: season.id },
+    update: { currentSeasonId: season.id },
+  });
+
   const wolves = await prisma.team.create({
     data: {
       name: "Night Wolves",
+      seasonId: season.id,
       captainId: "seed-captain-1",
       purse: STARTING_PURSE,
     },
@@ -23,6 +40,7 @@ async function main() {
   const ember = await prisma.team.create({
     data: {
       name: "Ember Court",
+      seasonId: season.id,
       captainId: "seed-captain-2",
       purse: STARTING_PURSE,
     },

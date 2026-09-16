@@ -13,6 +13,7 @@ import {
 } from "./constants";
 import { prisma } from "./prisma";
 import { stringifyRoles } from "./roles";
+import { currentSeasonId, syncSeasonPlayer } from "./seasons";
 import { rebalanceTeamRoster } from "./players-admin";
 
 const DUMMY_PLAYER_PREFIX = "test-dummy-";
@@ -240,6 +241,7 @@ async function persistSale(auction: LiveAuction, kind: "sold" | "unsold") {
   }
 
   if (kind === "sold" && team) {
+    const seasonId = await currentSeasonId();
     await prisma.$transaction([
       prisma.team.update({
         where: { id: team.id },
@@ -255,6 +257,7 @@ async function persistSale(auction: LiveAuction, kind: "sold" | "unsold") {
       }),
       prisma.auctionLot.create({
         data: {
+          seasonId,
           role: pool,
           playerId,
           teamId: team.id,
@@ -267,6 +270,7 @@ async function persistSale(auction: LiveAuction, kind: "sold" | "unsold") {
   } else {
     await prisma.auctionLot.create({
       data: {
+        seasonId: await currentSeasonId(),
         role: pool,
         playerId,
         status: "unsold",
@@ -537,6 +541,7 @@ export async function revertSoldAuctionPlayers(steamNames: string[]) {
       data: { teamId: null, rosterRole: null, teamJoinedAt: null },
     });
     if (teamId) await rebalanceTeamRoster(teamId);
+    await syncSeasonPlayer(player.id);
 
     if (live && teamId) {
       const mem = live.teams.get(teamId);
@@ -643,6 +648,7 @@ export async function restoreSoldAuctionPlayers(
     if (!alreadySold) {
       await prisma.auctionLot.create({
         data: {
+          seasonId: await currentSeasonId(),
           role: player.medal,
           playerId: player.id,
           teamId: team.id,

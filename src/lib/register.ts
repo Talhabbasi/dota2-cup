@@ -1,4 +1,5 @@
 import { prisma } from "./prisma";
+import { syncSeasonPlayer, syncSeasonPlayers } from "./seasons";
 import { parseMedal } from "./constants";
 import { parsePlayWindow } from "./play-window";
 import { parseRegistrationRole, stringifyRoles } from "./roles";
@@ -69,6 +70,7 @@ export async function registerPlayer(input: {
         playWindow,
       },
     });
+    await syncSeasonPlayer(player.id);
     return {
       player,
       created: false,
@@ -88,6 +90,7 @@ export async function registerPlayer(input: {
       playWindow,
     },
   });
+  await syncSeasonPlayer(player.id);
   return {
     player,
     created: true,
@@ -107,6 +110,7 @@ export async function setPlayerPlayWindow(discordId: string, window: string) {
     where: { id: { in: players.map((p) => p.id) } },
     data: { playWindow },
   });
+  await syncSeasonPlayers(players.map((p) => p.id));
 
   return { playWindow, steamName: players[0].steamName };
 }

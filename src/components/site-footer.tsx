@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import { getCurrentSeasonSafe } from "@/lib/seasons";
 
 const LINKS = [
   ["/", "Home"],
@@ -8,9 +9,19 @@ const LINKS = [
   ["/playoffs", "Playoffs"],
   ["/matches", "Matches"],
   ["/players", "Players"],
+  ["/seasons", "Seasons"],
 ] as const;
 
-export function SiteFooter() {
+export async function SiteFooter({
+  showSeasons = false,
+}: {
+  showSeasons?: boolean;
+}) {
+  const season = await getCurrentSeasonSafe();
+  const seasonBit = season ? `Season ${season.number}` : "Indoor MM";
+  const links = showSeasons
+    ? LINKS
+    : LINKS.filter(([href]) => href !== "/seasons");
   return (
     <footer className="footer">
       <div className="footer-inner">
@@ -24,11 +35,11 @@ export function SiteFooter() {
           />
           <span>
             <strong>MM Dota Cup</strong>
-            <small>Indoor MM · Pakistan time</small>
+            <small>{seasonBit} · Pakistan time</small>
           </span>
         </Link>
         <nav className="footer-nav" aria-label="Footer">
-          {LINKS.map(([href, label]) => (
+          {links.map(([href, label]) => (
             <Link key={href} href={href}>
               {label}
             </Link>

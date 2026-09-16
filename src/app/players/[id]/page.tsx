@@ -17,7 +17,14 @@ import {
 
 export const revalidate = 30;
 
-function playerWon(side: string, radiantWin: boolean | null, winnerTeamId: string | null, teamId: string | null) {
+function playerWon(
+  side: string,
+  radiantWin: boolean | null,
+  winnerTeamId: string | null,
+  radiantTeamId: string | null,
+  direTeamId: string | null,
+) {
+  const teamId = side === "radiant" ? radiantTeamId : direTeamId;
   if (winnerTeamId && teamId) return winnerTeamId === teamId;
   if (radiantWin == null) return null;
   return side === "radiant" ? radiantWin : !radiantWin;
@@ -44,7 +51,8 @@ export default async function PlayerPage({
       row.side,
       row.match.radiantWin,
       row.match.winnerTeamId,
-      player.teamId,
+      row.match.radiantTeam?.id ?? null,
+      row.match.direTeam?.id ?? null,
     );
     return {
       ...row,
@@ -87,7 +95,11 @@ export default async function PlayerPage({
       </Link>
 
       <div className="page-head">
-        <p className="eyebrow">Player</p>
+        <p className="eyebrow">
+          {player.currentSeason
+            ? `Season ${player.currentSeason.number}`
+            : "Player"}
+        </p>
         <h1>{player.steamName}</h1>
         <p className="lede">
           {MEDAL_LABELS[player.medal as Medal] ?? player.medal}
@@ -108,9 +120,39 @@ export default async function PlayerPage({
         )}
       </div>
 
+      {player.seasonHistory.length > 0 ? (
+        <section className="player-season-history">
+          <div className="section-head">
+            <h2>Seasons</h2>
+          </div>
+          <ul className="player-season-list">
+            {player.seasonHistory.map((row) => (
+              <li key={row.seasonId}>
+                <span className="player-season-name">
+                  Season {row.number}
+                  {row.name !== `Season ${row.number}` ? ` · ${row.name}` : ""}
+                  {row.live ? (
+                    <span className="badge badge-gold">Live</span>
+                  ) : null}
+                </span>
+                {row.teamId && row.teamName ? (
+                  <Link href={`/teams/${row.teamId}`}>
+                    {row.teamName}
+                    {row.isCaptain ? " · Captain" : ""}
+                    {row.rosterRole === "sub" ? " · Sub" : ""}
+                  </Link>
+                ) : (
+                  <span className="muted">Unsigned</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
       <section className="lot-stats" style={{ marginBottom: "2rem" }}>
         <div className="stat">
-          <span className="muted">Games</span>
+          <span className="muted">All-time games</span>
           <b>{games.length || "0"}</b>
         </div>
         <div className="stat">
@@ -118,7 +160,7 @@ export default async function PlayerPage({
           <b>{games.length ? `${wins}W – ${losses}L` : "—"}</b>
         </div>
         <div className="stat">
-          <span className="muted">Heroes</span>
+          <span className="muted">All-time heroes</span>
           <b>{topHeroes.length || "—"}</b>
         </div>
       </section>
@@ -126,7 +168,7 @@ export default async function PlayerPage({
       {topHeroes.length > 0 ? (
         <section style={{ marginBottom: "2rem" }}>
           <div className="section-head">
-            <h2>Heroes played</h2>
+            <h2>All-time heroes</h2>
           </div>
           <div className="player-hero-strip">
             {topHeroes.map((hero) =>
@@ -204,6 +246,9 @@ export default async function PlayerPage({
                     {game.won == null ? "" : game.won ? " · Win" : " · Loss"}
                     {" · "}
                     Winner {winner} · {formatDuration(game.match.duration)}
+                    {game.match.season
+                      ? ` · Season ${game.match.season.number}`
+                      : ""}
                   </p>
                   <div className="hero-stat-row">
                     <span>LH {game.lastHits}</span>

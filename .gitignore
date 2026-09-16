@@ -37,6 +37,9 @@ yarn-error.log*
 # sqlite + uploads
 /prisma/dev.db
 /prisma/dev.db-journal
+/prisma/backups/*.json
+/prisma/backups/*.sql
+/prisma/backups/*.dump
 /public/uploads/matches/*
 !/public/uploads/matches/.gitkeep
 /public/uploads/payments/*

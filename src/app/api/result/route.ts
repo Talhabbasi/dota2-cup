@@ -24,7 +24,7 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error(error);
     return NextResponse.json(
-      { error: publicErrorMessage(error, "Import failed.") },
+      { error: publicErrorMessage(error, "Could not import that match.") },
       { status: 400 },
     );
   }

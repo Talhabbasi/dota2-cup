@@ -14,14 +14,17 @@ const LINKS = [
   ["/table", "Table"],
   ["/players", "Players"],
   ["/heroes", "Heroes"],
+  ["/seasons", "Seasons"],
   ["/register", "Register"],
 ] as const;
 
-export function Nav() {
+export function Nav({ showSeasons = false }: { showSeasons?: boolean }) {
   const pathname = usePathname();
   const [ready, setReady] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const links = LINKS;
+  const links = showSeasons
+    ? LINKS
+    : LINKS.filter(([href]) => href !== "/seasons");
 
   useEffect(() => {
     setReady(true);

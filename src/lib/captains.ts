@@ -7,6 +7,7 @@ import { formatRoles } from "./data";
 import { PLAY_WINDOW_SHORT, playWindowOrBoth } from "./play-window";
 import { rebalanceTeamRoster } from "./players-admin";
 import { prisma } from "./prisma";
+import { currentSeasonId, currentSeasonFilter, syncSeasonPlayer, syncSeasonPlayers } from "./seasons";
 import { parseRolesJson } from "./roles";
 
 async function requirePlayer(discordId: string) {
@@ -37,12 +38,18 @@ export async function adminAddCaptain(input: {
   }
 
   const name = input.teamName.trim();
-  const taken = await prisma.team.findUnique({ where: { name } });
+  const taken = await prisma.team.findUnique({
+    where: { name },
+  });
+  if (taken && taken.seasonId && taken.seasonId !== (await currentSeasonId())) {
+    throw new Error(`Team "${name}" exists in another season.`);
+  }
   if (taken) throw new Error(`Team "${name}" already exists.`);
 
   const team = await prisma.team.create({
     data: {
       name,
+      seasonId: await currentSeasonId(),
       captainId: player.id,
       purse: STARTING_PURSE,
     },
@@ -57,6 +64,7 @@ export async function adminAddCaptain(input: {
       teamJoinedAt: new Date(),
     },
   });
+  await syncSeasonPlayer(player.id);
 
   return prisma.team.findUniqueOrThrow({
     where: { id: team.id },
@@ -71,6 +79,12 @@ export async function adminRemoveCaptain(discordId: string) {
   }
 
   const teamId = player.teamId;
+  const rosterIds = (
+    await prisma.player.findMany({
+      where: { teamId },
+      select: { id: true },
+    })
+  ).map((row) => row.id);
   const state = await ensureAuctionState();
   if (
     state.status === "running" &&
@@ -113,6 +127,7 @@ export async function adminRemoveCaptain(discordId: string) {
 
   const name = player.team?.name ?? "the team";
   await prisma.team.delete({ where: { id: teamId } });
+  await syncSeasonPlayers(rosterIds);
   return { teamName: name };
 }
 
@@ -120,7 +135,10 @@ async function findTeamByName(name: string) {
   const trimmed = name.trim();
   if (!trimmed) throw new Error("Team name cannot be empty.");
   const team = await prisma.team.findFirst({
-    where: { name: { equals: trimmed, mode: "insensitive" } },
+    where: {
+      name: { equals: trimmed, mode: "insensitive" },
+      ...(await currentSeasonFilter()),
+    },
     include: { players: true },
   });
   if (!team) throw new Error(`No team named "${trimmed}".`);
@@ -129,6 +147,7 @@ async function findTeamByName(name: string) {
 
 export async function listTeamNames() {
   return prisma.team.findMany({
+    where: await currentSeasonFilter(),
     select: { name: true },
     orderBy: { name: "asc" },
   });
@@ -192,6 +211,9 @@ export async function adminChangeCaptain(input: {
   });
 
   await rebalanceTeamRoster(team.id);
+  await syncSeasonPlayers(
+    [next.id, previous?.id].filter((id): id is string => Boolean(id)),
+  );
 
   const updated = await prisma.team.findUniqueOrThrow({
     where: { id: team.id },

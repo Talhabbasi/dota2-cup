@@ -2,11 +2,12 @@ import { PlayersGrid, type PlayerCardView } from "@/components/players-grid";
 import { getPlayers, formatRoles } from "@/lib/data";
 import { PLAY_WINDOW_SHORT, playWindowOrBoth } from "@/lib/play-window";
 import { isRosterSub } from "@/lib/roles";
+import { getCurrentSeasonSafe } from "@/lib/seasons";
 
 export const revalidate = 30;
 
 export default async function PlayersPage() {
-  const players = await getPlayers();
+  const [players, season] = await Promise.all([getPlayers(), getCurrentSeasonSafe()]);
 
   const views: PlayerCardView[] = players.map((p) => ({
     id: p.id,
@@ -31,7 +32,9 @@ export default async function PlayersPage() {
       <header className="teams-list-hero players-list-hero">
         <div className="team-hero-glow" aria-hidden />
         <div className="teams-list-hero-body">
-          <p className="eyebrow">Pool</p>
+          <p className="eyebrow">
+            {season ? `Season ${season.number}` : "Pool"}
+          </p>
           <h1>Players</h1>
           {views.length > 0 ? (
             <div className="teams-list-hero-pills">

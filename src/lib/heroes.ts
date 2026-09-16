@@ -7,6 +7,7 @@ import {
   type HeroInfo,
 } from "./opendota";
 import { publicMatchWhere, publicPlayerWhere } from "./dummy";
+import { currentSeasonFilter } from "./seasons";
 
 export type HeroTournamentStat = HeroInfo & {
   plays: number;
@@ -39,13 +40,15 @@ export function parseStoredItems(json: string): StoredItem[] {
 }
 
 export async function getHeroTournamentStats(): Promise<HeroTournamentStat[]> {
+  const season = await currentSeasonFilter();
+  const matchWhere = { ...publicMatchWhere, ...season };
   const [catalog, grouped, unnamed] = await Promise.all([
     loadHeroCatalog(),
     prisma.matchPlayer.groupBy({
       by: ["heroId"],
       where: {
         heroId: { gt: 0 },
-        match: publicMatchWhere,
+        match: matchWhere,
         OR: [{ playerId: null }, { player: publicPlayerWhere }],
       },
       _count: { _all: true },
@@ -53,7 +56,7 @@ export async function getHeroTournamentStats(): Promise<HeroTournamentStat[]> {
     prisma.matchPlayer.findMany({
       where: {
         heroId: 0,
-        match: publicMatchWhere,
+        match: matchWhere,
         OR: [{ playerId: null }, { player: publicPlayerWhere }],
       },
       select: { hero: true },
@@ -86,11 +89,12 @@ export async function getHeroBySlug(slug: string) {
 }
 
 export async function getHeroMatchAppearances(heroId: number, heroName: string) {
+  const season = await currentSeasonFilter();
   const players = await prisma.matchPlayer.findMany({
     where: {
       AND: [
         { OR: [{ heroId }, { hero: heroName, heroId: 0 }] },
-        { match: publicMatchWhere },
+        { match: { ...publicMatchWhere, ...season } },
         { OR: [{ playerId: null }, { player: publicPlayerWhere }] },
       ],
     },

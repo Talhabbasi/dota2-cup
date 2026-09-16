@@ -25,6 +25,12 @@ Pinned in **#admin** for every Admin. Re-post anytime with \`/admin help\`.
 **Admin — setup**
 \`/admin setup\` — #payments, team chats, team voice, and this sheet in **#admin**
 \`/admin help\` — post & pin this sheet in **#admin** again
+\`/season current\` — which season the bot is writing to (right now Season 1)
+\`/season list\` — every season
+\`/season create name:<optional>\` — add the next season (does **not** switch live data)
+\`/season start number:<n>\` — archive the live season and make season n live
+\`/updates add kind:added|fixed|removed text:\` — post a note to **#updates** (Admin only)
+\`/updates post\` — post pending changelog entries to **#updates**
 \`/registration close\` — close website + Discord sign-ups
 \`/registration open\` — re-open public registration
 \`/registration status\`

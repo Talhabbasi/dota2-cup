@@ -21,6 +21,7 @@ import {
   starterCountOnTeam,
   stringifyRoles,
 } from "./roles";
+import { currentSeasonId, syncSeasonPlayer, syncSeasonPlayers } from "./seasons";
 
 const DUMMY_PREFIX = "test-dummy-";
 const DUMMY_TEAM_PREFIX = "test-dummy-team-";
@@ -112,6 +113,7 @@ export async function adminAddPlayerToTeam(input: {
     },
   });
   await rebalanceTeamRoster(team.id);
+  await syncSeasonPlayer(player.id);
 
   return { team, player };
 }
@@ -134,6 +136,7 @@ export async function adminRemovePlayerFromTeam(discordId: string) {
     data: { teamId: null, rosterRole: null, teamJoinedAt: null },
   });
   await rebalanceTeamRoster(teamId);
+  await syncSeasonPlayer(player.id);
 
   return { name: player.steamName, teamName };
 }
@@ -175,6 +178,7 @@ export async function rebalanceTeamRoster(teamId: string) {
       data: { rosterRole: nextRole },
     });
   }
+  await syncSeasonPlayers(ordered.map((player) => player.id));
 }
 
 export async function adminCreateDummyPlayers(count: number) {
@@ -192,7 +196,7 @@ export async function adminCreateDummyPlayers(count: number) {
     const role = STARTING_ROLES[n % STARTING_ROLES.length];
     const medal = MEDALS[n % MEDALS.length];
     const name = `Test ${role} ${index}`;
-    await prisma.player.create({
+    const dummy = await prisma.player.create({
       data: {
         discordId: `${DUMMY_PREFIX}${steam32}`,
         discordName: name,
@@ -202,6 +206,7 @@ export async function adminCreateDummyPlayers(count: number) {
         rolesJson: stringifyRoles([role]),
       },
     });
+    await syncSeasonPlayer(dummy.id);
     usedSteam.add(steam32);
     created.push(name);
     steam32 += 1;
@@ -260,6 +265,7 @@ export async function adminCreateDummyTeams(teamCount = 2, rosterSize = MIN_ROST
     const team = await prisma.team.create({
       data: {
         name,
+        seasonId: await currentSeasonId(),
         captainId: captain.id,
         purse: STARTING_PURSE,
       },
@@ -398,6 +404,7 @@ export async function adminUpdatePlayerProfile(input: {
       ...(playWindow ? { playWindow } : {}),
     },
   });
+  await syncSeasonPlayer(updated.id);
 
   return {
     player: updated,

@@ -5,6 +5,7 @@ import { ClosedBanner } from "@/components/closed-banner";
 import { NavigationLoader } from "@/components/navigation-loader";
 import { Providers } from "@/components/providers";
 import { SiteFooter } from "@/components/site-footer";
+import { hasCrownedSeason } from "@/lib/seasons";
 import "./globals.css";
 
 const oxanium = Oxanium({
@@ -50,7 +51,8 @@ export const viewport: Viewport = {
   viewportFit: "cover",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default async function RootLayout({ children }: LayoutProps<"/">) {
+  const showSeasons = await hasCrownedSeason();
   return (
     <html
       lang="en"
@@ -59,10 +61,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className="min-h-full flex flex-col">
         <Providers>
           <NavigationLoader />
-          <Nav />
+          <Nav showSeasons={showSeasons} />
           <ClosedBanner />
           <main className="flex-1">{children}</main>
-          <SiteFooter />
+          <SiteFooter showSeasons={showSeasons} />
         </Providers>
         <div className="film-grain" aria-hidden />
       </body>

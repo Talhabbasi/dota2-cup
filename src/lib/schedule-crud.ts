@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import { hasScheduleTable, safeScheduleQuery } from "./schedule-db";
 import { publicFixtureWhere } from "./dummy";
+import { currentSeasonId, currentSeasonFilter } from "./seasons";
 import {
   formatScheduleWhen,
   localParts,
@@ -88,7 +89,11 @@ function wrapUnique(error: unknown): never {
 
 async function requireTeam(name: string) {
   const trimmed = name.trim();
-  const teams = await prisma.team.findMany({ select: { id: true, name: true } });
+  const season = await currentSeasonFilter();
+  const teams = await prisma.team.findMany({
+    where: season,
+    select: { id: true, name: true },
+  });
   const team = teams.find(
     (row) => row.name.toLowerCase() === trimmed.toLowerCase(),
   );
@@ -283,6 +288,7 @@ async function weekendIndexForNight(night: {
   const friday = fridayOfMatchNight(night);
   const fridayMs = friday.getTime();
   const fixtures = await prisma.scheduledFixture.findMany({
+    where: await currentSeasonFilter(),
     select: { weekendIndex: true, scheduledAt: true },
   });
   for (const fixture of fixtures) {
@@ -352,16 +358,19 @@ export function upcomingWeekendDates(count = 8) {
 }
 
 export async function listTeamsForSchedule() {
+  const season = await currentSeasonFilter();
   return prisma.team.findMany({
+    where: season,
     select: { id: true, name: true },
     orderBy: { name: "asc" },
   });
 }
 
 export async function listEditableFixtures(limit = 25) {
+  const season = await currentSeasonFilter();
   return safeScheduleQuery([], () =>
     prisma.scheduledFixture.findMany({
-      where: { status: "scheduled" },
+      where: { status: "scheduled", ...season },
       include: {
         radiantTeam: { select: { name: true } },
         direTeam: { select: { name: true } },
@@ -373,9 +382,12 @@ export async function listEditableFixtures(limit = 25) {
 }
 
 export async function listCupSchedule(opts?: { publicOnly?: boolean }) {
+  const season = await currentSeasonFilter();
   return safeScheduleQuery([], () =>
     prisma.scheduledFixture.findMany({
-      where: opts?.publicOnly ? publicFixtureWhere : undefined,
+      where: opts?.publicOnly
+        ? { ...publicFixtureWhere, ...season }
+        : season,
       include: FIXTURE_INCLUDE,
       orderBy: { scheduledAt: "asc" },
     }),
@@ -426,6 +438,7 @@ export async function createScheduledMatch(input: {
   try {
     return await prisma.scheduledFixture.create({
       data: {
+        seasonId: await currentSeasonId(),
         radiantTeamId: radiant.id,
         direTeamId: dire.id,
         scheduledAt,

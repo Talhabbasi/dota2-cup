@@ -1,5 +1,6 @@
 import { prisma } from "./prisma";
 import { isRosterSub } from "./roles";
+import { currentSeasonId, syncSeasonPlayer } from "./seasons";
 import {
   entryFeePkr,
   formatEntryFee,
@@ -52,6 +53,7 @@ export async function recordPlayerPayment(input: {
   });
   await prisma.payment.create({
     data: {
+      seasonId: await currentSeasonId(),
       playerId: player.id,
       discordId: input.discordId,
       discordName: input.discordName,
@@ -61,6 +63,7 @@ export async function recordPlayerPayment(input: {
       amount,
     },
   });
+  await syncSeasonPlayer(updated.id);
   return { player: updated, skipped: false as const, reason: null, alreadyPaid: false };
 }
 

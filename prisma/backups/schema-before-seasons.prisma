@@ -8,60 +8,6 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
-model Season {
-  id        String    @id @default(cuid())
-  number    Int       @unique
-  name      String
-  status    String    @default("upcoming")
-  createdAt DateTime  @default(now())
-  startedAt DateTime?
-  endedAt   DateTime?
-  championTeamId String?
-  championTeam   Team?     @relation("SeasonChampion", fields: [championTeamId], references: [id], onDelete: SetNull)
-
-  teams        Team[]
-  matches      Match[]
-  fixtures     ScheduledFixture[]
-  players      SeasonPlayer[]
-  lots         AuctionLot[]
-  payments     Payment[]
-  cupSettings  CupSettings[]
-}
-
-model PostedRelease {
-  id        String   @id
-  title     String
-  messageId String?
-  channelId String?
-  postedAt  DateTime @default(now())
-}
-
-/// One person's registration in one season (team, captain, payment snapshot).
-/// Player stays the forever identity (Discord + Steam).
-model SeasonPlayer {
-  id            String    @id @default(cuid())
-  seasonId      String
-  season        Season    @relation(fields: [seasonId], references: [id], onDelete: Cascade)
-  playerId      String
-  player        Player    @relation(fields: [playerId], references: [id], onDelete: Cascade)
-  teamId        String?
-  team          Team?     @relation(fields: [teamId], references: [id], onDelete: SetNull)
-  rosterRole    String?
-  teamJoinedAt  DateTime?
-  isCaptain     Boolean   @default(false)
-  medal         String?
-  rolesJson     String?
-  playWindow    String?
-  paidAt        DateTime?
-  paymentAmount Int       @default(0)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-
-  @@unique([seasonId, playerId])
-  @@index([seasonId, teamId])
-  @@index([playerId])
-}
-
 model Player {
   id          String   @id @default(cuid())
   discordId   String   @unique
@@ -85,28 +31,22 @@ model Player {
   matchPlayers MatchPlayer[]
   lots        AuctionLot[]
   payments    Payment[]
-  seasons     SeasonPlayer[]
 }
 
 model CupSettings {
   id                String   @id @default("singleton")
   registrationOpen  Boolean  @default(false)
-  currentSeasonId   String?
-  currentSeason     Season?  @relation(fields: [currentSeasonId], references: [id], onDelete: SetNull)
   updatedAt         DateTime @updatedAt
 }
 
 model Team {
   id        String   @id @default(cuid())
-  seasonId  String?
-  season    Season?  @relation(fields: [seasonId], references: [id], onDelete: Restrict)
   name      String   @unique
   captainId String   @unique
   purse     Int
   groupKey  String?
   createdAt DateTime @default(now())
   players   Player[]
-  seasonPlayers SeasonPlayer[]
   bids      Bid[]
   lotsWon   AuctionLot[]
   radiantMatches Match[] @relation("RadiantTeam")
@@ -114,9 +54,6 @@ model Team {
   wonMatches     Match[] @relation("WinnerTeam")
   radiantFixtures ScheduledFixture[] @relation("FixtureRadiant")
   direFixtures    ScheduledFixture[] @relation("FixtureDire")
-  championships   Season[] @relation("SeasonChampion")
-
-  @@index([seasonId])
 }
 
 model AuctionState {
@@ -136,8 +73,6 @@ model AuctionState {
 
 model AuctionLot {
   id        String   @id @default(cuid())
-  seasonId  String?
-  season    Season?  @relation(fields: [seasonId], references: [id], onDelete: SetNull)
   role      String
   playerId  String
   player    Player   @relation(fields: [playerId], references: [id])
@@ -147,8 +82,6 @@ model AuctionLot {
   status    String
   createdAt DateTime @default(now())
   bids      Bid[]
-
-  @@index([seasonId])
 }
 
 model Bid {
@@ -165,8 +98,6 @@ model Bid {
 
 model Match {
   id             String   @id @default(cuid())
-  seasonId       String?
-  season         Season?  @relation(fields: [seasonId], references: [id], onDelete: SetNull)
   openDotaId     String   @unique
   duration       Int?
   radiantWin     Boolean?
@@ -184,13 +115,10 @@ model Match {
 
   @@index([createdAt])
   @@index([winnerTeamId])
-  @@index([seasonId])
 }
 
 model ScheduledFixture {
   id            String   @id @default(cuid())
-  seasonId      String?
-  season        Season?  @relation(fields: [seasonId], references: [id], onDelete: SetNull)
   radiantTeamId String
   direTeamId    String
   radiantTeam   Team     @relation("FixtureRadiant", fields: [radiantTeamId], references: [id], onDelete: Cascade)
@@ -210,7 +138,6 @@ model ScheduledFixture {
   createdAt     DateTime @default(now())
 
   @@unique([radiantTeamId, direTeamId, kind])
-  @@index([seasonId])
 }
 
 model MatchPlayer {
@@ -253,8 +180,6 @@ model Hero {
 
 model Payment {
   id             String   @id @default(cuid())
-  seasonId       String?
-  season         Season?  @relation(fields: [seasonId], references: [id], onDelete: SetNull)
   playerId       String
   player         Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
   discordId      String
@@ -265,5 +190,4 @@ model Payment {
 
   @@index([playerId])
   @@index([discordId])
-  @@index([seasonId])
 }

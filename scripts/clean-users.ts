@@ -33,6 +33,14 @@ async function main() {
     return;
   }
 
+  if (!hasFlag("--i-understand-this-deletes-history")) {
+    console.log("\nRefusing to wipe. Seasons keep player, team, and match history now.");
+    console.log("Create the next cup with `/season create` in #admin instead.");
+    console.log("If you really need a wipe, pass both flags:");
+    console.log("  npm run clean:users -- --yes --i-understand-this-deletes-history");
+    return;
+  }
+
   await prisma.bid.deleteMany();
   await prisma.auctionLot.deleteMany();
   await prisma.scheduledFixture.deleteMany();

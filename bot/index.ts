@@ -118,6 +118,24 @@ import {
 } from "../src/lib/payments";
 import { assignUnknown, ingestMatch } from "../src/lib/results";
 import {
+  backfillSeason1,
+  createSeason,
+  formatSeasonLabel,
+  getCurrentSeason,
+  listSeasons,
+  startSeason,
+} from "../src/lib/seasons";
+import {
+  UPDATE_KINDS,
+  type UpdateKind,
+} from "../src/lib/releases";
+import {
+  ensureUpdatesChannel,
+  postAdHocUpdate,
+  postPendingReleases,
+  updatesChannelName,
+} from "../src/lib/updates";
+import {
   clearScheduledFixtures,
   formatScheduleSummary,
   formatScheduleWhen,
@@ -548,12 +566,74 @@ const commands = [
       s.setName("status").setDescription("Show whether registration is open or closed"),
     ),
   new SlashCommandBuilder()
+    .setName("season")
+    .setDescription("Admin: current cup season (create next season from #admin)")
+    .addSubcommand((s) =>
+      s.setName("current").setDescription("Admin: show which season is live"),
+    )
+    .addSubcommand((s) =>
+      s.setName("list").setDescription("Admin: list every season"),
+    )
+    .addSubcommand((s) =>
+      s
+        .setName("create")
+        .setDescription("Admin: create the next season (does not switch live data)")
+        .addStringOption((o) =>
+          o
+            .setName("name")
+            .setDescription("Display name, e.g. Season 2 (default: Season N)"),
+        ),
+    )
+    .addSubcommand((s) =>
+      s
+        .setName("start")
+        .setDescription("Admin: make this season live (archives the current one)")
+        .addIntegerOption((o) =>
+          o
+            .setName("number")
+            .setDescription("Season number to make live")
+            .setRequired(true)
+            .setMinValue(1),
+        ),
+    ),
+  new SlashCommandBuilder()
+    .setName("updates")
+    .setDescription("Admin: post Added / Fixed / Removed notes to #updates")
+    .addSubcommand((s) =>
+      s
+        .setName("add")
+        .setDescription("Admin: post one changelog line to #updates")
+        .addStringOption((o) =>
+          o
+            .setName("kind")
+            .setDescription("Added, fixed, or removed")
+            .setRequired(true)
+            .addChoices(
+              { name: "Added", value: "added" },
+              { name: "Fixed", value: "fixed" },
+              { name: "Removed", value: "removed" },
+            ),
+        )
+        .addStringOption((o) =>
+          o
+            .setName("text")
+            .setDescription("What changed")
+            .setRequired(true)
+            .setMaxLength(1000),
+        ),
+    )
+    .addSubcommand((s) =>
+      s
+        .setName("post")
+        .setDescription("Admin: post pending changelog entries to #updates"),
+    ),
+  new SlashCommandBuilder()
     .setName("admin")
     .setDescription("Admin: payments channel, #admin help, cup setup")
     .addSubcommand((s) =>
       s
         .setName("setup")
-        .setDescription("Create #payments, lock cup channels, team chats, team voice, and #auction-test"),
+        .setDescription("Create #payments, lock cup channels, team chats, team voice, #auction-test, and #updates"),
     )
     .addSubcommand((s) =>
       s.setName("help").setDescription("Post all bot commands into #admin"),
@@ -927,6 +1007,21 @@ function isOrganizerInteraction(interaction: {
   if (!adminRole || !raw?.roles) return false;
   if (Array.isArray(raw.roles)) return raw.roles.includes(adminRole.id);
   return false;
+}
+
+function interactionChannelName(
+  interaction: ChatInputCommandInteraction,
+): string | null {
+  const channel = interaction.channel;
+  if (channel && "name" in channel && typeof channel.name === "string") {
+    return channel.name;
+  }
+  return null;
+}
+
+function isAdminChannel(interaction: ChatInputCommandInteraction) {
+  const name = interactionChannelName(interaction);
+  return Boolean(name && name.toLowerCase() === adminChannelName().toLowerCase());
 }
 
 function fail(error: unknown): string {
@@ -1649,6 +1744,144 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
           content: chunk,
           flags: MessageFlags.Ephemeral,
         });
+      }
+      return;
+    }
+
+    if (name === "season") {
+      if (!isOrganizer(member, discordId)) {
+        await interaction.reply({
+          content: `Only **${adminRoleName()}** can manage seasons.`,
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+      if (!isAdminChannel(interaction)) {
+        await interaction.reply({
+          content: `Run \`/season\` in **#${adminChannelName()}**.`,
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+      const sub = interaction.options.getSubcommand();
+      await interaction.deferReply();
+      try {
+        if (sub === "create") {
+          const created = await createSeason({
+            name: interaction.options.getString("name"),
+          });
+          const current = await getCurrentSeason();
+          await interaction.editReply(
+            `Created **${formatSeasonLabel(created)}**.\nLive season is still **${current ? formatSeasonLabel(current) : "unset"}**. Creating a season does not move teams or players.`,
+          );
+          return;
+        }
+        if (sub === "start") {
+          const number = interaction.options.getInteger("number", true);
+          const switched = await startSeason(number);
+          await interaction.editReply(
+            [
+              `Live season is now **${formatSeasonLabel(switched.current)}**.`,
+              switched.previous
+                ? `Archived **${formatSeasonLabel(switched.previous)}** (history kept).`
+                : null,
+              "Old teams stay on the archived season. Appoint captains again for the new cup, then `/admin setup`.",
+            ]
+              .filter(Boolean)
+              .join("\n"),
+          );
+          void notifySiteRefresh();
+          return;
+        }
+        const [current, seasons] = await Promise.all([
+          getCurrentSeason(),
+          listSeasons(),
+        ]);
+        if (seasons.length === 0) {
+          await interaction.editReply("No seasons yet. Wait for the bot to finish startup, then try again.");
+          return;
+        }
+        const lines = seasons.map((season) => {
+          const mark = current?.id === season.id ? " ← live" : "";
+          return `• ${formatSeasonLabel(season)}${mark}`;
+        });
+        if (sub === "current") {
+          await interaction.editReply(
+            current
+              ? `Live season: **${formatSeasonLabel(current)}**.`
+              : `No live season pointer.\n${lines.join("\n")}`,
+          );
+          return;
+        }
+        await interaction.editReply(`**Seasons**\n${lines.join("\n")}`);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Could not update seasons.";
+        await interaction.editReply(message);
+      }
+      return;
+    }
+
+    if (name === "updates") {
+      if (!isOrganizer(member, discordId)) {
+        await interaction.reply({
+          content: `Only **${adminRoleName()}** can post to #${updatesChannelName()}.`,
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+      if (!isAdminChannel(interaction)) {
+        await interaction.reply({
+          content: `Run \`/updates\` in **#${adminChannelName()}**. Notes are posted to **#${updatesChannelName()}** (Admin only).`,
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+      if (!interaction.guild) {
+        await interaction.reply({
+          content: "Run this in your Discord server.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+      const sub = interaction.options.getSubcommand();
+      await interaction.deferReply();
+      try {
+        if (sub === "add") {
+          const kindRaw = interaction.options.getString("kind", true);
+          const kind = (UPDATE_KINDS as readonly string[]).includes(kindRaw)
+            ? (kindRaw as UpdateKind)
+            : null;
+          const text = interaction.options.getString("text", true).trim();
+          if (!kind) {
+            await interaction.editReply("Kind must be added, fixed, or removed.");
+            return;
+          }
+          if (!text) {
+            await interaction.editReply("Write what changed.");
+            return;
+          }
+          const posted = await postAdHocUpdate(interaction.guild, {
+            kind,
+            text,
+            author: interaction.user.username,
+          });
+          await interaction.editReply(
+            `Posted **${kind}** in ${posted.channel}.`,
+          );
+          return;
+        }
+        const channel = await ensureUpdatesChannel(interaction.guild);
+        const posted = await postPendingReleases(interaction.guild);
+        const fresh = posted.filter((row) => !row.skipped).length;
+        await interaction.editReply(
+          fresh > 0
+            ? `Posted **${fresh}** changelog ${fresh === 1 ? "entry" : "entries"} in ${channel}.`
+            : `No new changelog entries. ${channel} is Admin-only.`,
+        );
+      } catch (error) {
+        await interaction.editReply(
+          error instanceof Error ? error.message : "Could not post updates.",
+        );
       }
       return;
     }
@@ -3080,6 +3313,17 @@ async function refreshPostedLot(sandbox = false) {
 
 client.once(Events.ClientReady, async () => {
   console.log(`Bot online as ${client.user?.tag}`);
+  try {
+    const seeded = await backfillSeason1();
+    console.log(
+      `Season ready: ${formatSeasonLabel(seeded.season)} (copied teams ${seeded.copied.teams}, players ${seeded.copied.players}, fixtures ${seeded.copied.fixtures})`,
+    );
+  } catch (error) {
+    console.warn(
+      "season backfill",
+      error instanceof Error ? error.message : error,
+    );
+  }
   await hydrateAuctionClock().catch(() => undefined);
   try {
     const repair = await repairAuctionScores();
@@ -3093,6 +3337,19 @@ client.once(Events.ClientReady, async () => {
     console.warn("auction score repair", error);
   }
   for (const guild of client.guilds.cache.values()) {
+    try {
+      await ensureUpdatesChannel(guild);
+      const posted = await postPendingReleases(guild);
+      const fresh = posted.filter((row) => !row.skipped).length;
+      if (fresh > 0) {
+        console.log(`Posted ${fresh} changelog ${fresh === 1 ? "entry" : "entries"} in #${updatesChannelName()} (${guild.name})`);
+      }
+    } catch (error) {
+      console.warn(
+        `Could not set up #${updatesChannelName()} (${guild.name}):`,
+        error instanceof Error ? error.message : error,
+      );
+    }
     try {
       await syncCupChannelAccess(guild);
       await syncCaptainRolesFromDb(guild);

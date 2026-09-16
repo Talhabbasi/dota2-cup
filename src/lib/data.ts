@@ -8,6 +8,10 @@ import {
 import { getNextScheduledFixture } from "./schedule";
 import { parseRolesJson } from "./roles";
 import { ROLE_LABELS, basePriceFor, type PlayerRole } from "./constants";
+import {
+  currentSeasonFilter,
+  getCurrentSeasonSafe,
+} from "./seasons";
 
 const matchListSelect = {
   id: true,
@@ -24,8 +28,12 @@ const matchListSelect = {
 const teamRefSelect = { select: { id: true, name: true } } as const;
 
 export async function getPlayers() {
+  const season = await getCurrentSeasonSafe();
   const players = await prisma.player.findMany({
-    where: publicPlayerWhere,
+    where: {
+      ...publicPlayerWhere,
+      ...(season ? { seasons: { some: { seasonId: season.id } } } : {}),
+    },
     select: {
       id: true,
       steamName: true,
@@ -37,14 +45,35 @@ export async function getPlayers() {
       playWindow: true,
       createdAt: true,
       team: { select: { id: true, name: true } },
+      seasons: {
+        where: season ? { seasonId: season.id } : { seasonId: "__none__" },
+        select: {
+          teamId: true,
+          isCaptain: true,
+          rosterRole: true,
+          team: { select: { id: true, name: true } },
+        },
+        take: 1,
+      },
     },
     orderBy: [{ teamId: "asc" }, { steamName: "asc" }],
   });
-  return players.map((p) => ({
-    ...p,
-    roles: parseRolesJson(p.rolesJson),
-    basePrice: basePriceFor(p.medal),
-  }));
+  return players.map((p) => {
+    const membership = p.seasons[0];
+    const team = membership?.team ?? p.team;
+    const teamId = membership ? membership.teamId : p.teamId;
+    const isCaptain = membership ? membership.isCaptain : p.isCaptain;
+    const rosterRole = membership ? membership.rosterRole : p.rosterRole;
+    return {
+      ...p,
+      team,
+      teamId,
+      isCaptain,
+      rosterRole,
+      roles: parseRolesJson(p.rolesJson),
+      basePrice: basePriceFor(p.medal),
+    };
+  });
 }
 
 export async function getPlayer(id: string) {
@@ -54,37 +83,94 @@ export async function getPlayer(id: string) {
   });
   if (!player || isDummyDiscordId(player.discordId)) return null;
 
-  const matchPlayers = await prisma.matchPlayer.findMany({
-    where: {
-      OR: [{ playerId: player.id }, { steam32: player.steam32 }],
-      match: publicMatchWhere,
-    },
-    include: {
-      match: {
-        include: {
-          radiantTeam: teamRefSelect,
-          direTeam: teamRefSelect,
-          winnerTeam: teamRefSelect,
+  const [matchPlayers, seasonRows, currentSeason] = await Promise.all([
+    prisma.matchPlayer.findMany({
+      where: {
+        OR: [{ playerId: player.id }, { steam32: player.steam32 }],
+        match: publicMatchWhere,
+      },
+      include: {
+        match: {
+          include: {
+            season: { select: { number: true, name: true } },
+            radiantTeam: teamRefSelect,
+            direTeam: teamRefSelect,
+            winnerTeam: teamRefSelect,
+          },
         },
       },
-    },
-    orderBy: { match: { createdAt: "desc" } },
-  });
+      orderBy: { match: { createdAt: "desc" } },
+    }),
+    prisma.seasonPlayer.findMany({
+      where: { playerId: player.id },
+      include: {
+        season: {
+          select: { id: true, number: true, name: true, status: true },
+        },
+        team: { select: { id: true, name: true } },
+      },
+      orderBy: { season: { number: "desc" } },
+    }),
+    getCurrentSeasonSafe(),
+  ]);
+
+  const liveMembership = currentSeason
+    ? seasonRows.find((row) => row.seasonId === currentSeason.id)
+    : undefined;
+  const currentTeam = liveMembership?.team ?? (currentSeason ? null : player.team);
+  const currentTeamId = liveMembership
+    ? liveMembership.teamId
+    : currentSeason
+      ? null
+      : player.teamId;
+  const currentCaptain = liveMembership
+    ? liveMembership.isCaptain
+    : currentSeason
+      ? false
+      : player.isCaptain;
+  const currentRosterRole = liveMembership
+    ? liveMembership.rosterRole
+    : currentSeason
+      ? null
+      : player.rosterRole;
 
   const { discordId: _discordId, discordName: _discordName, ...publicPlayer } =
     player;
 
   return {
     ...publicPlayer,
+    team: currentTeam,
+    teamId: currentTeamId,
+    isCaptain: currentCaptain,
+    rosterRole: currentRosterRole,
     matchPlayers,
+    seasonHistory: seasonRows.map((row) => ({
+      seasonId: row.season.id,
+      number: row.season.number,
+      name: row.season.name,
+      status: row.season.status,
+      teamId: row.team?.id ?? null,
+      teamName: row.team?.name ?? null,
+      isCaptain: row.isCaptain,
+      rosterRole: row.rosterRole,
+      live: currentSeason?.id === row.season.id,
+    })),
+    currentSeason: currentSeason
+      ? {
+          id: currentSeason.id,
+          number: currentSeason.number,
+          name: currentSeason.name,
+        }
+      : null,
     roles: parseRolesJson(player.rolesJson),
     basePrice: basePriceFor(player.medal),
   };
 }
 
 export async function getTeams() {
+  const season = await currentSeasonFilter();
   return prisma.team.findMany({
-    where: publicTeamWhere,
+    where: { ...publicTeamWhere, ...season },
     select: {
       id: true,
       name: true,
@@ -105,7 +191,8 @@ export async function getTeams() {
 }
 
 export async function getTeamCount() {
-  return prisma.team.count({ where: publicTeamWhere });
+  const season = await currentSeasonFilter();
+  return prisma.team.count({ where: { ...publicTeamWhere, ...season } });
 }
 
 export async function getTeam(id: string) {
@@ -153,16 +240,18 @@ export async function getTeam(id: string) {
 }
 
 export async function getMatches() {
+  const season = await currentSeasonFilter();
   return prisma.match.findMany({
-    where: publicMatchWhere,
+    where: { ...publicMatchWhere, ...season },
     select: matchListSelect,
     orderBy: { createdAt: "desc" },
   });
 }
 
 export async function getRecentMatches(take = 5) {
+  const season = await currentSeasonFilter();
   return prisma.match.findMany({
-    where: publicMatchWhere,
+    where: { ...publicMatchWhere, ...season },
     select: matchListSelect,
     orderBy: { createdAt: "desc" },
     take,
@@ -170,7 +259,8 @@ export async function getRecentMatches(take = 5) {
 }
 
 export async function getMatchCount() {
-  return prisma.match.count({ where: publicMatchWhere });
+  const season = await currentSeasonFilter();
+  return prisma.match.count({ where: { ...publicMatchWhere, ...season } });
 }
 
 export async function getMatch(id: string) {
@@ -187,14 +277,15 @@ export async function getMatch(id: string) {
 }
 
 export async function getStandings() {
+  const season = await currentSeasonFilter();
   const [teams, decided] = await Promise.all([
     prisma.team.findMany({
-      where: publicTeamWhere,
+      where: { ...publicTeamWhere, ...season },
       select: { id: true, name: true, purse: true },
       orderBy: { name: "asc" },
     }),
     prisma.match.findMany({
-      where: { winnerTeamId: { not: null }, ...publicMatchWhere },
+      where: { winnerTeamId: { not: null }, ...publicMatchWhere, ...season },
       select: {
         id: true,
         radiantTeamId: true,
