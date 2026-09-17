@@ -83,8 +83,11 @@ export async function getAuctionResultsBySeason(): Promise<SeasonAuctionBlock[]>
     const team = rosterTeam ?? lotTeam;
     if (!team || !lot.player.teamId) continue;
 
+    const soldPrice =
+      lot.status === "sold" && lot.soldPrice != null
+        ? lot.soldPrice
+        : UNSOLD_LOT_PRICE;
     const soldBid = lot.status === "sold" && lot.soldPrice != null;
-    const soldPrice = soldBid ? lot.soldPrice : UNSOLD_LOT_PRICE;
 
     const seasonId = lot.season?.id ?? lot.seasonId ?? "unassigned";
     const number = lot.season?.number ?? 0;
