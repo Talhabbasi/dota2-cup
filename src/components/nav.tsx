@@ -13,6 +13,7 @@ const LINKS = [
   ["/matches", "Matches"],
   ["/table", "Table"],
   ["/players", "Players"],
+  ["/auction", "Auction"],
   ["/heroes", "Heroes"],
   ["/seasons", "Seasons"],
   ["/register", "Register"],

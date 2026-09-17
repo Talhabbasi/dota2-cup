@@ -46,3 +46,10 @@ export const publicMatchWhere: Prisma.MatchWhereInput = {
 export const publicFixtureWhere: Prisma.ScheduledFixtureWhereInput = {
   AND: [{ radiantTeam: publicTeamWhere }, { direTeam: publicTeamWhere }],
 };
+
+export const publicAuctionLotWhere: Prisma.AuctionLotWhereInput = {
+  AND: [
+    { player: publicPlayerWhere },
+    { OR: [{ teamId: null }, { team: publicTeamWhere }] },
+  ],
+};

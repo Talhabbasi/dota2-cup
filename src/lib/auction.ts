@@ -15,6 +15,7 @@ import { prisma } from "./prisma";
 import { stringifyRoles } from "./roles";
 import { currentSeasonId, syncSeasonPlayer } from "./seasons";
 import { rebalanceTeamRoster } from "./players-admin";
+import { notifySiteRefresh } from "./notify-site";
 
 const DUMMY_PLAYER_PREFIX = "test-dummy-";
 const DUMMY_TEAM_PREFIX = "test-dummy-team-";
@@ -277,6 +278,7 @@ async function persistSale(auction: LiveAuction, kind: "sold" | "unsold") {
       },
     });
   }
+  void notifySiteRefresh();
 }
 
 function advanceInMemory(auction: LiveAuction) {

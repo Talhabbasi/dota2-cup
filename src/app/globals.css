@@ -4253,6 +4253,117 @@ tr:last-child td {
   margin: 0.75rem 0 0;
 }
 
+.auction-hero-copy {
+  max-width: 36rem;
+  margin: 0.35rem 0 0.9rem;
+}
+
+.auction-season-meta {
+  margin: -0.35rem 0 0.95rem;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.auction-sale-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.auction-sale-row {
+  display: grid;
+  grid-template-columns: 1.6rem minmax(0, 1.4fr) minmax(0, 1fr) auto;
+  gap: 0.45rem 0.9rem;
+  align-items: center;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--bg-soft);
+}
+
+.auction-sale-row.is-highest {
+  border-color: rgba(240, 197, 106, 0.45);
+  background:
+    linear-gradient(180deg, rgba(240, 197, 106, 0.1), transparent 62%),
+    var(--bg-soft);
+}
+
+.auction-sale-lot {
+  color: var(--muted);
+  font-family: var(--font-oxanium), sans-serif;
+  font-size: 0.82rem;
+}
+
+.auction-sale-player {
+  display: grid;
+  gap: 0.28rem;
+  min-width: 0;
+}
+
+.auction-sale-player a {
+  font-weight: 700;
+  color: inherit;
+}
+
+.auction-sale-player a:hover,
+.auction-sale-team a:hover {
+  color: var(--gold);
+}
+
+.auction-sale-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  align-items: center;
+}
+
+.auction-sale-team {
+  margin: 0;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.auction-sale-team a {
+  color: var(--gold);
+  font-weight: 700;
+}
+
+.auction-sale-price {
+  margin: 0;
+  font-family: var(--font-oxanium), sans-serif;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--gold);
+  white-space: nowrap;
+  text-align: right;
+}
+
+.auction-sale-price small {
+  margin-left: 0.2rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+@media (max-width: 720px) {
+  .auction-sale-row {
+    grid-template-columns: 1.4rem minmax(0, 1fr) auto;
+  }
+
+  .auction-sale-team {
+    grid-column: 2 / 3;
+  }
+
+  .auction-sale-price {
+    grid-column: 3;
+    grid-row: 1 / 3;
+    align-self: center;
+  }
+}
+
 .player-game {
   display: grid;
   grid-template-columns: 140px 1fr auto;
