@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
+import { AuthButtons } from "@/components/auth-buttons";
 
 const LINKS = [
   ["/", "Home"],
@@ -97,6 +98,9 @@ export function Nav({ showSeasons = false }: { showSeasons?: boolean }) {
           );
         })}
       </nav>
+      <div className="header-auth">
+        <AuthButtons />
+      </div>
     </header>
   );
 }
