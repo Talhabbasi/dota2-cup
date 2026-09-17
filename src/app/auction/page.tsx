@@ -20,6 +20,10 @@ function seasonTitle(number: number, name: string) {
 export default async function AuctionPage() {
   const seasons = await getAuctionResultsBySeason();
   const soldCount = seasons.reduce((sum, season) => sum + season.soldCount, 0);
+  const captainCount = seasons.reduce(
+    (sum, season) => sum + season.captains.length,
+    0,
+  );
   const spent = seasons.reduce((sum, season) => sum + season.spent, 0);
 
   return (
@@ -30,13 +34,18 @@ export default async function AuctionPage() {
           <p className="eyebrow">Transfer market</p>
           <h1>Auction</h1>
           <p className="muted auction-hero-copy">
-            Who sold, which franchise won the lot, and the winning bid — season
-            by season.
+            Captains stay with their franchise. Everyone else shows who won the
+            lot and the winning bid — season by season.
           </p>
-          {soldCount > 0 ? (
+          {captainCount + soldCount > 0 ? (
             <div className="teams-list-hero-pills">
+              {captainCount > 0 ? (
+                <span className="teams-list-hero-pill">
+                  <strong>{captainCount}</strong> captains
+                </span>
+              ) : null}
               <span className="teams-list-hero-pill">
-                <strong>{soldCount}</strong> in teams
+                <strong>{soldCount}</strong> sold
               </span>
               <span className="teams-list-hero-pill">
                 <strong>{formatPoints(spent)}</strong> points spent
@@ -70,14 +79,48 @@ export default async function AuctionPage() {
                 <h2>{seasonTitle(season.number, season.name)}</h2>
               </header>
               <p className="auction-season-meta">
-                {season.soldCount} in teams
-                {season.soldCount > 0 ? ` · ${season.spentLabel} pts spent` : ""}
+                {season.captains.length > 0
+                  ? `${season.captains.length} captains`
+                  : null}
+                {season.captains.length > 0 && season.soldCount > 0
+                  ? " · "
+                  : null}
+                {season.soldCount > 0
+                  ? `${season.soldCount} sold · ${season.spentLabel} pts spent`
+                  : null}
               </p>
 
+              {season.captains.length > 0 ? (
+                <ul className="auction-sale-list auction-captain-list">
+                  {season.captains.map((captain) => (
+                    <li key={captain.playerId} className="auction-sale-row auction-captain-row">
+                      <span className="auction-sale-lot" aria-hidden>
+                        C
+                      </span>
+                      <div className="auction-sale-player">
+                        <Link href={`/players/${captain.playerId}`}>
+                          {captain.playerName}
+                        </Link>
+                        <span className="auction-sale-tags">
+                          <span className="badge badge-gold">Captain</span>
+                        </span>
+                      </div>
+                      <p className="auction-sale-team">
+                        <Link href={`/teams/${captain.teamId}`}>
+                          {captain.teamName}
+                        </Link>
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+
               {season.sales.length === 0 ? (
-                <p className="muted">
-                  No rostered auction players for this season yet.
-                </p>
+                season.captains.length === 0 ? (
+                  <p className="muted">
+                    No rostered auction players for this season yet.
+                  </p>
+                ) : null
               ) : (
                 <ol className="auction-sale-list">
                   {season.sales.map((sale, index) => (

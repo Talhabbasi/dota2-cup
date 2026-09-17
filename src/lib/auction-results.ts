@@ -1,12 +1,19 @@
 import { MEDAL_LABELS, formatPoints } from "./constants";
 import { formatRoles } from "./data";
-import { isLiveCupTeam, publicAuctionLotWhere } from "./dummy";
+import { isLiveCupTeam, publicAuctionLotWhere, publicPlayerWhere, publicTeamWhere } from "./dummy";
 import { prisma } from "./prisma";
 import { parseRolesJson } from "./roles";
 import { getCurrentSeasonSafe } from "./seasons";
 
 /** Unsold lots that later joined a roster are listed at this bid. */
 export const UNSOLD_LOT_PRICE = 2000;
+
+export type AuctionCaptainRow = {
+  playerId: string;
+  playerName: string;
+  teamId: string;
+  teamName: string;
+};
 
 export type AuctionSaleRow = {
   lotId: string;
@@ -33,6 +40,7 @@ export type SeasonAuctionBlock = {
   soldCount: number;
   spent: number;
   spentLabel: string;
+  captains: AuctionCaptainRow[];
   sales: AuctionSaleRow[];
 };
 
@@ -40,8 +48,39 @@ function medalLabel(medal: string) {
   return MEDAL_LABELS[medal as keyof typeof MEDAL_LABELS] ?? medal;
 }
 
+function isCaptainOfTeam(
+  player: { id: string; isCaptain: boolean },
+  team: { captainId: string },
+) {
+  return player.isCaptain || player.id === team.captainId;
+}
+
+type SeasonBucket = {
+  seasonId: string;
+  number: number;
+  name: string;
+  status: string;
+  live: boolean;
+  captains: AuctionCaptainRow[];
+  sales: AuctionSaleRow[];
+};
+
+function seasonKey(input: {
+  seasonId: string | null | undefined;
+  season: { id: string; number: number; name: string; status: string } | null;
+}) {
+  const number = input.season?.number ?? 0;
+  return {
+    seasonId: input.season?.id ?? input.seasonId ?? "unassigned",
+    number,
+    name:
+      input.season?.name ?? (number > 0 ? `Season ${number}` : "Unassigned"),
+    status: input.season?.status ?? "archived",
+  };
+}
+
 export async function getAuctionResultsBySeason(): Promise<SeasonAuctionBlock[]> {
-  const [lots, current] = await Promise.all([
+  const [lots, teams, current] = await Promise.all([
     prisma.auctionLot.findMany({
       where: {
         AND: [publicAuctionLotWhere, { player: { teamId: { not: null } } }],
@@ -54,6 +93,7 @@ export async function getAuctionResultsBySeason(): Promise<SeasonAuctionBlock[]>
             medal: true,
             rolesJson: true,
             teamId: true,
+            isCaptain: true,
             team: { select: { id: true, name: true, captainId: true } },
           },
         },
@@ -61,20 +101,57 @@ export async function getAuctionResultsBySeason(): Promise<SeasonAuctionBlock[]>
         season: { select: { id: true, number: true, name: true, status: true } },
       },
     }),
+    prisma.team.findMany({
+      where: publicTeamWhere,
+      select: {
+        id: true,
+        name: true,
+        captainId: true,
+        seasonId: true,
+        season: { select: { id: true, number: true, name: true, status: true } },
+        players: {
+          where: publicPlayerWhere,
+          select: { id: true, steamName: true, isCaptain: true },
+        },
+      },
+    }),
     getCurrentSeasonSafe(),
   ]);
 
-  const groups = new Map<
-    string,
-    {
-      seasonId: string;
-      number: number;
-      name: string;
-      status: string;
-      live: boolean;
-      sales: AuctionSaleRow[];
+  const groups = new Map<string, SeasonBucket>();
+
+  function bucketFor(meta: {
+    seasonId: string;
+    number: number;
+    name: string;
+    status: string;
+    live: boolean;
+  }) {
+    let group = groups.get(meta.seasonId);
+    if (!group) {
+      group = { ...meta, captains: [], sales: [] };
+      groups.set(meta.seasonId, group);
     }
-  >();
+    return group;
+  }
+
+  for (const team of teams) {
+    if (!isLiveCupTeam(team)) continue;
+    const captain =
+      team.players.find((player) => isCaptainOfTeam(player, team)) ??
+      team.players.find((player) => player.id === team.captainId);
+    if (!captain) continue;
+    const meta = seasonKey(team);
+    bucketFor({
+      ...meta,
+      live: current?.id === team.season?.id,
+    }).captains.push({
+      playerId: captain.id,
+      playerName: captain.steamName,
+      teamId: team.id,
+      teamName: team.name,
+    });
+  }
 
   for (const lot of lots) {
     const rosterTeam =
@@ -82,6 +159,8 @@ export async function getAuctionResultsBySeason(): Promise<SeasonAuctionBlock[]>
     const lotTeam = lot.team && isLiveCupTeam(lot.team) ? lot.team : null;
     const team = rosterTeam ?? lotTeam;
     if (!team || !lot.player.teamId) continue;
+    if (isCaptainOfTeam(lot.player, team)) continue;
+    if (teams.some((row) => row.captainId === lot.player.id)) continue;
 
     const soldPrice =
       lot.status === "sold" && lot.soldPrice != null
@@ -89,22 +168,11 @@ export async function getAuctionResultsBySeason(): Promise<SeasonAuctionBlock[]>
         : UNSOLD_LOT_PRICE;
     const soldBid = lot.status === "sold" && lot.soldPrice != null;
 
-    const seasonId = lot.season?.id ?? lot.seasonId ?? "unassigned";
-    const number = lot.season?.number ?? 0;
-    const name = lot.season?.name ?? (number > 0 ? `Season ${number}` : "Unassigned");
-    const status = lot.season?.status ?? "archived";
-    let group = groups.get(seasonId);
-    if (!group) {
-      group = {
-        seasonId,
-        number,
-        name,
-        status,
-        live: current?.id === lot.season?.id,
-        sales: [],
-      };
-      groups.set(seasonId, group);
-    }
+    const meta = seasonKey(lot);
+    const group = bucketFor({
+      ...meta,
+      live: current?.id === lot.season?.id,
+    });
 
     const nextSale: AuctionSaleRow = {
       lotId: lot.id,
@@ -134,9 +202,12 @@ export async function getAuctionResultsBySeason(): Promise<SeasonAuctionBlock[]>
   }
 
   return [...groups.values()]
-    .filter((group) => group.sales.length > 0)
+    .filter((group) => group.sales.length > 0 || group.captains.length > 0)
     .sort((a, b) => b.number - a.number || a.name.localeCompare(b.name))
     .map((group) => {
+      const captains = [...group.captains].sort((a, b) =>
+        a.playerName.localeCompare(b.playerName),
+      );
       const sales = [...group.sales].sort(
         (a, b) => b.soldPrice - a.soldPrice || a.playerName.localeCompare(b.playerName),
       );
@@ -155,6 +226,7 @@ export async function getAuctionResultsBySeason(): Promise<SeasonAuctionBlock[]>
         soldCount: ranked.length,
         spent,
         spentLabel: formatPoints(spent),
+        captains,
         sales: ranked,
       };
     });

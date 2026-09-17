@@ -4258,10 +4258,22 @@ tr:last-child td {
   margin: 0.35rem 0 0.9rem;
 }
 
-.auction-season-meta {
-  margin: -0.35rem 0 0.95rem;
-  color: var(--muted);
-  font-size: 0.88rem;
+.auction-captain-list {
+  margin-bottom: 0.7rem;
+}
+
+.auction-captain-row {
+  grid-template-columns: 1.6rem minmax(0, 1.4fr) minmax(0, 1fr);
+}
+
+@media (max-width: 720px) {
+  .auction-captain-row {
+    grid-template-columns: 1.4rem minmax(0, 1fr);
+  }
+
+  .auction-captain-row .auction-sale-team {
+    grid-column: 2 / 3;
+  }
 }
 
 .auction-sale-list {
