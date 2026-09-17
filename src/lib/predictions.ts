@@ -116,64 +116,117 @@ export type PredictionLeaderRow = {
   isYou: boolean;
 };
 
+const MAX_PREDICTION_BATCH = 40;
+
+export type PredictionPickInput = {
+  fixtureId: string;
+  teamId: string;
+};
+
+export async function saveMatchPredictions(
+  playerId: string,
+  picks: PredictionPickInput[],
+) {
+  const unique = new Map<string, string>();
+  for (const pick of picks) {
+    const fixtureId = pick.fixtureId?.trim();
+    const teamId = pick.teamId?.trim();
+    if (!fixtureId || !teamId) {
+      throw new Error("Pick a match and a team.");
+    }
+    unique.set(fixtureId, teamId);
+  }
+  if (unique.size === 0) {
+    throw new Error("Pick a match and a team.");
+  }
+  if (unique.size > MAX_PREDICTION_BATCH) {
+    throw new Error("Save fewer picks at once.");
+  }
+
+  const season = await currentSeasonFilter();
+  const seasonFixtures = await prisma.scheduledFixture.findMany({
+    where: { ...publicFixtureWhere, ...season },
+    select: {
+      id: true,
+      kind: true,
+      scheduledAt: true,
+      status: true,
+      radiantTeamId: true,
+      direTeamId: true,
+      seasonId: true,
+    },
+  });
+  const byId = new Map(seasonFixtures.map((row) => [row.id, row]));
+  const groupLocked = isGroupStageLocked(groupStageLockAt(seasonFixtures));
+  const groupsDone = groupStageIsComplete(seasonFixtures);
+  const fallbackSeasonId =
+    seasonFixtures.find((row) => row.seasonId)?.seasonId ??
+    (await currentSeasonId());
+
+  const rows = [...unique.entries()].map(([fixtureId, teamId]) => {
+    const fixture = byId.get(fixtureId);
+    if (!fixture) {
+      throw new Error("That match is not on this cup.");
+    }
+    if (isGroupStagePredictionFixture(fixture.kind)) {
+      if (groupLocked) {
+        throw new Error(
+          "Group stage picks locked at Saturday 10:00 PM PKT, before the first match.",
+        );
+      }
+    } else if (isInternationalPredictionFixture(fixture.kind)) {
+      if (!groupsDone) {
+        throw new Error(
+          "The International unlocks after every group-stage match is done.",
+        );
+      }
+      if (fixture.status === "completed" || new Date() >= fixture.scheduledAt) {
+        throw new Error("That series is locked.");
+      }
+    } else {
+      throw new Error("That match is not on this cup.");
+    }
+    if (teamId !== fixture.radiantTeamId && teamId !== fixture.direTeamId) {
+      throw new Error("Pick one of the two teams in this series.");
+    }
+    return {
+      fixtureId,
+      teamId,
+      seasonId: fixture.seasonId ?? fallbackSeasonId,
+    };
+  });
+
+  await prisma.$transaction(
+    rows.map((row) =>
+      prisma.matchPrediction.upsert({
+        where: {
+          playerId_fixtureId: {
+            playerId,
+            fixtureId: row.fixtureId,
+          },
+        },
+        create: {
+          playerId,
+          fixtureId: row.fixtureId,
+          predictedTeamId: row.teamId,
+          seasonId: row.seasonId,
+        },
+        update: { predictedTeamId: row.teamId },
+      }),
+    ),
+  );
+
+  return { saved: rows.length };
+}
+
 export async function saveMatchPrediction(input: {
   playerId: string;
   fixtureId: string;
   teamId: string;
 }) {
-  const season = await currentSeasonFilter();
-  const fixture = await prisma.scheduledFixture.findFirst({
-    where: { id: input.fixtureId, ...publicFixtureWhere, ...season },
-  });
-  if (!fixture) {
-    throw new Error("That match is not on this cup.");
-  }
-
-  const seasonFixtures = await prisma.scheduledFixture.findMany({
-    where: { ...publicFixtureWhere, ...season },
-    select: { kind: true, scheduledAt: true, status: true },
-  });
-
-  if (isGroupStagePredictionFixture(fixture.kind)) {
-    if (isGroupStageLocked(groupStageLockAt(seasonFixtures))) {
-      throw new Error(
-        "Group stage picks locked at Saturday 10:00 PM PKT, before the first match.",
-      );
-    }
-  } else if (isInternationalPredictionFixture(fixture.kind)) {
-    if (!groupStageIsComplete(seasonFixtures)) {
-      throw new Error(
-        "The International unlocks after every group-stage match is done.",
-      );
-    }
-    if (fixture.status === "completed" || new Date() >= fixture.scheduledAt) {
-      throw new Error("That series is locked.");
-    }
-  } else {
-    throw new Error("That match is not on this cup.");
-  }
-  if (
-    input.teamId !== fixture.radiantTeamId &&
-    input.teamId !== fixture.direTeamId
-  ) {
-    throw new Error("Pick one of the two teams in this series.");
-  }
-
-  return prisma.matchPrediction.upsert({
-    where: {
-      playerId_fixtureId: {
-        playerId: input.playerId,
-        fixtureId: input.fixtureId,
-      },
-    },
-    create: {
-      playerId: input.playerId,
-      fixtureId: input.fixtureId,
-      predictedTeamId: input.teamId,
-      seasonId: fixture.seasonId ?? (await currentSeasonId()),
-    },
-    update: { predictedTeamId: input.teamId },
-  });
+  return saveMatchPredictions(input.playerId, [
+    { fixtureId: input.fixtureId, teamId: input.teamId },
+  ]);
 }
 
 export async function scorePredictionsForFixture(fixtureId: string) {

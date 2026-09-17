@@ -1,7 +1,3 @@
-"use client";
-
-import { useState } from "react";
-import { useRouter } from "next/navigation";
 import type { PredictionNightView } from "@/lib/predictions";
 
 function pickResult(
@@ -17,46 +13,23 @@ export function PredictionBoard({
   nights,
   canPick,
   stageLocked,
-  lockLabel,
   emptyText,
   lockedNote,
   openHint,
+  pickId,
+  saving,
+  onPick,
 }: {
   nights: PredictionNightView[];
   canPick: boolean;
   stageLocked: boolean;
-  lockLabel: string | null;
   emptyText: string;
   lockedNote: string;
   openHint: string;
+  pickId: (fixtureId: string, savedPickId: string | null) => string | null;
+  saving: boolean;
+  onPick: (fixtureId: string, teamId: string, savedPickId: string | null) => void;
 }) {
-  const router = useRouter();
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  async function pick(fixtureId: string, teamId: string) {
-    if (!canPick || busyId) return;
-    setBusyId(fixtureId);
-    setError(null);
-    try {
-      const res = await fetch("/api/predictions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fixtureId, teamId }),
-      });
-      const data = (await res.json().catch(() => ({}))) as { error?: string };
-      if (!res.ok) {
-        setError(data.error ?? "Could not save that pick.");
-        return;
-      }
-      router.refresh();
-    } catch {
-      setError("Could not save that pick.");
-    } finally {
-      setBusyId(null);
-    }
-  }
-
   if (nights.length === 0) {
     return (
       <div className="empty-panel teams-list-empty">
@@ -69,7 +42,6 @@ export function PredictionBoard({
 
   return (
     <div className="pred-board">
-      {error ? <p className="pred-error">{error}</p> : null}
       {nights.map((night) => (
         <section key={night.label} className="weekend-schedule">
           <div className="weekend-board">
@@ -88,6 +60,7 @@ export function PredictionBoard({
                   fixture.bestOf > 1
                     ? `BO${fixture.bestOf} ${fixture.radiantWins}–${fixture.direWins}`
                     : "BO1";
+                const selectedId = pickId(fixture.id, fixture.myPickId);
                 return (
                   <article key={fixture.id} className="weekend-card pred-card">
                     <div className="weekend-card-head">
@@ -113,7 +86,7 @@ export function PredictionBoard({
                     </p>
                     <div className="pred-picks">
                       {[fixture.radiant, fixture.dire].map((team) => {
-                        const selected = fixture.myPickId === team.id;
+                        const selected = selectedId === team.id;
                         const result = pickResult(fixture, team.id);
                         const wonSeries = fixture.winnerTeamId === team.id;
                         return (
@@ -133,12 +106,10 @@ export function PredictionBoard({
                             ]
                               .filter(Boolean)
                               .join(" ")}
-                            disabled={
-                              !canPick ||
-                              fixture.locked ||
-                              busyId === fixture.id
+                            disabled={!canPick || fixture.locked || saving}
+                            onClick={() =>
+                              onPick(fixture.id, team.id, fixture.myPickId)
                             }
-                            onClick={() => pick(fixture.id, team.id)}
                           >
                             {team.name}
                           </button>
@@ -147,20 +118,19 @@ export function PredictionBoard({
                     </div>
                     <p className="pred-card-note">
                       {fixture.completed
-                        ? fixture.myPickId
-                          ? fixture.myPickId === fixture.winnerTeamId
+                        ? selectedId
+                          ? selectedId === fixture.winnerTeamId
                             ? `Correct · +${fixture.points}`
                             : "Missed"
                           : "No pick"
                         : stageLocked
-                          ? fixture.myPickId
+                          ? selectedId
                             ? "Locked in"
                             : lockedNote
                           : canPick
-                            ? openHint ||
-                              (lockLabel
-                                ? `Tap a team before ${lockLabel}`
-                                : "Tap a team")
+                            ? selectedId
+                              ? "Picked · save when you are done"
+                              : openHint
                             : ""}
                     </p>
                   </article>
