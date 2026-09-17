@@ -715,6 +715,8 @@ export async function completeScheduledFixture(input: {
     });
 
     if (seriesOver) {
+      const { scorePredictionsForFixture } = await import("./predictions");
+      await scorePredictionsForFixture(fixture.id);
       const { advancePlayoff } = await import("./playoff");
       await advancePlayoff(fixture.id);
       if (fixture.kind === "final" || fixture.slotKey === "final") {

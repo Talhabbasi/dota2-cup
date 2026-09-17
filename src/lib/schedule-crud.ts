@@ -506,7 +506,7 @@ export async function updateScheduledMatch(input: {
     kind === "final" ? Math.max(fixture.bestOf, 3) : fixture.bestOf;
 
   try {
-    return await prisma.scheduledFixture.update({
+    const updated = await prisma.scheduledFixture.update({
       where: { id: fixture.id },
       data: {
         radiantTeamId: radiantId,
@@ -520,6 +520,17 @@ export async function updateScheduledMatch(input: {
       },
       include: FIXTURE_INCLUDE,
     });
+    try {
+      await prisma.matchPrediction.deleteMany({
+        where: {
+          fixtureId: fixture.id,
+          predictedTeamId: { notIn: [radiantId, direId] },
+        },
+      });
+    } catch {
+      /* MatchPrediction is added with db push */
+    }
+    return updated;
   } catch (error) {
     wrapUnique(error);
   }

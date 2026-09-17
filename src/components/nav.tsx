@@ -14,6 +14,7 @@ const LINKS = [
   ["/table", "Table"],
   ["/players", "Players"],
   ["/auction", "Auction"],
+  ["/predictions", "Predictions"],
   ["/heroes", "Heroes"],
   ["/seasons", "Seasons"],
   ["/register", "Register"],
