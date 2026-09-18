@@ -2,8 +2,14 @@ import { CupScheduleBoard } from "@/components/cup-schedule";
 import { GroupStandingsTable } from "@/components/group-standings";
 import { getGroupStandings } from "@/lib/group-stage-schedule";
 import { listCupSchedule } from "@/lib/schedule-crud";
+import { pageMeta } from "@/lib/seo";
 
 export const revalidate = 30;
+
+export const metadata = pageMeta(
+  "Match Schedule",
+  "Weekend MM Dota Cup fixtures in Pakistan time — group stage, playoffs, and upcoming Dota 2 kickoffs.",
+);
 
 export default async function SchedulePage() {
   const [fixtures, groupA, groupB] = await Promise.all([

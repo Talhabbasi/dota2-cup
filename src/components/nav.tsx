@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { AuthButtons } from "@/components/auth-buttons";
 
 const LINKS = [
@@ -23,11 +24,15 @@ const LINKS = [
 
 export function Nav({ showSeasons = false }: { showSeasons?: boolean }) {
   const pathname = usePathname();
+  const { status } = useSession();
   const [ready, setReady] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const links = showSeasons
-    ? LINKS
-    : LINKS.filter(([href]) => href !== "/seasons");
+  const showRegister = status === "unauthenticated";
+  const links = LINKS.filter(([href]) => {
+    if (!showSeasons && href === "/seasons") return false;
+    if (!showRegister && href === "/register") return false;
+    return true;
+  });
 
   useEffect(() => {
     setReady(true);

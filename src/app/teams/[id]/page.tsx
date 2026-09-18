@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import type { Metadata } from "next";
 import { MatchCard } from "@/components/match-card";
 import {
   TeamProfileHero,
   TeamRosterBoard,
   type TeamPlayerView,
 } from "@/components/team-profile";
-import { getStandings, getTeam, formatRoles } from "@/lib/data";
+import { getStandings, getTeam, getTeamName, formatRoles } from "@/lib/data";
 import {
   PLAY_WINDOW_SHORT,
   deriveTeamPlayWindow,
@@ -15,6 +16,20 @@ import {
 import { isRosterSub, parseRolesJson, sortTeamRoster } from "@/lib/roles";
 
 export const revalidate = 30;
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}): Promise<Metadata> {
+  const { id } = await params;
+  const name = await getTeamName(id);
+  if (!name) return { title: "Team" };
+  return {
+    title: name,
+    description: `${name} roster, captain, and MM Dota Cup results for this indoor Dota 2 season.`,
+  };
+}
 
 function toPlayerView(player: {
   id: string;

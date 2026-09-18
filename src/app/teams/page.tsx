@@ -2,8 +2,14 @@ import Link from "next/link";
 import { TeamsGrid, type TeamCardView } from "@/components/teams-grid";
 import { getStandings, getTeams } from "@/lib/data";
 import { isRosterSub } from "@/lib/roles";
+import { pageMeta } from "@/lib/seo";
 
 export const revalidate = 30;
+
+export const metadata = pageMeta(
+  "Teams & Rosters",
+  "Meet the eight MM Dota Cup franchises, captains, and rosters for this indoor Dota 2 season in Pakistan.",
+);
 
 export default async function TeamsPage() {
   const [teams, table] = await Promise.all([getTeams(), getStandings()]);

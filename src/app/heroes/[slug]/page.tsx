@@ -7,8 +7,23 @@ import {
 } from "@/lib/heroes";
 import { formatDuration } from "@/lib/data";
 import { itemIconUrl, heroPortraitUrl } from "@/lib/opendota";
+import type { Metadata } from "next";
 
 export const revalidate = 30;
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
+  const { slug } = await params;
+  const hero = await getHeroBySlug(slug);
+  if (!hero) return { title: "Hero" };
+  return {
+    title: hero.name,
+    description: `${hero.name} in MM Dota Cup — Dota 2 hero picks, players, and tournament match history.`,
+  };
+}
 
 export default async function HeroDetailPage({
   params,

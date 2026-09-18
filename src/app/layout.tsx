@@ -5,6 +5,7 @@ import { ClosedBanner } from "@/components/closed-banner";
 import { NavigationLoader } from "@/components/navigation-loader";
 import { Providers } from "@/components/providers";
 import { SiteFooter } from "@/components/site-footer";
+import { SITE_DESCRIPTION, SITE_NAME, SITE_URL } from "@/lib/seo";
 import { hasCrownedSeason } from "@/lib/seasons";
 import "./globals.css";
 
@@ -25,22 +26,26 @@ const bebas = Bebas_Neue({
 });
 
 export const metadata: Metadata = {
-  title: "MM Dota Cup",
-  description:
-    "Indoor MM Dota cup — eight franchises, group stage, live playoff graph, and weekend kickoffs in Pakistan time.",
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: `${SITE_NAME} | Indoor Dota 2 Tournament in Pakistan`,
+    template: `%s | ${SITE_NAME}`,
+  },
+  description: SITE_DESCRIPTION,
   icons: {
     icon: "/mm-dota-cup-icon.png",
     apple: "/mm-dota-cup-icon.png",
   },
   openGraph: {
-    title: "MM Dota Cup",
-    description:
-      "Indoor MM Dota cup — eight franchises, group stage, live playoff graph, and weekend kickoffs in Pakistan time.",
+    type: "website",
+    locale: "en_PK",
+    siteName: SITE_NAME,
+    description: SITE_DESCRIPTION,
     images: ["/mm-dota-cup-icon.png"],
   },
   twitter: {
     card: "summary",
-    title: "MM Dota Cup",
+    description: SITE_DESCRIPTION,
     images: ["/mm-dota-cup-icon.png"],
   },
 };

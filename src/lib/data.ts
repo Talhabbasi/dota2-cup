@@ -425,3 +425,40 @@ export function parseItems(json: string): string[] {
     return [];
   }
 }
+
+export async function getTeamName(id: string) {
+  const team = await prisma.team.findFirst({
+    where: { id, ...publicTeamWhere },
+    select: { name: true },
+  });
+  return team?.name ?? null;
+}
+
+export async function getPlayerMeta(id: string) {
+  const player = await prisma.player.findFirst({
+    where: { id, ...publicPlayerWhere },
+    select: {
+      steamName: true,
+      discordId: true,
+      team: { select: { name: true } },
+    },
+  });
+  if (!player || isDummyDiscordId(player.discordId)) return null;
+  return { name: player.steamName, teamName: player.team?.name ?? null };
+}
+
+export async function getMatchMeta(id: string) {
+  const match = await prisma.match.findFirst({
+    where: { id, ...publicMatchWhere },
+    select: {
+      openDotaId: true,
+      radiantTeam: { select: { name: true } },
+      direTeam: { select: { name: true } },
+    },
+  });
+  if (!match) return null;
+  return {
+    title: `${match.radiantTeam?.name ?? "Radiant"} vs ${match.direTeam?.name ?? "Dire"}`,
+    openDotaId: match.openDotaId,
+  };
+}

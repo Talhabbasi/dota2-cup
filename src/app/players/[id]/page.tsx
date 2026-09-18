@@ -1,7 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { formatDuration, formatRoles, getPlayer } from "@/lib/data";
+import { formatDuration, formatRoles, getPlayer, getPlayerMeta } from "@/lib/data";
 import { parseStoredItems } from "@/lib/heroes";
 import {
   MEDAL_LABELS,
@@ -14,8 +14,24 @@ import {
   itemIconUrl,
   loadHeroCatalog,
 } from "@/lib/opendota";
+import type { Metadata } from "next";
 
 export const revalidate = 30;
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}): Promise<Metadata> {
+  const { id } = await params;
+  const player = await getPlayerMeta(id);
+  if (!player) return { title: "Player" };
+  const teamBit = player.teamName ? ` · ${player.teamName}` : "";
+  return {
+    title: player.name,
+    description: `${player.name}${teamBit} in MM Dota Cup — player profile, heroes, and match history.`,
+  };
+}
 
 function playerWon(
   side: string,

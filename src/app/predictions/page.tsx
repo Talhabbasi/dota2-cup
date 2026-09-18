@@ -8,14 +8,14 @@ import {
   getPredictionLeaderboard,
 } from "@/lib/predictions";
 import { getCurrentSeasonSafe } from "@/lib/seasons";
+import { pageMeta } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
 
-export const metadata = {
-  title: "Predictions · MM Dota Cup",
-  description:
-    "Pick MM Dota Cup winners. Group stage locks Saturday at 10:00 PM PKT. The International unlocks after every group match is done. One combined points board.",
-};
+export const metadata = pageMeta(
+  "Match Predictions",
+  "Pick MM Dota Cup winners. Group stage locks Saturday at 10:00 PM PKT. The International unlocks after every group match. One combined points board.",
+);
 
 export default async function PredictionsPage() {
   const [{ player }, season] = await Promise.all([

@@ -3,8 +3,14 @@ import { getPlayers, formatRoles } from "@/lib/data";
 import { PLAY_WINDOW_SHORT, playWindowOrBoth } from "@/lib/play-window";
 import { isRosterSub } from "@/lib/roles";
 import { getCurrentSeasonSafe } from "@/lib/seasons";
+import { pageMeta } from "@/lib/seo";
 
 export const revalidate = 30;
+
+export const metadata = pageMeta(
+  "Players",
+  "Registered MM Dota Cup players, medals, roles, and team assignments for the indoor Dota 2 tournament.",
+);
 
 export default async function PlayersPage() {
   const [players, season] = await Promise.all([getPlayers(), getCurrentSeasonSafe()]);

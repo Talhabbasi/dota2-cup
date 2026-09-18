@@ -5,8 +5,14 @@ import { PlayoffGraph, type GroupGraphMatch } from "@/components/playoff-graph";
 import { getGroupStandings } from "@/lib/group-stage-schedule";
 import { getPlayoffView } from "@/lib/playoff";
 import { listCupSchedule } from "@/lib/schedule-crud";
+import { pageMeta } from "@/lib/seo";
 
 export const revalidate = 30;
+
+export const metadata = pageMeta(
+  "Playoff Bracket",
+  "Follow the MM Dota Cup playoff graph: group standings, upper and lower brackets, and the Grand Final.",
+);
 
 export default async function PlayoffsPage() {
   const [view, groupA, groupB, fixtures] = await Promise.all([

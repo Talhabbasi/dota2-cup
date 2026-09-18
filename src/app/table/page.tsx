@@ -1,7 +1,13 @@
 import { StandingsBoard } from "@/components/standings-board";
 import { getStandings } from "@/lib/data";
+import { pageMeta } from "@/lib/seo";
 
 export const revalidate = 30;
+
+export const metadata = pageMeta(
+  "League Standings",
+  "Live MM Dota Cup standings: wins, losses, and points for every franchise this season.",
+);
 
 export default async function TablePage() {
   const rows = await getStandings();

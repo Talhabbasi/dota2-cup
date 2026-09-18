@@ -1,12 +1,29 @@
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { formatDuration, getMatch } from "@/lib/data";
+import { formatDuration, getMatch, getMatchMeta } from "@/lib/data";
 import { formatKillScore, matchKillTotals } from "@/lib/match-score";
 import { parseStoredItems } from "@/lib/heroes";
 import { itemIconUrl, loadHeroCatalog, heroIconUrl } from "@/lib/opendota";
+import type { Metadata } from "next";
 
 export const revalidate = 30;
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}): Promise<Metadata> {
+  const { id } = await params;
+  const match = await getMatchMeta(id);
+  if (!match) return { title: "Match" };
+  return {
+    title: match.title,
+    description: `${match.title} — MM Dota Cup match result${
+      match.openDotaId ? ` · Match ${match.openDotaId}` : ""
+    }.`,
+  };
+}
 
 export default async function MatchPage({
   params,

@@ -1,7 +1,13 @@
 import { HeroesGrid } from "@/components/heroes-grid";
 import { getHeroTournamentStats } from "@/lib/heroes";
+import { pageMeta } from "@/lib/seo";
 
 export const revalidate = 30;
+
+export const metadata = pageMeta(
+  "Dota 2 Heroes",
+  "See which Dota 2 heroes are picked in MM Dota Cup matches, with tournament pick counts and results.",
+);
 
 export default async function HeroesPage() {
   const heroes = await getHeroTournamentStats();

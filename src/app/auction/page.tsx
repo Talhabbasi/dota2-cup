@@ -1,8 +1,14 @@
 import Link from "next/link";
 import { getAuctionResultsBySeason } from "@/lib/auction-results";
 import { formatPoints } from "@/lib/constants";
+import { pageMeta } from "@/lib/seo";
 
 export const revalidate = 30;
+
+export const metadata = pageMeta(
+  "Player Auction",
+  "See which MM Dota Cup players sold to which team and for how many points in the season auction.",
+);
 
 function statusLabel(status: string, live: boolean) {
   if (live) return "Live";

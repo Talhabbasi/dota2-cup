@@ -5,9 +5,15 @@ import { RegisterSignIn } from "@/components/register-signin";
 import { isRegistrationOpen } from "@/lib/registration-status";
 import { parseRolesJson } from "@/lib/roles";
 import { playWindowOrBoth } from "@/lib/play-window";
+import { pageMeta } from "@/lib/seo";
 import { steam32To64, steamProfileUrl } from "@/lib/steam";
 
 export const dynamic = "force-dynamic";
+
+export const metadata = pageMeta(
+  "Register to Play",
+  "Register for MM Dota Cup with Discord and Steam. Indoor Dota 2 tournament sign-up for Pakistan weekend matches.",
+);
 
 export default async function RegisterPage() {
   const { session, player } = await currentPlayer();
