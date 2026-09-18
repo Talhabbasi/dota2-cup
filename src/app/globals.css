@@ -5540,6 +5540,20 @@ tr:last-child td {
   margin-top: 1.75rem;
 }
 
+.pred-count-panel {
+  text-align: center;
+}
+
+.pred-count-num {
+  margin: 0;
+  font-family: var(--font-display), sans-serif;
+  font-size: clamp(2.4rem, 6vw, 3.4rem);
+  font-weight: 700;
+  line-height: 1;
+  color: var(--gold);
+  letter-spacing: 0.04em;
+}
+
 .pred-tabs {
   display: flex;
   flex-wrap: wrap;

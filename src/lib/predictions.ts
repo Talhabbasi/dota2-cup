@@ -369,10 +369,49 @@ export async function getPredictionBoard(playerId?: string | null) {
   };
 }
 
+export type PredictionLeaderboardView = {
+  revealed: boolean;
+  playerCount: number;
+  rows: PredictionLeaderRow[];
+  youRank: number | null;
+};
+
+const emptyLeaderboard: PredictionLeaderboardView = {
+  revealed: false,
+  playerCount: 0,
+  rows: [],
+  youRank: null,
+};
+
 export async function getPredictionLeaderboard(youPlayerId?: string | null) {
-  const empty = { rows: [] as PredictionLeaderRow[], youRank: null as number | null };
   const season = await getCurrentSeasonSafe();
-  if (!season) return empty;
+  if (!season) return emptyLeaderboard;
+
+  const seasonFilter = await currentSeasonFilter();
+  const fixtures = await prisma.scheduledFixture.findMany({
+    where: { ...publicFixtureWhere, ...seasonFilter },
+    select: { kind: true, status: true },
+  });
+  const revealed = groupStageIsComplete(fixtures);
+
+  if (!revealed) {
+    try {
+      const pickers = await prisma.matchPrediction.findMany({
+        where: {
+          seasonId: season.id,
+          player: publicPlayerWhere,
+        },
+        distinct: ["playerId"],
+        select: { playerId: true },
+      });
+      return {
+        ...emptyLeaderboard,
+        playerCount: pickers.length,
+      };
+    } catch {
+      return emptyLeaderboard;
+    }
+  }
 
   let picks: {
     playerId: string;
@@ -392,7 +431,7 @@ export async function getPredictionLeaderboard(youPlayerId?: string | null) {
       },
     });
   } catch {
-    return empty;
+    return { ...emptyLeaderboard, revealed: true };
   }
 
   const byPlayer = new Map<
@@ -431,6 +470,8 @@ export async function getPredictionLeaderboard(youPlayerId?: string | null) {
   }));
 
   return {
+    revealed: true,
+    playerCount: rows.length,
     rows,
     youRank: rows.find((row) => row.isYou)?.rank ?? null,
   };

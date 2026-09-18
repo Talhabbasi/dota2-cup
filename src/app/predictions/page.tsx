@@ -40,7 +40,8 @@ export default async function PredictionsPage() {
             locked Saturday at 10:00 PM PKT before the first match. The
             International (upper, lower, Grand Final) stays locked until every
             group-stage match is done — Grand Final is{" "}
-            {FINAL_PREDICTION_POINTS} points. Both stages share one board.
+            {FINAL_PREDICTION_POINTS} points. Names and points stay hidden
+            until group stage is complete.
           </p>
           <div className="teams-list-hero-pills">
             {season ? (
@@ -71,7 +72,15 @@ export default async function PredictionsPage() {
               )}
             </span>
             <span className="teams-list-hero-pill">
-              <strong>{board.rows.length}</strong> on the board
+              {board.revealed ? (
+                <>
+                  <strong>{board.playerCount}</strong> on the board
+                </>
+              ) : (
+                <>
+                  <strong>{board.playerCount}</strong> predicted
+                </>
+              )}
             </span>
           </div>
         </div>
@@ -84,11 +93,36 @@ export default async function PredictionsPage() {
       />
 
       <section className="pred-section">
-        <div className="section-head row">
-          <h2>Points board</h2>
-          <span className="muted">Highest to lowest · all stages</span>
-        </div>
-        <PredictionLeaderboard rows={board.rows} youRank={board.youRank} />
+        {board.revealed ? (
+          <>
+            <div className="section-head row">
+              <h2>Points board</h2>
+              <span className="muted">Highest to lowest · all stages</span>
+            </div>
+            <PredictionLeaderboard rows={board.rows} youRank={board.youRank} />
+          </>
+        ) : (
+          <>
+            <div className="section-head row">
+              <h2>Predictions in</h2>
+              <span className="muted">
+                Names and points after group stage
+              </span>
+            </div>
+            <div className="empty-panel teams-list-empty pred-count-panel">
+              <p className="pred-count-num">{board.playerCount}</p>
+              <p style={{ margin: 0 }}>
+                {board.playerCount === 1
+                  ? "player has predicted"
+                  : "players have predicted"}
+              </p>
+              <p className="muted" style={{ margin: "0.55rem 0 0" }}>
+                The points board with names opens when every group-stage match
+                is done.
+              </p>
+            </div>
+          </>
+        )}
       </section>
     </div>
   );
