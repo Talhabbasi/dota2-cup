@@ -4,6 +4,7 @@ import { formatScheduleWhen } from "@/lib/schedule";
 import { HeroSlideshow } from "@/components/hero-slideshow";
 import { MatchCountdown } from "@/components/match-countdown";
 import type { FixturePreview } from "@/lib/data";
+import { toIso } from "@/lib/format";
 
 function seriesLabel(kind?: string, bestOf?: number) {
   const bo = `Bo${bestOf ?? 1}`;
@@ -130,7 +131,7 @@ export function HomeHero({
               </p>
             </div>
             {upcoming.scheduledAt ? (
-              <MatchCountdown at={upcoming.scheduledAt.toISOString()} />
+              <MatchCountdown at={toIso(upcoming.scheduledAt)} />
             ) : null}
           </div>
         ) : null}

@@ -1,5 +1,6 @@
 import { PlayersGrid, type PlayerCardView } from "@/components/players-grid";
 import { getPlayers, formatRoles } from "@/lib/data";
+import { toIso } from "@/lib/format";
 import { PLAY_WINDOW_SHORT, playWindowOrBoth } from "@/lib/play-window";
 import { isRosterSub } from "@/lib/roles";
 import { getCurrentSeasonSafe } from "@/lib/seasons";
@@ -27,7 +28,7 @@ export default async function PlayersPage() {
     isSub: isRosterSub(p.rosterRole),
     basePrice: p.basePrice,
     playWindowLabel: PLAY_WINDOW_SHORT[playWindowOrBoth(p.playWindow)],
-    createdAt: p.createdAt.toISOString(),
+    createdAt: toIso(p.createdAt),
   }));
 
   const unsigned = views.filter((p) => !p.teamId).length;

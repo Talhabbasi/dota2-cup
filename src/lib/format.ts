@@ -14,6 +14,10 @@ export function formatRoles(roles: PlayerRole[]): string {
   return roles.map((r) => ROLE_LABELS[r] ?? r).join(", ");
 }
 
+export function toIso(value: Date | string): string {
+  return typeof value === "string" ? value : value.toISOString();
+}
+
 export function formatDuration(seconds: number | null | undefined): string {
   if (!seconds) return "—";
   const m = Math.floor(seconds / 60);

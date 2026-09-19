@@ -87,6 +87,7 @@ async function loadPlayers() {
     const rosterRole = membership ? membership.rosterRole : p.rosterRole;
     return {
       ...p,
+      createdAt: p.createdAt.toISOString(),
       team,
       teamId,
       isCaptain,
