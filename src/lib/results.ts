@@ -259,6 +259,79 @@ export async function ingestMatch(input: {
   return match;
 }
 
+/** Record a series winner without OpenDota (lobby ID only / replay not public yet). */
+export async function recordManualSeriesWinner(input: {
+  fixtureId: string;
+  winnerName: string;
+}) {
+  const fixture = await prisma.scheduledFixture.findUnique({
+    where: { id: input.fixtureId },
+    include: {
+      radiantTeam: true,
+      direTeam: true,
+      match: true,
+    },
+  });
+  if (!fixture) {
+    throw new Error("That scheduled match was not found. Pick it from the dropdown.");
+  }
+  if (fixture.status === "completed") {
+    throw new Error(
+      `**${fixture.radiantTeam.name}** vs **${fixture.direTeam.name}** is already completed.`,
+    );
+  }
+
+  const want = input.winnerName.trim().toLowerCase();
+  const winner =
+    fixture.radiantTeam.name.toLowerCase() === want
+      ? fixture.radiantTeam
+      : fixture.direTeam.name.toLowerCase() === want
+        ? fixture.direTeam
+        : null;
+  if (!winner) {
+    throw new Error(
+      `Winner must be **${fixture.radiantTeam.name}** or **${fixture.direTeam.name}**.`,
+    );
+  }
+
+  let match = fixture.match;
+  if (!match) {
+    match = await prisma.match.create({
+      data: {
+        seasonId: fixture.seasonId ?? (await currentSeasonId()),
+        openDotaId: `manual-${fixture.id}`,
+        radiantWin: winner.id === fixture.radiantTeamId,
+        radiantTeamId: fixture.radiantTeamId,
+        direTeamId: fixture.direTeamId,
+        winnerTeamId: winner.id,
+        startedAt: fixture.scheduledAt,
+      },
+    });
+  } else if (!match.winnerTeamId) {
+    match = await prisma.match.update({
+      where: { id: match.id },
+      data: {
+        radiantWin: winner.id === fixture.radiantTeamId,
+        winnerTeamId: winner.id,
+      },
+    });
+  }
+
+  const { completeScheduledFixture } = await import("./schedule");
+  await completeScheduledFixture({
+    radiantTeamId: fixture.radiantTeamId,
+    direTeamId: fixture.direTeamId,
+    winnerTeamId: winner.id,
+    matchId: match.id,
+  });
+
+  return {
+    radiant: fixture.radiantTeam.name,
+    dire: fixture.direTeam.name,
+    winner: winner.name,
+  };
+}
+
 export async function assignUnknown(input: {
   steam32: number;
   discordId: string;

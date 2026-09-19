@@ -76,6 +76,7 @@ Website: **Schedule** + **Playoffs** (tournament graph) + **Predictions**. Group
 
 **Admin — results**
 \`/result match_id:<id>\` or in #results: \`!result 8123456789\`
+\`/result winner fixture: team:\` — record who won when you only have a lobby ID (no OpenDota)
 \`/result assign steam32:<id> user:@player\` — map a stand-in / smurf
 The last group \`!result\` opens the first playoff matches automatically.
 

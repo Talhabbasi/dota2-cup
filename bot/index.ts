@@ -116,7 +116,7 @@ import {
   playerMustPay,
   recordPlayerPayment,
 } from "../src/lib/payments";
-import { assignUnknown, ingestMatch } from "../src/lib/results";
+import { assignUnknown, ingestMatch, recordManualSeriesWinner } from "../src/lib/results";
 import {
   backfillSeason1,
   createSeason,
@@ -954,6 +954,25 @@ const commands = [
         .addUserOption((o) =>
           o.setName("user").setDescription("Registered player").setRequired(true),
         ),
+    )
+    .addSubcommand((s) =>
+      s
+        .setName("winner")
+        .setDescription("Admin: record who won a booked match (no OpenDota needed)")
+        .addStringOption((o) =>
+          o
+            .setName("fixture")
+            .setDescription("Which scheduled match")
+            .setRequired(true)
+            .setAutocomplete(true),
+        )
+        .addStringOption((o) =>
+          o
+            .setName("team")
+            .setDescription("Winning team")
+            .setRequired(true)
+            .setAutocomplete(true),
+        ),
     ),
   new SlashCommandBuilder()
     .setName("pay")
@@ -1058,6 +1077,40 @@ async function handleTeamNameAutocomplete(interaction: AutocompleteInteraction) 
 }
 
 async function handleScheduleAutocomplete(interaction: AutocompleteInteraction) {
+  if (interaction.commandName === "result") {
+    const focused = interaction.options.getFocused(true);
+    const query = focused.value.trim().toLowerCase();
+    if (focused.name === "fixture") {
+      const fixtures = await listEditableFixtures(25);
+      const choices = fixtures
+        .map((fixture) => ({
+          name: formatFixtureChoiceLabel(fixture),
+          value: fixture.id,
+        }))
+        .filter((row) => !query || row.name.toLowerCase().includes(query))
+        .slice(0, 25);
+      await interaction.respond(choices);
+      return;
+    }
+    if (focused.name === "team") {
+      const fixtureId = interaction.options.getString("fixture");
+      const fixtures = await listEditableFixtures(25);
+      const fixture = fixtures.find((row) => row.id === fixtureId) ?? fixtures[0];
+      if (!fixture) {
+        await interaction.respond([]);
+        return;
+      }
+      const names = [fixture.radiantTeam.name, fixture.direTeam.name].filter(
+        (name) => !query || name.toLowerCase().includes(query),
+      );
+      await interaction.respond(
+        names.map((name) => ({ name: name.slice(0, 100), value: name })),
+      );
+      return;
+    }
+    await interaction.respond([]);
+    return;
+  }
   if (interaction.commandName !== "schedule") {
     await interaction.respond([]);
     return;
@@ -2925,6 +2978,30 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
 
     if (name === "result") {
       const sub = interaction.options.getSubcommand();
+      if (sub === "winner") {
+        if (!isOrganizer(member, discordId)) {
+          await interaction.reply({
+            content: "Only an admin can record a match winner.",
+            flags: MessageFlags.Ephemeral,
+          });
+          return;
+        }
+        await interaction.deferReply();
+        const recorded = await recordManualSeriesWinner({
+          fixtureId: interaction.options.getString("fixture", true),
+          winnerName: interaction.options.getString("team", true),
+        });
+        void notifySiteRefresh();
+        await interaction.editReply(
+          `Recorded **${recorded.winner}** beat **${
+            recorded.winner === recorded.radiant ? recorded.dire : recorded.radiant
+          }** (${recorded.radiant} vs ${recorded.dire}).\nSchedule, standings, and predictions are updated. Hero stats can still be imported later with \`!result <match id>\` when OpenDota has the game.`,
+        );
+        if (interaction.guild) {
+          await syncPlayoffMatchesChannel(interaction.guild);
+        }
+        return;
+      }
       if (sub === "assign") {
         if (!isOrganizer(member, discordId)) {
           await interaction.reply({
