@@ -177,25 +177,51 @@ export function parseMatchId(input: string): string {
   );
 }
 
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function requestOpenDotaParse(matchId: string) {
+  await fetch(`https://api.opendota.com/api/request/${matchId}`, {
+    method: "POST",
+    cache: "no-store",
+  }).catch(() => undefined);
+}
+
 export async function fetchOpenDotaMatch(
   matchId: string,
 ): Promise<OpenDotaMatch> {
-  const res = await fetch(`https://api.opendota.com/api/matches/${matchId}`);
-  if (res.status === 404) {
-    throw new Error(
-      "OpenDota does not have this match yet. Wait a few minutes after the game and try again.",
-    );
-  }
-  if (!res.ok) {
+  const url = `https://api.opendota.com/api/matches/${matchId}`;
+  const attempts = 4;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    const res = await fetch(url, { cache: "no-store" });
+    if (res.ok) {
+      const data = (await res.json()) as OpenDotaMatch;
+      if (data.players && data.players.length >= 10) return data;
+      await requestOpenDotaParse(matchId);
+      if (attempt < attempts - 1) {
+        await wait(3000);
+        continue;
+      }
+      throw new Error(
+        `Match ${matchId} is on OpenDota but not fully parsed yet. Wait a few minutes, then post \`!result ${matchId}\` again.`,
+      );
+    }
+    if (res.status === 404) {
+      await requestOpenDotaParse(matchId);
+      if (attempt < attempts - 1) {
+        await wait(3500);
+        continue;
+      }
+      throw new Error(
+        `OpenDota does not have match **${matchId}** yet — the replay is still uploading. I asked OpenDota to fetch it. Wait 3–10 minutes after the lobby ends, then post \`!result ${matchId}\` again.`,
+      );
+    }
     throw new Error(`OpenDota returned ${res.status}. Try again in a minute.`);
   }
-  const data = (await res.json()) as OpenDotaMatch;
-  if (!data.players || data.players.length < 10) {
-    throw new Error(
-      "This match is not fully parsed yet. Wait a few minutes and run !result again.",
-    );
-  }
-  return data;
+  throw new Error(
+    `OpenDota does not have match **${matchId}** yet. Wait a few minutes and try \`!result ${matchId}\` again.`,
+  );
 }
 
 export function itemIdsOf(player: OpenDotaMatchPlayer): number[] {
