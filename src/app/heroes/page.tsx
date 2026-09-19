@@ -2,6 +2,8 @@ import { HeroesGrid } from "@/components/heroes-grid";
 import { getHeroTournamentStats } from "@/lib/heroes";
 import { pageMeta } from "@/lib/seo";
 
+export { dynamic } from "@/lib/dynamic-route";
+
 export const metadata = pageMeta(
   "Dota 2 Heroes",
   "See which Dota 2 heroes are picked in MM Dota Cup matches, with tournament pick counts and results.",

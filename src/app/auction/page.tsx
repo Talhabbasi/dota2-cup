@@ -3,6 +3,8 @@ import { getAuctionResultsBySeason } from "@/lib/auction-results";
 import { formatPoints } from "@/lib/constants";
 import { pageMeta } from "@/lib/seo";
 
+export { dynamic } from "@/lib/dynamic-route";
+
 export const metadata = pageMeta(
   "Player Auction",
   "See which MM Dota Cup players sold to which team and for how many points in the season auction.",

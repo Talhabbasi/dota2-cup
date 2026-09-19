@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { AuthButtons } from "@/components/auth-buttons";
 
@@ -24,6 +24,7 @@ const LINKS = [
 
 export function Nav({ showSeasons = false }: { showSeasons?: boolean }) {
   const pathname = usePathname();
+  const router = useRouter();
   const { status } = useSession();
   const [ready, setReady] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -36,7 +37,10 @@ export function Nav({ showSeasons = false }: { showSeasons?: boolean }) {
 
   useEffect(() => {
     setReady(true);
-  }, []);
+    for (const [href] of LINKS) {
+      router.prefetch(href);
+    }
+  }, [router]);
 
   useEffect(() => {
     setMenuOpen(false);
@@ -90,6 +94,7 @@ export function Nav({ showSeasons = false }: { showSeasons?: boolean }) {
             <Link
               key={href}
               href={href}
+              prefetch
               className={[
                 "nav-link",
                 active ? "nav-active" : "",

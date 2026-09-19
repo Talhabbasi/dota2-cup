@@ -6,8 +6,6 @@ import { NavigationLoader } from "@/components/navigation-loader";
 import { Providers } from "@/components/providers";
 import { SiteFooter } from "@/components/site-footer";
 import { SITE_DESCRIPTION, SITE_NAME, SITE_URL } from "@/lib/seo";
-import { isRegistrationOpen } from "@/lib/registration-status";
-import { hasCrownedSeason } from "@/lib/seasons";
 import "./globals.css";
 
 const oxanium = Oxanium({
@@ -57,14 +55,7 @@ export const viewport: Viewport = {
   viewportFit: "cover",
 };
 
-/** Never prerender against Postgres — Vercel `next build` has no stable Prisma engine. */
-export const dynamic = "force-dynamic";
-
-export default async function RootLayout({ children }: LayoutProps<"/">) {
-  const [showSeasons] = await Promise.all([
-    hasCrownedSeason(),
-    isRegistrationOpen(),
-  ]);
+export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
@@ -73,10 +64,10 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
       <body className="min-h-full flex flex-col">
         <Providers>
           <NavigationLoader />
-          <Nav showSeasons={showSeasons} />
+          <Nav />
           <ClosedBanner />
           <main className="flex-1">{children}</main>
-          <SiteFooter showSeasons={showSeasons} />
+          <SiteFooter />
         </Providers>
         <div className="film-grain" aria-hidden />
       </body>

@@ -7,6 +7,10 @@ function envRegistrationOpen() {
   return value === "true" || value === "1" || value === "yes";
 }
 
+export function isRegistrationOpenFromEnv() {
+  return envRegistrationOpen();
+}
+
 export const isRegistrationOpen = cache(async () => {
   const row = await getCupSettings();
   if (row) return row.registrationOpen;

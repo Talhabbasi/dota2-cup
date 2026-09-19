@@ -6,6 +6,8 @@ import { formatKillScore, matchKillTotals } from "@/lib/match-score";
 import { loadHeroCatalog, heroIconUrl } from "@/lib/opendota";
 import type { Metadata } from "next";
 
+export { dynamic } from "@/lib/dynamic-route";
+
 export async function generateMetadata({
   params,
 }: {

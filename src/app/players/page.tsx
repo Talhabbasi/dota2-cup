@@ -5,6 +5,8 @@ import { isRosterSub } from "@/lib/roles";
 import { getCurrentSeasonSafe } from "@/lib/seasons";
 import { pageMeta } from "@/lib/seo";
 
+export { dynamic } from "@/lib/dynamic-route";
+
 export const metadata = pageMeta(
   "Players",
   "Registered MM Dota Cup players, medals, roles, and team assignments for the indoor Dota 2 tournament.",

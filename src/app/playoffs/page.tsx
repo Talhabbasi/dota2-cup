@@ -7,6 +7,8 @@ import { getPlayoffView } from "@/lib/playoff";
 import { listCupSchedule } from "@/lib/schedule-crud";
 import { pageMeta } from "@/lib/seo";
 
+export { dynamic } from "@/lib/dynamic-route";
+
 export const metadata = pageMeta(
   "Playoff Bracket",
   "Follow the MM Dota Cup playoff graph: group standings, upper and lower brackets, and the Grand Final.",

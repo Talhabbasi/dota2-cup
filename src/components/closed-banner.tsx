@@ -1,4 +1,4 @@
-import { isRegistrationOpen } from "@/lib/registration-status";
+import { isRegistrationOpenFromEnv } from "@/lib/registration-status";
 
 const SLIDE_TEXT = "Registration is closed";
 
@@ -14,8 +14,8 @@ function BannerCopy() {
   );
 }
 
-export async function ClosedBanner() {
-  if (await isRegistrationOpen()) return null;
+export function ClosedBanner() {
+  if (isRegistrationOpenFromEnv()) return null;
   return (
     <div className="site-closed-banner" aria-label={SLIDE_TEXT}>
       <div className="site-closed-banner-track">

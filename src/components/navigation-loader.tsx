@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
-import { PageLoader } from "./page-loader";
 
 const SHOW_DELAY_MS = 120;
 const MIN_VISIBLE_MS = 280;
@@ -98,15 +97,6 @@ export function NavigationLoader() {
   }, [pathname, finish]);
 
   useEffect(() => {
-    if (!visible) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [visible]);
-
-  useEffect(() => {
     const onClick = (event: MouseEvent) => {
       if (event.defaultPrevented || event.button !== 0) return;
       if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
@@ -135,11 +125,6 @@ export function NavigationLoader() {
       >
         <div className="route-progress-bar" />
       </div>
-      {visible ? (
-        <div className="route-overlay">
-          <PageLoader />
-        </div>
-      ) : null}
     </>
   );
 }

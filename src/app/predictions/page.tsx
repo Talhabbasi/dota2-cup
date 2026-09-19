@@ -10,7 +10,7 @@ import {
 import { getCurrentSeasonSafe } from "@/lib/seasons";
 import { pageMeta } from "@/lib/seo";
 
-export const dynamic = "force-dynamic";
+export { dynamic } from "@/lib/dynamic-route";
 
 export const metadata = pageMeta(
   "Match Predictions",
