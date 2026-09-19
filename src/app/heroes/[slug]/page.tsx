@@ -9,8 +9,6 @@ import { formatDuration } from "@/lib/data";
 import { itemIconUrl, heroPortraitUrl } from "@/lib/opendota";
 import type { Metadata } from "next";
 
-export const revalidate = 30;
-
 export async function generateMetadata({
   params,
 }: {

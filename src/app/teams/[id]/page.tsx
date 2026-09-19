@@ -15,8 +15,6 @@ import {
 } from "@/lib/play-window";
 import { isRosterSub, parseRolesJson, sortTeamRoster } from "@/lib/roles";
 
-export const revalidate = 30;
-
 export async function generateMetadata({
   params,
 }: {

@@ -56,6 +56,9 @@ export const viewport: Viewport = {
   viewportFit: "cover",
 };
 
+/** Never prerender against Postgres — Vercel `next build` has no stable Prisma engine. */
+export const dynamic = "force-dynamic";
+
 export default async function RootLayout({ children }: LayoutProps<"/">) {
   const showSeasons = await hasCrownedSeason();
   return (

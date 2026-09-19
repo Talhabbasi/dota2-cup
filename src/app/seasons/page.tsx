@@ -3,8 +3,6 @@ import { notFound } from "next/navigation";
 import { pageMeta } from "@/lib/seo";
 import { getSeasonHistory } from "@/lib/seasons";
 
-export const revalidate = 30;
-
 export const metadata = pageMeta(
   "Season Archive",
   "Past MM Dota Cup seasons and champions from this indoor Dota 2 tournament in Pakistan.",

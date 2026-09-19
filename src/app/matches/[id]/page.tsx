@@ -7,8 +7,6 @@ import { parseStoredItems } from "@/lib/heroes";
 import { itemIconUrl, loadHeroCatalog, heroIconUrl } from "@/lib/opendota";
 import type { Metadata } from "next";
 
-export const revalidate = 30;
-
 export async function generateMetadata({
   params,
 }: {

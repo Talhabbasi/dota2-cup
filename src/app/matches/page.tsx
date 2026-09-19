@@ -3,8 +3,6 @@ import { getMatches } from "@/lib/data";
 import { matchKillTotals } from "@/lib/match-score";
 import { pageMeta } from "@/lib/seo";
 
-export const revalidate = 30;
-
 export const metadata = pageMeta(
   "Match Results",
   "MM Dota Cup match results, scores, and Dota 2 series history for the live indoor season.",
