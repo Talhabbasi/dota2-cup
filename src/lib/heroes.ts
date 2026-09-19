@@ -8,7 +8,7 @@ import {
   type HeroInfo,
 } from "./opendota";
 import { publicMatchWhere, publicPlayerWhere } from "./dummy";
-import { PUBLIC_PAGE_TAG } from "./page-cache";
+import { PUBLIC_PAGE_TAG } from "./cache-tags";
 import { currentSeasonFilter } from "./seasons";
 
 export type HeroTournamentStat = HeroInfo & {

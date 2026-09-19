@@ -18,7 +18,7 @@ import { getPlayoffView } from "@/lib/playoff";
 import { getActiveWeekendBundle } from "@/lib/schedule";
 import { getCurrentSeasonSafe } from "@/lib/seasons";
 
-export { dynamic } from "@/lib/dynamic-route";
+export const dynamic = "force-dynamic";
 
 function HomeGroupColumn({
   title,

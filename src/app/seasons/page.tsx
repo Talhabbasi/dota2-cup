@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { pageMeta } from "@/lib/seo";
 import { getSeasonHistory } from "@/lib/seasons";
 
-export { dynamic } from "@/lib/dynamic-route";
+export const dynamic = "force-dynamic";
 
 export const metadata = pageMeta(
   "Season Archive",

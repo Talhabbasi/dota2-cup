@@ -14,7 +14,7 @@ import {
 } from "@/lib/opendota";
 import type { Metadata } from "next";
 
-export { dynamic } from "@/lib/dynamic-route";
+export const dynamic = "force-dynamic";
 
 export async function generateMetadata({
   params,

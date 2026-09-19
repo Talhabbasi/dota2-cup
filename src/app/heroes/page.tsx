@@ -2,7 +2,7 @@ import { HeroesGrid } from "@/components/heroes-grid";
 import { getHeroTournamentStats } from "@/lib/heroes";
 import { pageMeta } from "@/lib/seo";
 
-export { dynamic } from "@/lib/dynamic-route";
+export const dynamic = "force-dynamic";
 
 export const metadata = pageMeta(
   "Dota 2 Heroes",

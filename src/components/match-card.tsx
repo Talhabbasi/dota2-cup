@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { formatDuration, formatMatchWhen } from "@/lib/data";
+import { formatDuration, formatMatchWhen } from "@/lib/format";
 import {
   formatKillScore,
   matchKillTotals,

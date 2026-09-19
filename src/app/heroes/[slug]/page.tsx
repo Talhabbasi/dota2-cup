@@ -9,7 +9,7 @@ import { formatDuration } from "@/lib/data";
 import { heroPortraitUrl } from "@/lib/opendota";
 import type { Metadata } from "next";
 
-export { dynamic } from "@/lib/dynamic-route";
+export const dynamic = "force-dynamic";
 
 export async function generateMetadata({
   params,

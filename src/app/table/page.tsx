@@ -2,7 +2,7 @@ import { StandingsBoard } from "@/components/standings-board";
 import { getStandings } from "@/lib/data";
 import { pageMeta } from "@/lib/seo";
 
-export { dynamic } from "@/lib/dynamic-route";
+export const dynamic = "force-dynamic";
 
 export const metadata = pageMeta(
   "League Standings",

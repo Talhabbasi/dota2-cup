@@ -15,7 +15,7 @@ import {
 } from "@/lib/play-window";
 import { isRosterSub, parseRolesJson, sortTeamRoster } from "@/lib/roles";
 
-export { dynamic } from "@/lib/dynamic-route";
+export const dynamic = "force-dynamic";
 
 export async function generateMetadata({
   params,

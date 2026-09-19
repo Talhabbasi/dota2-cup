@@ -8,7 +8,7 @@ import { playWindowOrBoth } from "@/lib/play-window";
 import { pageMeta } from "@/lib/seo";
 import { steam32To64, steamProfileUrl } from "@/lib/steam";
 
-export { dynamic } from "@/lib/dynamic-route";
+export const dynamic = "force-dynamic";
 
 export const metadata = pageMeta(
   "Register to Play",
