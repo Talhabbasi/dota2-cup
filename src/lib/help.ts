@@ -48,8 +48,8 @@ Pinned in **#admin** for every Admin. Re-post anytime with \`/admin help\`.
 \`/player unsigned\` — players not on a team, grouped by rank
 \`/player register user:@x steam:<url> rank: role: when:\` — late add
 \`/player add user:@x team:<name>\` — add unsigned player to a team
-\`/player remove user:@x\` — take them off the team (keeps registration)
-\`/player delete user:@x\` — remove from the cup
+\`/player remove user:@x\` — take them off the team (or \`discord_id:<id>\` if they left)
+\`/player delete user:@x\` — remove from the cup (or \`discord_id:<id>\` if they left Discord)
 \`/player edit user:@x rank: role: when:\` — or \`discord_id:<id>\`
 \`/player resync user:@x\` — fix roster slot from registration
 

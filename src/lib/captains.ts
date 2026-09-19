@@ -32,7 +32,10 @@ export async function adminAddCaptain(input: {
     throw new Error(`${player.discordName} is already on a team.`);
   }
 
-  const teamCount = await prisma.team.count();
+  const seasonId = await currentSeasonId();
+  const teamCount = await prisma.team.count({
+    where: { seasonId },
+  });
   if (teamCount >= MAX_CAPTAINS) {
     throw new Error(`Already at ${MAX_CAPTAINS} teams.`);
   }
@@ -41,7 +44,7 @@ export async function adminAddCaptain(input: {
   const taken = await prisma.team.findUnique({
     where: { name },
   });
-  if (taken && taken.seasonId && taken.seasonId !== (await currentSeasonId())) {
+  if (taken && taken.seasonId && taken.seasonId !== seasonId) {
     throw new Error(`Team "${name}" exists in another season.`);
   }
   if (taken) throw new Error(`Team "${name}" already exists.`);
@@ -49,7 +52,7 @@ export async function adminAddCaptain(input: {
   const team = await prisma.team.create({
     data: {
       name,
-      seasonId: await currentSeasonId(),
+      seasonId,
       captainId: player.id,
       purse: STARTING_PURSE,
     },
@@ -79,12 +82,11 @@ export async function adminRemoveCaptain(discordId: string) {
   }
 
   const teamId = player.teamId;
-  const rosterIds = (
-    await prisma.player.findMany({
-      where: { teamId },
-      select: { id: true },
-    })
-  ).map((row) => row.id);
+  const roster = await prisma.player.findMany({
+    where: { teamId },
+    select: { id: true, discordId: true },
+  });
+  const rosterIds = roster.map((row) => row.id);
   const state = await ensureAuctionState();
   if (
     state.status === "running" &&
@@ -128,7 +130,10 @@ export async function adminRemoveCaptain(discordId: string) {
   const name = player.team?.name ?? "the team";
   await prisma.team.delete({ where: { id: teamId } });
   await syncSeasonPlayers(rosterIds);
-  return { teamName: name };
+  return {
+    teamName: name,
+    rosterDiscordIds: roster.map((row) => row.discordId),
+  };
 }
 
 async function findTeamByName(name: string) {

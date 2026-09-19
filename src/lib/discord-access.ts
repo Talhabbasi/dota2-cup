@@ -13,11 +13,18 @@ import {
 } from "./payments-channel-access";
 import { ensureDummyAuctionChannel } from "./dummy-auction-channel";
 import {
+  removeTeamChatPresence,
   renameTeamChatLabels,
   stripMemberTeamRoles,
   syncTeamChatChannels,
+  syncTeamChatForTeam,
 } from "./team-chat";
-import { renameTeamVoiceLabel, syncTeamVoiceChannels } from "./team-voice";
+import {
+  removeTeamVoicePresence,
+  renameTeamVoiceLabel,
+  syncTeamVoiceChannels,
+  syncTeamVoiceForTeam,
+} from "./team-voice";
 import {
   PLAY_WINDOW_ROLE_NAMES,
   playWindowOrBoth,
@@ -334,6 +341,57 @@ export async function trySyncCupChannelAccess(guild: Guild | null) {
   } catch (error) {
     console.warn(
       "Could not sync cup channel access:",
+      error instanceof Error ? error.message : error,
+    );
+  }
+}
+
+/** Create that franchise's private chat, role, and voice — skip a full guild rebuild. */
+export async function tryProvisionTeamDiscord(
+  guild: Guild | null,
+  team: {
+    name: string;
+    players: {
+      discordId: string;
+      steamName?: string | null;
+      isCaptain: boolean;
+    }[];
+  },
+) {
+  if (!guild) return;
+  try {
+    await syncTeamChatForTeam(guild, {
+      name: team.name,
+      players: team.players,
+    });
+    await syncTeamVoiceForTeam(guild, {
+      name: team.name,
+      players: team.players,
+    });
+  } catch (error) {
+    console.warn(
+      "Could not provision team Discord rooms:",
+      error instanceof Error ? error.message : error,
+    );
+  }
+}
+
+/** Strip roster team roles and delete that franchise's chat, voice, and role. */
+export async function tryTeardownTeamDiscord(
+  guild: Guild | null,
+  teamName: string,
+  rosterDiscordIds: string[],
+) {
+  if (!guild) return;
+  try {
+    for (const discordId of rosterDiscordIds) {
+      await stripMemberTeamRoles(guild, discordId);
+    }
+    await removeTeamVoicePresence(guild, teamName);
+    await removeTeamChatPresence(guild, teamName);
+  } catch (error) {
+    console.warn(
+      "Could not tear down team Discord rooms:",
       error instanceof Error ? error.message : error,
     );
   }

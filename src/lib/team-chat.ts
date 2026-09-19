@@ -113,13 +113,21 @@ function teamColor(teamName: string) {
 }
 
 async function ensureTeamChatCategory(guild: Guild): Promise<CategoryChannel> {
-  await guild.channels.fetch();
   const name = teamChatCategoryName();
-  const existing = guild.channels.cache.find(
+  const fromCache = guild.channels.cache.find(
     (ch) =>
       ch.type === ChannelType.GuildCategory &&
       ch.name.toLowerCase() === name.toLowerCase(),
   );
+  const existing =
+    fromCache ??
+    (await guild.channels.fetch().then(() =>
+      guild.channels.cache.find(
+        (ch) =>
+          ch.type === ChannelType.GuildCategory &&
+          ch.name.toLowerCase() === name.toLowerCase(),
+      ),
+    ));
   const category =
     existing?.type === ChannelType.GuildCategory
       ? existing
@@ -342,6 +350,87 @@ async function syncPlayerTeamRole(
   }
 }
 
+async function provisionTeamChat(
+  guild: Guild,
+  category: CategoryChannel,
+  team: { name: string; players: { discordId: string }[] },
+) {
+  const name = textChannelName(team.name);
+  const existing = category.children.cache.find(
+    (ch) =>
+      ch.type === ChannelType.GuildText && matchesTeamChat(ch.name, team.name),
+  );
+  const role = await ensureTeamRole(guild, team.name);
+  let channel: TextChannel;
+  if (existing?.type === ChannelType.GuildText) {
+    channel = existing;
+    if (channel.name !== name) {
+      await channel.setName(name, "Sync team chat name");
+    }
+  } else {
+    channel = await guild.channels.create({
+      name,
+      type: ChannelType.GuildText,
+      parent: category.id,
+      topic: `Private chat for ${team.name}. Only this roster can see it.`,
+      reason: `MM Dota Cup chat for ${team.name}`,
+    });
+  }
+  await applyChatAccess(channel, guild, role, team.players);
+  const teamRoles = new Map([[team.name, role]]);
+  for (const player of team.players) {
+    await syncPlayerTeamRole(guild, player.discordId, team.name, teamRoles);
+  }
+  return { channel, role };
+}
+
+/** Create or refresh one team's private chat and roster role. */
+export async function syncTeamChatForTeam(
+  guild: Guild,
+  team: { name: string; players: { discordId: string }[] },
+) {
+  if (guild.roles.cache.size === 0) {
+    await guild.roles.fetch();
+  }
+  const category = await ensureTeamChatCategory(guild);
+  await provisionTeamChat(guild, category, team);
+}
+
+/** Delete that team's private chat and Discord role after the franchise is dissolved. */
+export async function removeTeamChatPresence(guild: Guild, teamName: string) {
+  if (guild.roles.cache.size === 0) {
+    await guild.roles.fetch();
+  }
+  const categoryName = teamChatCategoryName().toLowerCase();
+  const category =
+    guild.channels.cache.find(
+      (ch) =>
+        ch.type === ChannelType.GuildCategory &&
+        ch.name.toLowerCase() === categoryName,
+    ) ??
+    (await guild.channels.fetch().then(() =>
+      guild.channels.cache.find(
+        (ch) =>
+          ch.type === ChannelType.GuildCategory &&
+          ch.name.toLowerCase() === categoryName,
+      ),
+    ));
+  if (category?.type === ChannelType.GuildCategory) {
+    const existing = category.children.cache.find(
+      (ch) =>
+        ch.type === ChannelType.GuildText &&
+        matchesTeamChat(ch.name, teamName),
+    );
+    if (existing) {
+      await existing.delete("Team dissolved").catch(() => undefined);
+    }
+  }
+  const role = findRole(guild, teamRoleName(teamName));
+  if (role) {
+    await role.delete("Team dissolved").catch(() => undefined);
+  }
+}
+
 export type TeamChatSyncResult = {
   ok: boolean;
   channel: string;
@@ -390,36 +479,12 @@ export async function syncTeamChatChannels(
 
   for (const team of teams) {
     const name = textChannelName(team.name);
-    const existing = category.children.cache.find(
-      (ch) =>
-        ch.type === ChannelType.GuildText && matchesTeamChat(ch.name, team.name),
-    );
 
     try {
-      const role = await ensureTeamRole(guild, team.name);
+      const { channel, role } = await provisionTeamChat(guild, category, team);
       teamRoles.set(team.name, role);
       claimedRoles.add(role.id);
-
-      let channel: TextChannel;
-      if (existing?.type === ChannelType.GuildText) {
-        channel = existing;
-        if (channel.name !== name) {
-          await channel.setName(name, "Sync team chat name");
-        }
-      } else {
-        channel = await guild.channels.create({
-          name,
-          type: ChannelType.GuildText,
-          parent: category.id,
-          topic: `Private chat for ${team.name}. Only this roster can see it.`,
-          reason: `MM Dota Cup chat for ${team.name}`,
-        });
-      }
       claimed.add(channel.id);
-      await applyChatAccess(channel, guild, role, team.players);
-      for (const player of team.players) {
-        await syncPlayerTeamRole(guild, player.discordId, team.name, teamRoles);
-      }
       results.push({
         ok: true,
         channel: name,

@@ -36,8 +36,14 @@ const DUMMY_TEAM_NAMES = [
 ];
 
 async function requirePlayer(discordId: string) {
-  const player = await prisma.player.findUnique({
-    where: { discordId },
+  const snowflake = discordId.split(":")[0];
+  const player = await prisma.player.findFirst({
+    where: {
+      OR: [
+        { discordId: snowflake },
+        { discordId: { startsWith: `${snowflake}:` } },
+      ],
+    },
     include: { team: true },
   });
   if (!player) {
@@ -455,7 +461,8 @@ export function formatPlayerDirectory(
   const groups = new Map<string, string[]>();
   for (const player of players) {
     const team = player.team?.name ?? "Unsigned";
-    const mention = `<@${player.discordId.split(":")[0]}>`;
+    const id = player.discordId.split(":")[0];
+    const mention = `<@${id}> \`${id}\``;
     const roles = formatRoles(parseRolesJson(player.rolesJson));
     const medal =
       MEDAL_LABELS[player.medal as Medal] ?? player.medal;

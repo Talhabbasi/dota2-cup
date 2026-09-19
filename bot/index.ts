@@ -188,11 +188,13 @@ import {
   syncCaptainRolesFromDb,
   syncCupChannelAccess,
   tryGrantCupPlayerAccess,
+  tryProvisionTeamDiscord,
   tryRenameTeamDiscordLabels,
   tryRevokeCupPlayerAccess,
   trySetMemberCaptainRole,
   trySetPlayWindowRoles,
   trySyncCupChannelAccess,
+  tryTeardownTeamDiscord,
 } from "../src/lib/discord-access";
 import { trySetMemberRegisteredRole } from "../src/lib/payments-channel-access";
 import { syncGuildIcon } from "../src/lib/guild-branding";
@@ -411,7 +413,12 @@ const commands = [
         .setName("delete")
         .setDescription("Admin: delete a player from the cup (also off their team)")
         .addUserOption((o) =>
-          o.setName("user").setDescription("Player").setRequired(true),
+          o.setName("user").setDescription("Player if they are still in Discord"),
+        )
+        .addStringOption((o) =>
+          o
+            .setName("discord_id")
+            .setDescription("Discord user ID if they left the server"),
         ),
     )
     .addSubcommand((s) =>
@@ -430,7 +437,12 @@ const commands = [
         .setName("remove")
         .setDescription("Admin: remove a player from their team")
         .addUserOption((o) =>
-          o.setName("user").setDescription("Player").setRequired(true),
+          o.setName("user").setDescription("Player if they are still in Discord"),
+        )
+        .addStringOption((o) =>
+          o
+            .setName("discord_id")
+            .setDescription("Discord user ID if they left the server"),
         ),
     )
     .addSubcommand((s) =>
@@ -1131,7 +1143,7 @@ function parseDiscordSnowflake(raw: string): string {
   );
 }
 
-function playerDiscordIdFromEdit(interaction: ChatInputCommandInteraction): string {
+function playerDiscordIdFromOptions(interaction: ChatInputCommandInteraction): string {
   const rawId = interaction.options.getString("discord_id");
   const user = interaction.options.getUser("user");
   if (rawId) {
@@ -2027,7 +2039,7 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
           user.id,
           true,
         );
-        await trySyncCupChannelAccess(interaction.guild);
+        await tryProvisionTeamDiscord(interaction.guild, team);
         void notifySiteRefresh();
         await interaction.editReply(
           [
@@ -2068,7 +2080,7 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
           true,
         );
         if (newNote) notes.push(newNote);
-        await trySyncCupChannelAccess(interaction.guild);
+        await tryProvisionTeamDiscord(interaction.guild, changed.team);
         void notifySiteRefresh();
         const prev = changed.previousCaptain
           ? ` Previous captain **${changed.previousCaptain.steamName}** stays on the roster.`
@@ -2095,9 +2107,6 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
           renamed.newName,
           renamed.captainName,
         );
-        if (!renameNote) {
-          await trySyncCupChannelAccess(interaction.guild);
-        }
         void notifySiteRefresh();
         await interaction.editReply(
           [
@@ -2116,7 +2125,11 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
         user.id,
         false,
       );
-      await trySyncCupChannelAccess(interaction.guild);
+      await tryTeardownTeamDiscord(
+        interaction.guild,
+        removed.teamName,
+        removed.rosterDiscordIds,
+      );
       void notifySiteRefresh();
       await interaction.editReply(
         [
@@ -2217,7 +2230,7 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
         return;
       }
       if (sub === "edit") {
-        const targetId = playerDiscordIdFromEdit(interaction);
+        const targetId = playerDiscordIdFromOptions(interaction);
         const result = await adminUpdatePlayerProfile({
           discordId: targetId,
           medal: interaction.options.getString("rank"),
@@ -2253,50 +2266,54 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
         await interaction.editReply(lines.join("\n"));
         return;
       }
-      const user = interaction.options.getUser("user", true);
-      if (sub === "delete") {
-        const removed = await adminDeletePlayer(user.id);
-        await tryRevokeCupPlayerAccess(interaction.guild, user.id);
-        await trySyncCupChannelAccess(interaction.guild);
+      if (sub === "delete" || sub === "remove" || sub === "add" || sub === "resync") {
+        if (sub === "add") {
+          const user = interaction.options.getUser("user", true);
+          const result = await adminAddPlayerToTeam({
+            discordId: user.id,
+            teamName: interaction.options.getString("team", true),
+          });
+          await tryGrantCupPlayerAccess(
+            interaction.guild,
+            user.id,
+            result.player.playWindow,
+          );
+          await trySyncCupChannelAccess(interaction.guild);
+          await interaction.editReply(
+            `Added **${result.player.steamName}** to **${result.team.name}**. They can see that team's private chat and have the same registered-player roles as everyone else.`,
+          );
+          return;
+        }
+        const targetId = playerDiscordIdFromOptions(interaction);
+        if (sub === "delete") {
+          const removed = await adminDeletePlayer(targetId);
+          await tryRevokeCupPlayerAccess(interaction.guild, targetId);
+          await trySyncCupChannelAccess(interaction.guild);
+          await interaction.editReply(
+            `Deleted registration for **${removed.name}**.${
+              removed.teamName ? ` Removed from **${removed.teamName}**.` : ""
+            } ${
+              (await isRegistrationOpen())
+                ? "They can `/register` again."
+                : "To add them back, use `/player register`."
+            }`,
+          );
+          return;
+        }
+        if (sub === "remove") {
+          const removed = await adminRemovePlayerFromTeam(targetId);
+          await trySyncCupChannelAccess(interaction.guild);
+          await interaction.editReply(
+            `Removed **${removed.name}** from **${removed.teamName}**. Their team Discord role and private chat access are gone (registration kept).`,
+          );
+          return;
+        }
+        const synced = await adminResyncRosterRole(targetId);
         await interaction.editReply(
-          `Deleted registration for **${removed.name}**.${
-            removed.teamName ? ` Removed from **${removed.teamName}**.` : ""
-          } ${
-            (await isRegistrationOpen())
-              ? "They can `/register` again."
-              : "To add them back, use `/player register`."
-          }`,
+          `Rebalanced **${synced.name}**'s team roster (5 starters + up to 2 subs).`,
         );
         return;
       }
-      if (sub === "add") {
-        const result = await adminAddPlayerToTeam({
-          discordId: user.id,
-          teamName: interaction.options.getString("team", true),
-        });
-        await tryGrantCupPlayerAccess(
-          interaction.guild,
-          user.id,
-          result.player.playWindow,
-        );
-        await trySyncCupChannelAccess(interaction.guild);
-        await interaction.editReply(
-          `Added **${result.player.steamName}** to **${result.team.name}**. They can see that team's private chat and have the same registered-player roles as everyone else.`,
-        );
-        return;
-      }
-      if (sub === "remove") {
-        const removed = await adminRemovePlayerFromTeam(user.id);
-        await trySyncCupChannelAccess(interaction.guild);
-        await interaction.editReply(
-          `Removed **${removed.name}** from **${removed.teamName}**. Their team Discord role and private chat access are gone (registration kept).`,
-        );
-        return;
-      }
-      const synced = await adminResyncRosterRole(user.id);
-      await interaction.editReply(
-        `Rebalanced **${synced.name}**'s team roster (5 starters + up to 2 subs).`,
-      );
       return;
     }
 

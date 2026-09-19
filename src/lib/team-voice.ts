@@ -62,13 +62,21 @@ function captainRoleName() {
 }
 
 async function ensureTeamVoiceCategory(guild: Guild): Promise<CategoryChannel> {
-  await guild.channels.fetch();
   const name = teamVoiceCategoryName();
-  const existing = guild.channels.cache.find(
+  const fromCache = guild.channels.cache.find(
     (ch) =>
       ch.type === ChannelType.GuildCategory &&
       ch.name.toLowerCase() === name.toLowerCase(),
   );
+  const existing =
+    fromCache ??
+    (await guild.channels.fetch().then(() =>
+      guild.channels.cache.find(
+        (ch) =>
+          ch.type === ChannelType.GuildCategory &&
+          ch.name.toLowerCase() === name.toLowerCase(),
+      ),
+    ));
   const category =
     existing?.type === ChannelType.GuildCategory
       ? existing
@@ -79,6 +87,80 @@ async function ensureTeamVoiceCategory(guild: Guild): Promise<CategoryChannel> {
         });
   await lockCategoryFromEveryone(category, guild);
   return category;
+}
+
+async function provisionTeamVoice(
+  guild: Guild,
+  category: CategoryChannel,
+  team: {
+    name: string;
+    players: { discordId: string; steamName?: string | null; isCaptain: boolean }[];
+  },
+) {
+  const captain = team.players.find((p) => p.isCaptain) ?? null;
+  const name = voiceChannelName(team.name, captain?.steamName ?? null);
+  const existing = category.children.cache.find(
+    (ch) =>
+      ch.type === ChannelType.GuildVoice && matchesTeam(ch.name, team.name),
+  );
+  let channel: VoiceChannel;
+  if (existing?.type === ChannelType.GuildVoice) {
+    channel = existing;
+    if (channel.name !== name) {
+      await channel.setName(name, "Sync team / captain name");
+    }
+    if (channel.userLimit !== MIN_ROSTER) {
+      await channel.setUserLimit(MIN_ROSTER, "Starting five voice cap");
+    }
+  } else {
+    channel = await guild.channels.create({
+      name,
+      type: ChannelType.GuildVoice,
+      parent: category.id,
+      userLimit: MIN_ROSTER,
+      reason: `MM Dota Cup voice for ${team.name}`,
+    });
+  }
+  await applyVoiceAccess(channel, guild, team.players);
+  return { channel, name, captain };
+}
+
+/** Create or refresh one team's private voice room. */
+export async function syncTeamVoiceForTeam(
+  guild: Guild,
+  team: {
+    name: string;
+    players: { discordId: string; steamName?: string | null; isCaptain: boolean }[];
+  },
+) {
+  const category = await ensureTeamVoiceCategory(guild);
+  await provisionTeamVoice(guild, category, team);
+}
+
+/** Delete that team's voice room after the franchise is dissolved. */
+export async function removeTeamVoicePresence(guild: Guild, teamName: string) {
+  const categoryName = teamVoiceCategoryName().toLowerCase();
+  const category =
+    guild.channels.cache.find(
+      (ch) =>
+        ch.type === ChannelType.GuildCategory &&
+        ch.name.toLowerCase() === categoryName,
+    ) ??
+    (await guild.channels.fetch().then(() =>
+      guild.channels.cache.find(
+        (ch) =>
+          ch.type === ChannelType.GuildCategory &&
+          ch.name.toLowerCase() === categoryName,
+      ),
+    ));
+  if (category?.type !== ChannelType.GuildCategory) return;
+  const existing = category.children.cache.find(
+    (ch) =>
+      ch.type === ChannelType.GuildVoice && matchesTeam(ch.name, teamName),
+  );
+  if (existing) {
+    await existing.delete("Team dissolved").catch(() => undefined);
+  }
 }
 
 /** Keep the same voice room when a team is renamed (does not recreate fixtures). */
@@ -247,33 +329,10 @@ export async function syncTeamVoiceChannels(
   for (const team of teams) {
     const captain = team.players.find((p) => p.isCaptain) ?? null;
     const name = voiceChannelName(team.name, captain?.steamName ?? null);
-    const existing = category.children.cache.find(
-      (ch) =>
-        ch.type === ChannelType.GuildVoice &&
-        matchesTeam(ch.name, team.name),
-    );
 
     try {
-      let channel: VoiceChannel;
-      if (existing?.type === ChannelType.GuildVoice) {
-        channel = existing;
-        if (channel.name !== name) {
-          await channel.setName(name, "Sync team / captain name");
-        }
-        if (channel.userLimit !== MIN_ROSTER) {
-          await channel.setUserLimit(MIN_ROSTER, "Starting five voice cap");
-        }
-      } else {
-        channel = await guild.channels.create({
-          name,
-          type: ChannelType.GuildVoice,
-          parent: category.id,
-          userLimit: MIN_ROSTER,
-          reason: `MM Dota Cup voice for ${team.name}`,
-        });
-      }
+      const { channel } = await provisionTeamVoice(guild, category, team);
       claimed.add(channel.id);
-      await applyVoiceAccess(channel, guild, team.players);
       const captainTag = captain ? captain.steamName : "no captain";
       results.push({
         ok: true,
