@@ -72,7 +72,7 @@ Subs do **not** pay. Each team must be exactly **5000 PKR** (5 starters).
 \`/playoff post\` — post/refresh the bracket graph in **#matches**
 \`/playoff status\` — same data as the website Playoffs page
 \`/playoff clear\` — pending playoff fixtures only (keeps the group-stage grid)
-Website: **Schedule** + **Playoffs** (tournament graph) + **Predictions**. Group-stage picks (10 pts) lock Saturday **10:30 PM PKT**. **The International** tab (upper / lower / Grand Final 50 pts) stays locked until every group match is done. One combined points board. After groups: 4th out, A3 vs B3 Advancement Bo1, then double-elim. Grand Final **Bo3**.
+Website: **Schedule** + **Playoffs** (tournament graph) + **Predictions**. Group-stage picks (10 pts) lock Saturday **10:45 PM PKT**. **The International** tab (upper / lower / Grand Final 50 pts) stays locked until every group match is done. One combined points board. After groups: 4th out, A3 vs B3 Advancement Bo1, then double-elim. Grand Final **Bo3**.
 
 **Admin — results**
 \`/result match_id:<id>\` or in #results: \`!result 8123456789\`

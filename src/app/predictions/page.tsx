@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 
 export const metadata = pageMeta(
   "Match Predictions",
-  "Pick MM Dota Cup winners. Group stage locks Saturday at 10:30 PM PKT. The International unlocks after every group match. One combined points board.",
+  "Pick MM Dota Cup winners. Group stage locks Saturday at 10:45 PM PKT. The International unlocks after every group match. One combined points board.",
 );
 
 export default async function PredictionsPage() {
@@ -37,7 +37,7 @@ export default async function PredictionsPage() {
           <h1>Predictions</h1>
           <p className="muted auction-hero-copy">
             Group stage: {PREDICTION_POINTS} points per correct pick, all
-            locked Saturday at 10:30 PM PKT. The
+            locked Saturday at 10:45 PM PKT. The
             International (upper, lower, Grand Final) stays locked until every
             group-stage match is done — Grand Final is{" "}
             {FINAL_PREDICTION_POINTS} points. Names and points stay hidden

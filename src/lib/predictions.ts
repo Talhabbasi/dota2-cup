@@ -21,7 +21,7 @@ export const PREDICTION_POINTS = 10;
 export const FINAL_PREDICTION_POINTS = 50;
 /** Group-stage picks stay open until this wall-clock time (PKT) on the first group night. */
 export const GROUP_STAGE_LOCK_HOUR_PKT = 22;
-export const GROUP_STAGE_LOCK_MINUTE_PKT = 30;
+export const GROUP_STAGE_LOCK_MINUTE_PKT = 45;
 
 export function isGrandFinalFixture(kind: string, slotKey?: string | null) {
   return kind === "final" || slotKey === "final";
@@ -193,7 +193,7 @@ export async function saveMatchPredictions(
       }
       if (groupLocked) {
         throw new Error(
-          "Group stage picks locked at Saturday 10:30 PM PKT.",
+          "Group stage picks locked at Saturday 10:45 PM PKT.",
         );
       }
     } else if (isInternationalPredictionFixture(fixture.kind)) {
