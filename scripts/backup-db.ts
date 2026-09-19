@@ -21,6 +21,9 @@ async function main() {
     payments,
     cupSettings,
     heroes,
+    seasons,
+    seasonPlayers,
+    predictions,
   ] = await Promise.all([
     prisma.player.findMany(),
     prisma.team.findMany(),
@@ -33,6 +36,9 @@ async function main() {
     prisma.payment.findMany(),
     prisma.cupSettings.findMany(),
     prisma.hero.findMany({ select: { id: true, slug: true, name: true } }),
+    prisma.season.findMany(),
+    prisma.seasonPlayer.findMany(),
+    prisma.matchPrediction.findMany(),
   ]);
 
   const payload = {
@@ -47,6 +53,9 @@ async function main() {
       bids: bids.length,
       payments: payments.length,
       heroes: heroes.length,
+      seasons: seasons.length,
+      seasonPlayers: seasonPlayers.length,
+      predictions: predictions.length,
     },
     players,
     teams,
@@ -59,9 +68,12 @@ async function main() {
     payments,
     cupSettings,
     heroes,
+    seasons,
+    seasonPlayers,
+    predictions,
   };
 
-  const file = path.join(dir, `db-before-seasons-${stamp}.json`);
+  const file = path.join(dir, `db-backup-${stamp}.json`);
   await writeFile(file, JSON.stringify(payload, null, 2), "utf8");
   console.log(`Wrote ${file}`);
   console.log(JSON.stringify(payload.counts, null, 2));
