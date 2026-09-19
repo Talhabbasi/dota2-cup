@@ -275,7 +275,7 @@ export const getMatches = cachedPublic("matches", async () => {
 
 export const getRecentMatches = cachedPublic(
   "recent-matches",
-  async (take = 5) => {
+  async (take: number = 5) => {
     const season = await currentSeasonFilter();
     return prisma.match.findMany({
       where: { ...publicMatchWhere, ...season },
