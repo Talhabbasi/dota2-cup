@@ -188,6 +188,24 @@ async function requestOpenDotaParse(matchId: string) {
   }).catch(() => undefined);
 }
 
+export async function fetchOpenDotaMatchIfReady(
+  matchId: string,
+): Promise<OpenDotaMatch | null> {
+  const res = await fetch(`https://api.opendota.com/api/matches/${matchId}`, {
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    if (res.status === 404) await requestOpenDotaParse(matchId);
+    return null;
+  }
+  const data = (await res.json()) as OpenDotaMatch;
+  if (!data.players || data.players.length < 10) {
+    await requestOpenDotaParse(matchId);
+    return null;
+  }
+  return data;
+}
+
 export async function fetchOpenDotaMatch(
   matchId: string,
 ): Promise<OpenDotaMatch> {
