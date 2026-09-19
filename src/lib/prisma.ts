@@ -2,27 +2,6 @@ import { PrismaClient } from "@prisma/client";
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
-const TRANSIENT_PRISMA_CODES = new Set([
-  "P1001",
-  "P1002",
-  "P1008",
-  "P1011",
-  "P1017",
-  "P2024",
-]);
-
-function isTransientPrismaError(error: unknown) {
-  if (!error || typeof error !== "object") return false;
-  const code = "code" in error ? String((error as { code?: unknown }).code) : "";
-  if (TRANSIENT_PRISMA_CODES.has(code)) return true;
-  const message = error instanceof Error ? error.message : String(error);
-  return (
-    /server has closed the connection/i.test(message) ||
-    /timed out fetching a new connection/i.test(message) ||
-    /can't reach database server/i.test(message)
-  );
-}
-
 /** Neon pooler + long-running bot: keep Prisma's pool small so idle closes recover. */
 function withRuntimePoolParams(url: string) {
   try {
@@ -33,11 +12,10 @@ function withRuntimePoolParams(url: string) {
     ) {
       parsed.searchParams.set("pgbouncer", "true");
     }
-    if (!parsed.searchParams.has("connection_limit")) {
-      parsed.searchParams.set(
-        "connection_limit",
-        process.env.VERCEL ? "1" : "5",
-      );
+    // Do not cap the pool on Vercel: `next build` prerenders pages with
+    // parallel queries, and a limit of 1 stalls the Prisma engine.
+    if (!process.env.VERCEL && !parsed.searchParams.has("connection_limit")) {
+      parsed.searchParams.set("connection_limit", "5");
     }
     if (!parsed.searchParams.has("pool_timeout")) {
       parsed.searchParams.set("pool_timeout", "20");
@@ -58,22 +36,9 @@ async function resetConnection(client: PrismaClient) {
 
 function createPrismaClient() {
   const url = process.env.DATABASE_URL;
-  const base = new PrismaClient(
+  return new PrismaClient(
     url ? { datasources: { db: { url: withRuntimePoolParams(url) } } } : undefined,
   );
-  return base.$extends({
-    query: {
-      async $allOperations({ args, query }) {
-        try {
-          return await query(args);
-        } catch (error) {
-          if (!isTransientPrismaError(error)) throw error;
-          await resetConnection(base);
-          return query(args);
-        }
-      },
-    },
-  }) as unknown as PrismaClient;
 }
 
 function prismaClientIsCurrent(client: PrismaClient) {
