@@ -75,10 +75,10 @@ Subs do **not** pay. Each team must be exactly **5000 PKR** (5 starters).
 Website: **Schedule** + **Playoffs** (tournament graph) + **Predictions**. Group-stage picks (10 pts) lock Saturday **10:45 PM PKT**. **The International** tab (upper / lower / Grand Final 50 pts) stays locked until every group match is done. One combined points board. After groups: 4th out, A3 vs B3 Advancement Bo1, then double-elim. Grand Final **Bo3**.
 
 **Admin — results**
-\`/result match_id:<id>\` or in #results: \`!result 8123456789\`
-\`/result winner fixture: team:\` — record who won when you only have a lobby ID (no OpenDota)
+In **#results**, post the Dota 2 **SCOREBOARD** screenshot (heroes, items, LH/DN, GPM). The bot fills the website from that picture. You can also \`!result\` with the image, or \`!result 8123456789\` if you have a Match ID.
+\`/result winner fixture: team:\` — record who won first if the screenshot is not ready yet
 \`/result assign steam32:<id> user:@player\` — map a stand-in / smurf
-The last group \`!result\` opens the first playoff matches automatically.
+The last group result opens the first playoff matches automatically.
 
 **Admin — auction**
 \`/auction start rank:<immortal|divine|ancient|legend|archon|crusader|guardian|herald|uncalibrated>\`
@@ -105,7 +105,7 @@ export const HELP_GUIDE = `## How to run the cup
 
 **Reminders.** The bot pings captains in #general about **1 hour** before a scheduled match (configurable).
 
-**After a match.** Play on registered Steam accounts. Post \`!result <match id>\` in #results. Lobby names should match franchise names.
+**After a match.** Play on registered Steam accounts. In **#results**, post the **SCOREBOARD** screenshot (not Overview). The bot adds heroes, items, LH/DN, and GPM to the website. Lobby names should match franchise names.
 
 **Stand-ins.** Admin: \`/result assign\` for unregistered Steam IDs. See pinned rules in #general.`;
 

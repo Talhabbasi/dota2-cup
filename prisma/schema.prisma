@@ -180,6 +180,8 @@ model Match {
   direTeam       Team?    @relation("DireTeam", fields: [direTeamId], references: [id])
   winnerTeam     Team?    @relation("WinnerTeam", fields: [winnerTeamId], references: [id])
   screenshotPath String?
+  radiantScore   Int?
+  direScore      Int?
   startedAt      DateTime?
   createdAt      DateTime @default(now())
   players        MatchPlayer[]

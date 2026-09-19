@@ -3,8 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { formatDuration, getMatch, getMatchMeta } from "@/lib/data";
 import { formatKillScore, matchKillTotals } from "@/lib/match-score";
-import { parseStoredItems } from "@/lib/heroes";
-import { itemIconUrl, loadHeroCatalog, heroIconUrl } from "@/lib/opendota";
+import { loadHeroCatalog, heroIconUrl } from "@/lib/opendota";
 import type { Metadata } from "next";
 
 export async function generateMetadata({
@@ -40,7 +39,10 @@ export default async function MatchPage({
   const dire = match.players.filter((p) => p.side === "dire");
   const winner =
     match.winnerTeam?.name ?? (match.radiantWin ? "Radiant" : "Dire");
-  const { radiantKills, direKills, hasScore } = matchKillTotals(match.players);
+  const { radiantKills, direKills, hasScore } = matchKillTotals(match.players, {
+    radiantScore: match.radiantScore,
+    direScore: match.direScore,
+  });
   const radiantWon =
     match.winnerTeam?.id === match.radiantTeam?.id || match.radiantWin === true;
   const direWon =
@@ -68,7 +70,11 @@ export default async function MatchPage({
               <span className={direWon ? "leading" : ""}>{direKills}</span>
             </span>
           ) : null}
-          <span className="badge">Match {match.openDotaId}</span>
+          <span className="badge">
+            {match.openDotaId.startsWith("manual-")
+              ? "Result recorded"
+              : `Match ${match.openDotaId}`}
+          </span>
           <span className="vs-label">vs</span>
           <span className={`vs-winner ${direWon ? "dire-win" : ""}`}>
             {winner} win
@@ -89,7 +95,15 @@ export default async function MatchPage({
         </div>
       </section>
 
-      {(["Radiant", "Dire"] as const).map((label) => {
+      {match.players.length === 0 ? (
+        <section className="empty-panel">
+          <p className="muted" style={{ margin: 0 }}>
+            Winner is on the site. Heroes and K/D/A appear after a SCOREBOARD
+            screenshot is posted in Discord #results.
+          </p>
+        </section>
+      ) : (
+        (["Radiant", "Dire"] as const).map((label) => {
         const rows = label === "Radiant" ? radiant : dire;
         return (
           <section key={label} className="scoreboard">
@@ -103,7 +117,6 @@ export default async function MatchPage({
                     <th>K/D/A</th>
                     <th>LH / DN</th>
                     <th>GPM / XPM</th>
-                    <th>Items</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -111,7 +124,6 @@ export default async function MatchPage({
                     const hero =
                       (p.heroId ? byId.get(p.heroId) : undefined) ??
                       byName.get(p.hero.toLowerCase());
-                    const items = parseStoredItems(p.itemsJson);
                     return (
                       <tr key={p.id}>
                         <td>
@@ -151,36 +163,6 @@ export default async function MatchPage({
                         <td>
                           {p.gpm} / {p.xpm}
                         </td>
-                        <td>
-                          <div className="item-row">
-                            {items.length === 0
-                              ? "—"
-                              : items.map((item, i) =>
-                                  item.key ? (
-                                    <div
-                                      key={`${p.id}-${i}`}
-                                      className="item-chip"
-                                      title={item.name}
-                                    >
-                                      <Image
-                                        src={itemIconUrl(item.key)}
-                                        alt={item.name}
-                                        width={40}
-                                        height={30}
-                                        className="item-icon"
-                                      />
-                                    </div>
-                                  ) : (
-                                    <span
-                                      key={`${p.id}-${i}`}
-                                      className="item-chip text"
-                                    >
-                                      {item.name}
-                                    </span>
-                                  ),
-                                )}
-                          </div>
-                        </td>
                       </tr>
                     );
                   })}
@@ -189,7 +171,8 @@ export default async function MatchPage({
             </div>
           </section>
         );
-      })}
+      })
+      )}
 
       {match.screenshotPath ? (
         <section>

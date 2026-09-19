@@ -116,7 +116,8 @@ import {
   playerMustPay,
   recordPlayerPayment,
 } from "../src/lib/payments";
-import { assignUnknown, ingestMatch, recordManualSeriesWinner } from "../src/lib/results";
+import { assignUnknown, ingestLatestCupMatch, ingestMatch, recordManualSeriesWinner } from "../src/lib/results";
+import { ingestScoreboardScreenshot } from "../src/lib/scoreboard-shot";
 import {
   backfillSeason1,
   createSeason,
@@ -929,17 +930,22 @@ const commands = [
     ),
   new SlashCommandBuilder()
     .setName("result")
-    .setDescription("Import a match from OpenDota")
+    .setDescription("Import a match scoreboard (heroes, items, K/D/A)")
     .addSubcommand((s) =>
       s
         .setName("match")
-        .setDescription("Pull stats by match ID or OpenDota link")
+        .setDescription("Pull heroes/items by Match ID from the Dota 2 scoreboard (not Lobby ID)")
         .addStringOption((o) =>
           o
             .setName("match_id")
-            .setDescription("Match ID or OpenDota / STRATZ link")
+            .setDescription("Match ID from the post-game screen, or OpenDota / STRATZ link")
             .setRequired(true),
         ),
+    )
+    .addSubcommand((s) =>
+      s
+        .setName("import")
+        .setDescription("Admin: find the latest cup game and import heroes/items"),
     )
     .addSubcommand((s) =>
       s
@@ -2995,8 +3001,25 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
         await interaction.editReply(
           `Recorded **${recorded.winner}** beat **${
             recorded.winner === recorded.radiant ? recorded.dire : recorded.radiant
-          }** (${recorded.radiant} vs ${recorded.dire}).\nSchedule, standings, and predictions are updated. Hero stats can still be imported later with \`!result <match id>\` when OpenDota has the game.`,
+          }** (${recorded.radiant} vs ${recorded.dire}).\nSchedule, standings, and predictions are updated. Heroes and items are **not** in yet — copy **Match ID** from the Dota 2 post-game scoreboard (not Lobby ID) and post \`!result 8123456789\`, or use \`/result import\`.`,
         );
+        if (interaction.guild) {
+          await syncPlayoffMatchesChannel(interaction.guild);
+        }
+        return;
+      }
+      if (sub === "import") {
+        if (!isOrganizer(member, discordId)) {
+          await interaction.reply({
+            content: "Only an admin can import match stats.",
+            flags: MessageFlags.Ephemeral,
+          });
+          return;
+        }
+        await interaction.deferReply();
+        const match = await ingestLatestCupMatch();
+        void notifySiteRefresh();
+        await interaction.editReply(formatMatchReply(match));
         if (interaction.guild) {
           await syncPlayoffMatchesChannel(interaction.guild);
         }
@@ -3075,7 +3098,7 @@ async function syncPlayoffMatchesChannel(guild: import("discord.js").Guild) {
   }
 }
 
-async function saveProof(message: Message, matchHint: string): Promise<string | null> {
+async function saveMatchImage(message: Message, matchHint: string) {
   const image = message.attachments.find((a) =>
     (a.contentType ?? "").startsWith("image/") ||
     /\.(png|jpe?g|webp|gif)$/i.test(a.name ?? ""),
@@ -3088,7 +3111,22 @@ async function saveProof(message: Message, matchHint: string): Promise<string | 
   const res = await fetch(image.url);
   const buf = Buffer.from(await res.arrayBuffer());
   await writeFile(path.join(dir, file), buf);
-  return `/uploads/matches/${file}`;
+  return {
+    buffer: buf,
+    mime: image.contentType || (ext === ".png" ? "image/png" : "image/jpeg"),
+    screenshotPath: `/uploads/matches/${file}`,
+  };
+}
+
+function resultsChannelName() {
+  return process.env.RESULTS_CHANNEL_NAME?.trim() || "results";
+}
+
+function isResultsChannel(message: Message) {
+  return (
+    message.channel.type === ChannelType.GuildText &&
+    message.channel.name.toLowerCase() === resultsChannelName().toLowerCase()
+  );
 }
 
 const PAY_TICK = "✅";
@@ -3181,19 +3219,66 @@ async function handlePaymentTick(
   }
 }
 
+async function ingestScreenshotFromMessage(message: Message, hint: string) {
+  const shot = await saveMatchImage(message, hint);
+  if (!shot) return null;
+  const match = await ingestScoreboardScreenshot({
+    buffer: shot.buffer,
+    mime: shot.mime,
+  });
+  void notifySiteRefresh();
+  await message.reply(formatMatchReply(match));
+  if (message.guild) await syncPlayoffMatchesChannel(message.guild);
+  return match;
+}
+
 async function handlePrefixResult(message: Message) {
   const text = message.content.trim();
   if (!/^!result\b/i.test(text) && !/opendota\.com\/matches\/\d+/i.test(text)) {
     return;
   }
-  const raw = text.replace(/^!result\s+/i, "").trim() || text;
+  const raw = text.replace(/^!result\s+/i, "").trim();
+  const hasId =
+    /\d{8,12}/.test(raw) || /opendota\.com\/matches\/\d+/i.test(text);
+  const hint = raw.match(/\d{8,12}/)?.[0] ?? `shot-${Date.now()}`;
   try {
-    const hint = raw.match(/\d{8,12}/)?.[0] ?? `shot-${Date.now()}`;
-    const screenshotPath = await saveProof(message, hint);
-    const match = await ingestMatch({ raw, screenshotPath });
-    void notifySiteRefresh();
-    await message.reply(formatMatchReply(match));
-    if (message.guild) await syncPlayoffMatchesChannel(message.guild);
+    if (!hasId) {
+      const fromShot = await ingestScreenshotFromMessage(message, hint);
+      if (fromShot) return;
+      const match = await ingestLatestCupMatch();
+      void notifySiteRefresh();
+      await message.reply(formatMatchReply(match));
+      if (message.guild) await syncPlayoffMatchesChannel(message.guild);
+      return;
+    }
+    try {
+      const match = await ingestMatch({ raw: raw || text });
+      void notifySiteRefresh();
+      await message.reply(formatMatchReply(match));
+      if (message.guild) await syncPlayoffMatchesChannel(message.guild);
+      return;
+    } catch (error) {
+      const fromShot = await ingestScreenshotFromMessage(message, hint);
+      if (fromShot) return;
+      throw error;
+    }
+  } catch (error) {
+    await message.reply(fail(error));
+  }
+}
+
+async function handleResultsScreenshot(message: Message) {
+  if (!isResultsChannel(message)) return;
+  if (/^!result\b/i.test(message.content) || /opendota\.com\/matches\/\d+/i.test(message.content)) {
+    return;
+  }
+  const image = message.attachments.find((a) =>
+    (a.contentType ?? "").startsWith("image/") ||
+    /\.(png|jpe?g|webp|gif)$/i.test(a.name ?? ""),
+  );
+  if (!image) return;
+  try {
+    await ingestScreenshotFromMessage(message, `shot-${Date.now()}`);
   } catch (error) {
     await message.reply(fail(error));
   }
@@ -3387,6 +3472,7 @@ client.on("messageCreate", async (message) => {
   if (await moderatePaymentsChannel(message)) return;
   if (await moderateCommandOnlyChannel(message)) return;
   await handlePrefixResult(message);
+  await handleResultsScreenshot(message);
 });
 
 client.on(Events.MessageReactionAdd, async (reaction, user) => {

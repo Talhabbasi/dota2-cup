@@ -15,6 +15,8 @@ export type MatchCardMatch = {
   direTeam?: { id: string; name: string } | null;
   winnerTeam?: { id: string; name: string } | null;
   players?: MatchPlayerKills[];
+  radiantScore?: number | null;
+  direScore?: number | null;
   createdAt?: Date | string;
 };
 
@@ -43,7 +45,10 @@ export function MatchCard({
       ? match.winnerTeam.id === match.direTeam?.id
       : match.radiantWin === false;
 
-  const { radiantKills, direKills, hasScore } = matchKillTotals(match.players);
+  const { radiantKills, direKills, hasScore } = matchKillTotals(match.players, {
+    radiantScore: match.radiantScore,
+    direScore: match.direScore,
+  });
   const killLine = hasScore
     ? formatKillScore(radiantKills, direKills)
     : null;

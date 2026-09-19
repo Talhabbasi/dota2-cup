@@ -9,6 +9,10 @@ import {
   parseMatchId,
   type OpenDotaMatch,
 } from "./opendota";
+import {
+  fetchSteamMatchDetails,
+  fetchSteamRecentMatchIds,
+} from "./steam-match";
 
 const DUMMY_PREFIX = "test-dummy-";
 const DUMMY_TEAM_PREFIX = "test-dummy-team-";
@@ -17,6 +21,44 @@ type RecentRow = {
   match_id: number;
   start_time?: number;
 };
+
+const MATCH_INCLUDE = {
+  players: { include: { player: true } },
+  radiantTeam: true,
+  direTeam: true,
+  winnerTeam: true,
+} as const;
+
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function missingStatsError(givenId?: string) {
+  const who = givenId ? `**${givenId}** is not a Dota Match ID OpenDota/Steam can load. ` : "";
+  return (
+    `${who}Heroes and items only import with the **Match ID** from the post-game scoreboard ` +
+    `(bottom of the screen after the game — not Lobby ID). Then post \`!result 8123456789\` in #results. ` +
+    `You can also try \`/result import\` after a few minutes.`
+  );
+}
+
+async function fetchPlayerMatchRows(steam32: number): Promise<RecentRow[]> {
+  const steamRows = await fetchSteamRecentMatchIds(steam32);
+  if (steamRows.length > 0) return steamRows;
+
+  const url = `https://api.opendota.com/api/players/${steam32}/matches?limit=20&significant=0`;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const res = await fetch(url, { cache: "no-store" });
+    if (res.status === 429) {
+      await wait(1600);
+      continue;
+    }
+    if (!res.ok) return [];
+    const rows = (await res.json()) as RecentRow[];
+    return Array.isArray(rows) ? rows : [];
+  }
+  return [];
+}
 
 async function findLatestSharedCupMatch(excludeId?: string) {
   const roster = await prisma.player.findMany({
@@ -31,23 +73,17 @@ async function findLatestSharedCupMatch(excludeId?: string) {
     },
     select: { steam32: true, teamId: true },
   });
-  const cutoff = Math.floor(Date.now() / 1000) - 8 * 3600;
+  const cutoff = Math.floor(Date.now() / 1000) - 12 * 3600;
   const byMatch = new Map<
     number,
     { steam: Set<number>; teams: Set<string>; start: number }
   >();
 
-  for (let i = 0; i < roster.length; i += 6) {
-    const chunk = roster.slice(i, i + 6);
+  for (let i = 0; i < roster.length; i += 3) {
+    const chunk = roster.slice(i, i + 3);
     await Promise.all(
       chunk.map(async (player) => {
-        const res = await fetch(
-          `https://api.opendota.com/api/players/${player.steam32}/recentMatches`,
-          { cache: "no-store" },
-        );
-        if (!res.ok) return;
-        const rows = (await res.json()) as RecentRow[];
-        if (!Array.isArray(rows)) return;
+        const rows = await fetchPlayerMatchRows(player.steam32);
         for (const row of rows) {
           if (!row.match_id || !row.start_time || row.start_time < cutoff) {
             continue;
@@ -64,6 +100,7 @@ async function findLatestSharedCupMatch(excludeId?: string) {
         }
       }),
     );
+    if (i + 3 < roster.length) await wait(350);
   }
 
   const imported = new Set(
@@ -71,7 +108,9 @@ async function findLatestSharedCupMatch(excludeId?: string) {
       await prisma.match.findMany({
         select: { openDotaId: true },
       })
-    ).map((row) => row.openDotaId),
+    )
+      .map((row) => row.openDotaId)
+      .filter((id) => !id.startsWith("manual-")),
   );
   if (excludeId) imported.add(excludeId);
 
@@ -79,7 +118,7 @@ async function findLatestSharedCupMatch(excludeId?: string) {
     .filter(
       ([id, info]) =>
         !imported.has(String(id)) &&
-        info.steam.size >= 6 &&
+        info.steam.size >= 4 &&
         info.teams.size >= 2,
     )
     .sort((a, b) => b[1].start - a[1].start || b[1].steam.size - a[1].steam.size);
@@ -87,55 +126,84 @@ async function findLatestSharedCupMatch(excludeId?: string) {
   return ranked[0] ? String(ranked[0][0]) : null;
 }
 
+async function loadRawMatch(matchId: string): Promise<OpenDotaMatch | null> {
+  const ready = await fetchOpenDotaMatchIfReady(matchId);
+  if (ready) return ready;
+  const steam = await fetchSteamMatchDetails(matchId);
+  if (steam) return steam;
+  try {
+    return await fetchOpenDotaMatch(matchId);
+  } catch {
+    return fetchSteamMatchDetails(matchId);
+  }
+}
+
 async function loadMatchPayload(givenId: string): Promise<{
   matchId: string;
   raw: OpenDotaMatch;
-  usedLobbyLookup: boolean;
 }> {
-  const ready = await fetchOpenDotaMatchIfReady(givenId);
-  if (ready) return { matchId: givenId, raw: ready, usedLobbyLookup: false };
+  const direct = await loadRawMatch(givenId);
+  if (direct) return { matchId: givenId, raw: direct };
 
   const detected = await findLatestSharedCupMatch(givenId);
   if (detected) {
-    const raw = await fetchOpenDotaMatch(detected);
-    return { matchId: detected, raw, usedLobbyLookup: detected !== givenId };
+    const raw = await loadRawMatch(detected);
+    if (raw) return { matchId: detected, raw };
   }
 
-  try {
-    const raw = await fetchOpenDotaMatch(givenId);
-    return { matchId: givenId, raw, usedLobbyLookup: false };
-  } catch {
-    throw new Error(
-      `**${givenId}** is a lobby ID, not a Match ID — OpenDota cannot import it. After the game, copy **Match ID** from the post-game scoreboard (or OpenDota / Dotabuff). If the lobby just ended, wait 3–10 minutes then post \`!result\` again and I will try to find the cup game from player histories.`,
-    );
+  throw new Error(missingStatsError(givenId));
+}
+
+async function findFillableStub(radiantTeamId: string | null, direTeamId: string | null) {
+  const recent = await prisma.match.findMany({
+    where: { openDotaId: { startsWith: "manual-" } },
+    include: {
+      players: { select: { id: true } },
+      scheduledFixture: { select: { id: true, status: true } },
+    },
+    orderBy: { createdAt: "desc" },
+    take: 8,
+  });
+  const empty = recent.filter((row) => row.players.length === 0);
+  if (radiantTeamId && direTeamId) {
+    const hit = empty.find((row) => {
+      const ids = new Set([row.radiantTeamId, row.direTeamId]);
+      return ids.has(radiantTeamId) && ids.has(direTeamId);
+    });
+    if (hit) return hit;
   }
+  return empty[0] ?? null;
+}
+
+export async function ingestLatestCupMatch(input?: {
+  screenshotPath?: string | null;
+}) {
+  return ingestMatch({ raw: "latest", screenshotPath: input?.screenshotPath });
 }
 
 export async function ingestMatch(input: {
   raw: string;
   screenshotPath?: string | null;
 }) {
-  const givenId = parseMatchId(input.raw);
+  const trimmed = input.raw.trim();
+  let givenId: string;
+  if (!trimmed || /^latest$/i.test(trimmed)) {
+    const detected = await findLatestSharedCupMatch();
+    if (!detected) throw new Error(missingStatsError());
+    givenId = detected;
+  } else {
+    givenId = parseMatchId(input.raw);
+  }
   const existingGiven = await prisma.match.findUnique({
     where: { openDotaId: givenId },
-    include: {
-      players: { include: { player: true } },
-      radiantTeam: true,
-      direTeam: true,
-      winnerTeam: true,
-    },
+    include: MATCH_INCLUDE,
   });
   if (existingGiven) {
     if (input.screenshotPath && !existingGiven.screenshotPath) {
       return prisma.match.update({
         where: { id: existingGiven.id },
         data: { screenshotPath: input.screenshotPath },
-        include: {
-          players: { include: { player: true } },
-          radiantTeam: true,
-          direTeam: true,
-          winnerTeam: true,
-        },
+        include: MATCH_INCLUDE,
       });
     }
     throw new Error(`Match ${givenId} is already in the table.`);
@@ -144,24 +212,14 @@ export async function ingestMatch(input: {
   const { matchId, raw } = await loadMatchPayload(givenId);
   const existing = await prisma.match.findUnique({
     where: { openDotaId: matchId },
-    include: {
-      players: { include: { player: true } },
-      radiantTeam: true,
-      direTeam: true,
-      winnerTeam: true,
-    },
+    include: MATCH_INCLUDE,
   });
   if (existing) {
     if (input.screenshotPath && !existing.screenshotPath) {
       return prisma.match.update({
         where: { id: existing.id },
         data: { screenshotPath: input.screenshotPath },
-        include: {
-          players: { include: { player: true } },
-          radiantTeam: true,
-          direTeam: true,
-          winnerTeam: true,
-        },
+        include: MATCH_INCLUDE,
       });
     }
     throw new Error(`Match ${matchId} is already in the table.`);
@@ -222,38 +280,53 @@ export async function ingestMatch(input: {
   const radiantTeamId = pickTeam(radiantCounts);
   const direTeamId = pickTeam(direCounts);
   const winnerTeamId = raw.radiant_win ? radiantTeamId : direTeamId;
+  const stub = await findFillableStub(radiantTeamId, direTeamId);
+  const payload = {
+    openDotaId: matchId,
+    duration: raw.duration,
+    radiantWin: raw.radiant_win,
+    radiantTeamId: radiantTeamId ?? stub?.radiantTeamId ?? null,
+    direTeamId: direTeamId ?? stub?.direTeamId ?? null,
+    winnerTeamId: winnerTeamId ?? stub?.winnerTeamId ?? null,
+    screenshotPath: input.screenshotPath ?? stub?.screenshotPath ?? null,
+    startedAt: raw.start_time
+      ? new Date(raw.start_time * 1000)
+      : (stub?.startedAt ?? null),
+    radiantScore: rows
+      .filter((row) => row.side === "radiant")
+      .reduce((sum, row) => sum + row.kills, 0),
+    direScore: rows
+      .filter((row) => row.side === "dire")
+      .reduce((sum, row) => sum + row.kills, 0),
+  };
 
-  const match = await prisma.match.create({
-    data: {
-      seasonId: await currentSeasonId(),
-      openDotaId: matchId,
-      duration: raw.duration,
-      radiantWin: raw.radiant_win,
-      radiantTeamId,
-      direTeamId,
-      winnerTeamId,
-      screenshotPath: input.screenshotPath ?? null,
-      startedAt: raw.start_time ? new Date(raw.start_time * 1000) : null,
-      players: { create: rows },
-    },
-    include: {
-      players: { include: { player: true } },
-      radiantTeam: true,
-      direTeam: true,
-      winnerTeam: true,
-    },
-  });
+  const match = stub
+    ? await prisma.match.update({
+        where: { id: stub.id },
+        data: { ...payload, players: { create: rows } },
+        include: MATCH_INCLUDE,
+      })
+    : await prisma.match.create({
+        data: {
+          seasonId: await currentSeasonId(),
+          ...payload,
+          players: { create: rows },
+        },
+        include: MATCH_INCLUDE,
+      });
 
-  const { completeScheduledFixture } = await import("./schedule");
-  try {
-    await completeScheduledFixture({
-      radiantTeamId: match.radiantTeamId,
-      direTeamId: match.direTeamId,
-      winnerTeamId: match.winnerTeamId,
-      matchId: match.id,
-    });
-  } catch {
-    /* optional until schedule exists */
+  if (stub?.scheduledFixture?.status !== "completed") {
+    const { completeScheduledFixture } = await import("./schedule");
+    try {
+      await completeScheduledFixture({
+        radiantTeamId: match.radiantTeamId,
+        direTeamId: match.direTeamId,
+        winnerTeamId: match.winnerTeamId,
+        matchId: match.id,
+      });
+    } catch {
+      /* optional until schedule exists */
+    }
   }
 
   return match;
@@ -373,5 +446,28 @@ export async function attachScreenshot(openDotaId: string, screenshotPath: strin
   return prisma.match.update({
     where: { id: match.id },
     data: { screenshotPath },
+  });
+}
+
+export async function attachScreenshotToLatestMatch(screenshotPath: string) {
+  const match = await prisma.match.findFirst({
+    where: {
+      OR: [
+        { openDotaId: { startsWith: "manual-" } },
+        { players: { none: {} } },
+      ],
+    },
+    include: MATCH_INCLUDE,
+    orderBy: { createdAt: "desc" },
+  });
+  if (!match) {
+    throw new Error(
+      "No recorded match to attach that screenshot to. Record the winner with `/result winner` first.",
+    );
+  }
+  return prisma.match.update({
+    where: { id: match.id },
+    data: { screenshotPath },
+    include: MATCH_INCLUDE,
   });
 }

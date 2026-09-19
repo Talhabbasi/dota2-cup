@@ -45,7 +45,10 @@ export function MatchesGrid({ matches }: { matches: MatchListView[] }) {
   const { page, pageCount, slice, setPage } = usePagedList(sorted, 8);
 
   const withScore = matches.filter((m) =>
-    matchKillTotals(m.players).hasScore,
+    matchKillTotals(m.players, {
+      radiantScore: m.radiantScore,
+      direScore: m.direScore,
+    }).hasScore,
   ).length;
 
   return (

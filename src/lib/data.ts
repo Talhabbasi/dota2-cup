@@ -18,6 +18,8 @@ const matchListSelect = {
   openDotaId: true,
   duration: true,
   radiantWin: true,
+  radiantScore: true,
+  direScore: true,
   createdAt: true,
   radiantTeam: { select: { id: true, name: true } },
   direTeam: { select: { id: true, name: true } },

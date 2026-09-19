@@ -12,12 +12,17 @@ export default async function MatchesPage() {
   const matches = await getMatches();
 
   const views: MatchListView[] = matches.map((m) => {
-    const { radiantKills, direKills } = matchKillTotals(m.players);
+    const { radiantKills, direKills } = matchKillTotals(m.players, {
+      radiantScore: m.radiantScore,
+      direScore: m.direScore,
+    });
     return {
       id: m.id,
       openDotaId: m.openDotaId,
       duration: m.duration,
       radiantWin: m.radiantWin,
+      radiantScore: m.radiantScore,
+      direScore: m.direScore,
       radiantTeam: m.radiantTeam,
       direTeam: m.direTeam,
       winnerTeam: m.winnerTeam,
@@ -28,7 +33,10 @@ export default async function MatchesPage() {
   });
 
   const totalKills = views.reduce((sum, m) => {
-    const t = matchKillTotals(m.players);
+    const t = matchKillTotals(m.players, {
+      radiantScore: m.radiantScore,
+      direScore: m.direScore,
+    });
     return sum + t.radiantKills + t.direKills;
   }, 0);
 
