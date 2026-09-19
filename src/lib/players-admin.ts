@@ -61,6 +61,10 @@ export async function adminDeletePlayer(discordId: string) {
   }
 
   const teamName = player.team?.name;
+  let remainingTeam: {
+    name: string;
+    players: { discordId: string; steamName: string; isCaptain: boolean }[];
+  } | null = null;
   if (player.teamId) {
     const teamId = player.teamId;
     await prisma.player.update({
@@ -68,6 +72,14 @@ export async function adminDeletePlayer(discordId: string) {
       data: { teamId: null, rosterRole: null, teamJoinedAt: null },
     });
     await rebalanceTeamRoster(teamId);
+    remainingTeam = await prisma.team.findUnique({
+      where: { id: teamId },
+      include: {
+        players: {
+          select: { discordId: true, steamName: true, isCaptain: true },
+        },
+      },
+    });
   }
 
   const state = await prisma.auctionState.findUnique({
@@ -87,7 +99,7 @@ export async function adminDeletePlayer(discordId: string) {
   });
   await prisma.player.delete({ where: { id: player.id } });
 
-  return { name: player.steamName, teamName: teamName ?? null };
+  return { name: player.steamName, teamName: teamName ?? null, remainingTeam };
 }
 
 export async function adminAddPlayerToTeam(input: {
@@ -121,7 +133,11 @@ export async function adminAddPlayerToTeam(input: {
   await rebalanceTeamRoster(team.id);
   await syncSeasonPlayer(player.id);
 
-  return { team, player };
+  const updated = await prisma.team.findUniqueOrThrow({
+    where: { id: team.id },
+    include: { players: true },
+  });
+  return { team: updated, player };
 }
 
 export async function adminRemovePlayerFromTeam(discordId: string) {
@@ -144,7 +160,16 @@ export async function adminRemovePlayerFromTeam(discordId: string) {
   await rebalanceTeamRoster(teamId);
   await syncSeasonPlayer(player.id);
 
-  return { name: player.steamName, teamName };
+  const remaining = await prisma.team.findUniqueOrThrow({
+    where: { id: teamId },
+    include: { players: true },
+  });
+  return {
+    name: player.steamName,
+    teamName,
+    team: remaining,
+    discordId: player.discordId,
+  };
 }
 
 /** Captain, then join order: first 5 are starters; 6–7 are subs. */

@@ -138,7 +138,7 @@ export function PredictionStageTabs({
                 ? "Locked for everyone"
                 : group.lockLabel
                   ? `Locks ${group.lockLabel}`
-                  : "Locks Saturday 10:00 PM PKT"}
+                  : "Locks Saturday 10:30 PM PKT"}
             </span>
           </div>
           <PredictionBoard

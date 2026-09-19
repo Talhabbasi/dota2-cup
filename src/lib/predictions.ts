@@ -1,7 +1,11 @@
 import { prisma } from "./prisma";
 import { publicFixtureWhere, publicPlayerWhere } from "./dummy";
 import { isPlayoffKind, playoffRoundLabel } from "./playoff";
-import { formatScheduleWhen } from "./schedule";
+import {
+  formatScheduleWhen,
+  localParts,
+  scheduleUtcOffsetHours,
+} from "./schedule";
 import {
   groupScheduleByNight,
   listCupSchedule,
@@ -15,6 +19,9 @@ import {
 
 export const PREDICTION_POINTS = 10;
 export const FINAL_PREDICTION_POINTS = 50;
+/** Group-stage picks stay open until this wall-clock time (PKT) on the first group night. */
+export const GROUP_STAGE_LOCK_HOUR_PKT = 22;
+export const GROUP_STAGE_LOCK_MINUTE_PKT = 30;
 
 export function isGrandFinalFixture(kind: string, slotKey?: string | null) {
   return kind === "final" || slotKey === "final";
@@ -41,10 +48,22 @@ export function groupStageLockAt(
     isGroupStagePredictionFixture(row.kind),
   );
   if (group.length === 0) return null;
-  return group.reduce(
-    (earliest, row) =>
-      row.scheduledAt < earliest ? row.scheduledAt : earliest,
+  const earliest = group.reduce(
+    (soonest, row) =>
+      row.scheduledAt < soonest ? row.scheduledAt : soonest,
     group[0].scheduledAt,
+  );
+  const offsetH = scheduleUtcOffsetHours();
+  const { year, month, day } = localParts(earliest, offsetH);
+  return new Date(
+    Date.UTC(
+      year,
+      month,
+      day,
+      GROUP_STAGE_LOCK_HOUR_PKT,
+      GROUP_STAGE_LOCK_MINUTE_PKT,
+    ) -
+      offsetH * 3_600_000,
   );
 }
 
@@ -169,9 +188,12 @@ export async function saveMatchPredictions(
       throw new Error("That match is not on this cup.");
     }
     if (isGroupStagePredictionFixture(fixture.kind)) {
+      if (fixture.status === "completed") {
+        throw new Error("That series is already completed.");
+      }
       if (groupLocked) {
         throw new Error(
-          "Group stage picks locked at Saturday 10:00 PM PKT, before the first match.",
+          "Group stage picks locked at Saturday 10:30 PM PKT.",
         );
       }
     } else if (isInternationalPredictionFixture(fixture.kind)) {
@@ -267,7 +289,8 @@ function toMatchView(
   const matchLocked =
     stageLocked ||
     fixture.status === "completed" ||
-    now >= fixture.scheduledAt;
+    (isInternationalPredictionFixture(fixture.kind) &&
+      now >= fixture.scheduledAt);
   return {
     id: fixture.id,
     roundLabel: roundLabel(fixture),

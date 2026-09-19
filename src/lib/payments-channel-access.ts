@@ -148,7 +148,9 @@ async function grantViaMemberOverwrite(
   discordId: string,
   kind: AccessKind,
 ) {
-  await channel.permissionOverwrites.edit(discordId, permsFor(kind));
+  const member = await channel.guild.members.fetch(discordId).catch(() => null);
+  if (!member) return;
+  await channel.permissionOverwrites.edit(member, permsFor(kind));
 }
 
 async function revokeMemberOverwrite(channel: TextChannel, discordId: string) {

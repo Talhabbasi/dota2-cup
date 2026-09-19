@@ -397,6 +397,21 @@ export async function tryTeardownTeamDiscord(
   }
 }
 
+export async function tryStripMemberTeamRoles(
+  guild: Guild | null,
+  discordId: string,
+) {
+  if (!guild) return;
+  try {
+    await stripMemberTeamRoles(guild, discordId);
+  } catch (error) {
+    console.warn(
+      "Could not remove team Discord roles:",
+      error instanceof Error ? error.message : error,
+    );
+  }
+}
+
 /** Rename Discord role/chat/voice to match a DB rename so sync does not recreate them. */
 export async function tryRenameTeamDiscordLabels(
   guild: Guild | null,

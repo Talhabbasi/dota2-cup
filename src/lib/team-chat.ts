@@ -70,6 +70,13 @@ function isDummyDiscordId(discordId: string) {
   );
 }
 
+async function rosterMember(guild: Guild, discordId: string) {
+  if (isDummyDiscordId(discordId)) return null;
+  const id = snowflake(discordId);
+  if (!/^\d{17,20}$/.test(id)) return null;
+  return guild.members.fetch(id).catch(() => null);
+}
+
 function isTeamRoleName(name: string) {
   return name.toLowerCase().startsWith(TEAM_ROLE_PREFIX.toLowerCase());
 }
@@ -264,15 +271,17 @@ async function applyChatAccess(
   if (botMember) keep.add(botMember.id);
 
   for (const player of roster) {
-    if (isDummyDiscordId(player.discordId)) continue;
-    const id = snowflake(player.discordId);
-    keep.add(id);
-    await channel.permissionOverwrites.edit(id, PLAYER_CHAT).catch((error) => {
-      console.warn(
-        `Could not set team chat access for ${id} in ${channel.name}:`,
-        error instanceof Error ? error.message : error,
-      );
-    });
+    const member = await rosterMember(guild, player.discordId);
+    if (!member) continue;
+    keep.add(member.id);
+    await channel.permissionOverwrites
+      .edit(member, PLAYER_CHAT)
+      .catch((error) => {
+        console.warn(
+          `Could not set team chat access for ${member.id} in ${channel.name}:`,
+          error instanceof Error ? error.message : error,
+        );
+      });
   }
 
   for (const overwrite of channel.permissionOverwrites.cache.values()) {

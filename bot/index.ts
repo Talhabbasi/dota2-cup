@@ -193,6 +193,7 @@ import {
   tryRevokeCupPlayerAccess,
   trySetMemberCaptainRole,
   trySetPlayWindowRoles,
+  tryStripMemberTeamRoles,
   trySyncCupChannelAccess,
   tryTeardownTeamDiscord,
 } from "../src/lib/discord-access";
@@ -214,7 +215,7 @@ import {
   listUnsignedPlayers,
 } from "../src/lib/players-admin";
 import { parseRolesJson } from "../src/lib/roles";
-import { prisma } from "../src/lib/prisma";
+import { prisma, keepPrismaAlive } from "../src/lib/prisma";
 import { formatRoles } from "../src/lib/data";
 import { publicErrorMessage } from "../src/lib/public-error";
 import { steamProfileUrl } from "../src/lib/steam";
@@ -2278,7 +2279,7 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
             user.id,
             result.player.playWindow,
           );
-          await trySyncCupChannelAccess(interaction.guild);
+          await tryProvisionTeamDiscord(interaction.guild, result.team);
           await interaction.editReply(
             `Added **${result.player.steamName}** to **${result.team.name}**. They can see that team's private chat and have the same registered-player roles as everyone else.`,
           );
@@ -2288,7 +2289,9 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
         if (sub === "delete") {
           const removed = await adminDeletePlayer(targetId);
           await tryRevokeCupPlayerAccess(interaction.guild, targetId);
-          await trySyncCupChannelAccess(interaction.guild);
+          if (removed.remainingTeam) {
+            await tryProvisionTeamDiscord(interaction.guild, removed.remainingTeam);
+          }
           await interaction.editReply(
             `Deleted registration for **${removed.name}**.${
               removed.teamName ? ` Removed from **${removed.teamName}**.` : ""
@@ -2302,7 +2305,8 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
         }
         if (sub === "remove") {
           const removed = await adminRemovePlayerFromTeam(targetId);
-          await trySyncCupChannelAccess(interaction.guild);
+          await tryStripMemberTeamRoles(interaction.guild, targetId);
+          await tryProvisionTeamDiscord(interaction.guild, removed.team);
           await interaction.editReply(
             `Removed **${removed.name}** from **${removed.teamName}**. Their team Discord role and private chat access are gone (registration kept).`,
           );
@@ -3459,16 +3463,21 @@ client.once(Events.ClientReady, async () => {
       auctionTickBusy = false;
     }
   }, 1000);
+  let reminderTickBusy = false;
   setInterval(async () => {
+    if (reminderTickBusy) return;
+    reminderTickBusy = true;
     try {
       await tickMatchReminders(client);
     } catch (error) {
       console.error("match reminders", error);
+    } finally {
+      reminderTickBusy = false;
     }
   }, 60_000);
   setInterval(() => {
-    prisma.$queryRaw`SELECT 1`.catch(() => undefined);
-  }, 120_000);
+    void keepPrismaAlive();
+  }, 60_000);
 });
 
 async function main() {
