@@ -1,3 +1,4 @@
+import { unstable_cache } from "next/cache";
 import { prisma } from "./prisma";
 import {
   loadHeroCatalog,
@@ -7,6 +8,7 @@ import {
   type HeroInfo,
 } from "./opendota";
 import { publicMatchWhere, publicPlayerWhere } from "./dummy";
+import { PUBLIC_PAGE_TAG } from "./page-cache";
 import { currentSeasonFilter } from "./seasons";
 
 export type HeroTournamentStat = HeroInfo & {
@@ -39,7 +41,7 @@ export function parseStoredItems(json: string): StoredItem[] {
   }
 }
 
-export async function getHeroTournamentStats(): Promise<HeroTournamentStat[]> {
+async function loadHeroTournamentStats(): Promise<HeroTournamentStat[]> {
   const season = await currentSeasonFilter();
   const matchWhere = { ...publicMatchWhere, ...season };
   const [catalog, grouped, unnamed] = await Promise.all([
@@ -82,6 +84,12 @@ export async function getHeroTournamentStats(): Promise<HeroTournamentStat[]> {
     icon: heroIconUrl(hero.slug),
   }));
 }
+
+export const getHeroTournamentStats = unstable_cache(
+  loadHeroTournamentStats,
+  ["hero-stats"],
+  { tags: [PUBLIC_PAGE_TAG], revalidate: 15 },
+);
 
 export async function getHeroBySlug(slug: string) {
   const catalog = await loadHeroCatalog();

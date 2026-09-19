@@ -610,11 +610,15 @@ export async function assertPlayoffMatchAllowed(kind: string) {
 }
 
 export async function loadPlayoffSeeds() {
-  const [groupA, groupB, complete] = await Promise.all([
+  const [groupA, groupB] = await Promise.all([
     getGroupStandings("A"),
     getGroupStandings("B"),
-    groupStageComplete(),
   ]);
+  const complete =
+    groupA.length === 4 &&
+    groupB.length === 4 &&
+    groupA.every((row) => row.played === 3) &&
+    groupB.every((row) => row.played === 3);
   return {
     groupA,
     groupB,

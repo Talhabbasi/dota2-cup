@@ -6,6 +6,7 @@ import { NavigationLoader } from "@/components/navigation-loader";
 import { Providers } from "@/components/providers";
 import { SiteFooter } from "@/components/site-footer";
 import { SITE_DESCRIPTION, SITE_NAME, SITE_URL } from "@/lib/seo";
+import { isRegistrationOpen } from "@/lib/registration-status";
 import { hasCrownedSeason } from "@/lib/seasons";
 import "./globals.css";
 
@@ -60,7 +61,10 @@ export const viewport: Viewport = {
 export const dynamic = "force-dynamic";
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
-  const showSeasons = await hasCrownedSeason();
+  const [showSeasons] = await Promise.all([
+    hasCrownedSeason(),
+    isRegistrationOpen(),
+  ]);
   return (
     <html
       lang="en"

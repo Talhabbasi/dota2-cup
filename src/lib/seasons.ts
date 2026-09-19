@@ -1,3 +1,5 @@
+import { cache } from "react";
+import { getCupSettings } from "./cup-settings-cache";
 import { prisma } from "./prisma";
 import { publicFixtureWhere, publicPlayerWhere } from "./dummy";
 import { isRosterSub, sortTeamRoster } from "./roles";
@@ -26,22 +28,29 @@ export async function listSeasons() {
   });
 }
 
-export async function getCurrentSeason(db: Db = prisma) {
-  const settings = await db.cupSettings.findUnique({
-    where: { id: "singleton" },
-  });
+async function loadCurrentSeasonWith(db: Db) {
+  const [settings, seasons] = await Promise.all([
+    db === prisma
+      ? getCupSettings()
+      : db.cupSettings.findUnique({ where: { id: "singleton" } }),
+    db.season.findMany({ orderBy: { number: "desc" } }),
+  ]);
   if (settings?.currentSeasonId) {
-    const pointed = await db.season.findUnique({
-      where: { id: settings.currentSeasonId },
-    });
+    const pointed = seasons.find((season) => season.id === settings.currentSeasonId);
     if (pointed) return pointed;
   }
-  const live = await db.season.findFirst({
-    where: { status: SEASON_STATUS.live },
-    orderBy: { number: "desc" },
-  });
-  if (live) return live;
-  return db.season.findFirst({ orderBy: { number: "asc" } });
+  return (
+    seasons.find((season) => season.status === SEASON_STATUS.live) ??
+    seasons[seasons.length - 1] ??
+    null
+  );
+}
+
+const loadCurrentSeason = cache(() => loadCurrentSeasonWith(prisma));
+
+export async function getCurrentSeason(db: Db = prisma) {
+  if (db === prisma) return loadCurrentSeason();
+  return loadCurrentSeasonWith(db);
 }
 
 export async function getCurrentSeasonSafe() {
@@ -425,23 +434,23 @@ export async function getSeasonHistory(): Promise<SeasonHistoryRow[]> {
   return rows;
 }
 
-export async function hasCrownedSeason() {
+export const hasCrownedSeason = cache(async () => {
   try {
-    const stored = await prisma.season.count({
-      where: { championTeamId: { not: null } },
-    });
-    if (stored > 0) return true;
-
-    const completedFinal = await prisma.scheduledFixture.findFirst({
-      where: {
-        status: "completed",
-        ...FINAL_WHERE,
-        ...publicFixtureWhere,
-      },
-      select: { id: true },
-    });
-    return Boolean(completedFinal);
+    const [stored, completedFinal] = await Promise.all([
+      prisma.season.count({
+        where: { championTeamId: { not: null } },
+      }),
+      prisma.scheduledFixture.findFirst({
+        where: {
+          status: "completed",
+          ...FINAL_WHERE,
+          ...publicFixtureWhere,
+        },
+        select: { id: true },
+      }),
+    ]);
+    return stored > 0 || Boolean(completedFinal);
   } catch {
     return false;
   }
-}
+});

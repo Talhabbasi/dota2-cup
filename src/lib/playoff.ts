@@ -687,14 +687,18 @@ function matchViewFromSlot(
 }
 
 export async function getPlayoffView(): Promise<PlayoffView> {
-  const teams = await liveTeams();
-  const { groupA: standingsA, groupB: standingsB, complete, seeds } = await loadPlayoffSeeds();
+  const [teams, seeded, season] = await Promise.all([
+    liveTeams(),
+    loadPlayoffSeeds(),
+    currentSeasonFilter(),
+  ]);
+  const { groupA: standingsA, groupB: standingsB, complete, seeds } = seeded;
   const now = new Date();
   const fixtures = await prisma.scheduledFixture.findMany({
     where: {
       AND: [
         publicFixtureWhere,
-        await currentSeasonFilter(),
+        season,
         {
           OR: [
             { kind: { in: [...PLAYOFF_KINDS] } },

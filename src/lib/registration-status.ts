@@ -1,3 +1,5 @@
+import { cache } from "react";
+import { getCupSettings } from "./cup-settings-cache";
 import { prisma } from "./prisma";
 
 function envRegistrationOpen() {
@@ -5,17 +7,11 @@ function envRegistrationOpen() {
   return value === "true" || value === "1" || value === "yes";
 }
 
-export async function isRegistrationOpen() {
-  try {
-    const row = await prisma.cupSettings.findUnique({
-      where: { id: "singleton" },
-    });
-    if (row) return row.registrationOpen;
-  } catch {
-    /* table not pushed yet */
-  }
+export const isRegistrationOpen = cache(async () => {
+  const row = await getCupSettings();
+  if (row) return row.registrationOpen;
   return envRegistrationOpen();
-}
+});
 
 export async function setRegistrationOpen(open: boolean) {
   const row = await prisma.cupSettings.upsert({

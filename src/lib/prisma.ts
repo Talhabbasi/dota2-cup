@@ -73,6 +73,13 @@ export async function keepPrismaAlive() {
   try {
     await prisma.$queryRaw`SELECT 1`;
   } catch {
-    await resetConnection(prisma);
+    try {
+      await resetConnection(prisma);
+    } catch (error) {
+      console.warn(
+        "Prisma reconnect failed:",
+        error instanceof Error ? error.message : error,
+      );
+    }
   }
 }

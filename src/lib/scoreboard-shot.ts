@@ -144,7 +144,68 @@ function geminiImageMime(mime: string) {
   return "image/jpeg";
 }
 
-const GEMINI_MODELS = ["gemini-3.6-flash", "gemini-flash-latest"];
+const GEMINI_MODELS = [
+  "gemini-3.5-flash-lite",
+  "gemini-flash-lite-latest",
+  "gemini-3.1-flash-lite",
+  "gemini-3.6-flash",
+  "gemini-3.5-flash",
+  "gemini-flash-latest",
+];
+
+function isBusyGemini(status: number, message: string) {
+  return (
+    status === 429 ||
+    status === 503 ||
+    /high demand|overloaded|unavailable|resource.?exhausted|try again later/i.test(
+      message,
+    )
+  );
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function generateGeminiJson(
+  model: string,
+  key: string,
+  imageMime: string,
+  buffer: Buffer,
+) {
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": key,
+      },
+      signal: AbortSignal.timeout(25_000),
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: [
+              { text: PARSE_PROMPT },
+              {
+                inline_data: {
+                  mime_type: imageMime,
+                  data: buffer.toString("base64"),
+                },
+              },
+            ],
+          },
+        ],
+        generationConfig: { temperature: 0, responseMimeType: "application/json" },
+      }),
+    },
+  );
+  const body = (await res.json()) as {
+    error?: { message?: string };
+    candidates?: { content?: { parts?: { text?: string }[] } }[];
+  };
+  return { res, body };
+}
 
 async function parseWithGemini(
   buffer: Buffer,
@@ -154,49 +215,38 @@ async function parseWithGemini(
   const imageMime = geminiImageMime(mime);
   let lastError = "Gemini did not return a scoreboard.";
   for (const model of GEMINI_MODELS) {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-goog-api-key": key,
-        },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                { text: PARSE_PROMPT },
-                {
-                  inline_data: {
-                    mime_type: imageMime,
-                    data: buffer.toString("base64"),
-                  },
-                },
-              ],
-            },
-          ],
-          generationConfig: { temperature: 0, responseMimeType: "application/json" },
-        }),
-      },
-    );
-    const body = (await res.json()) as {
-      error?: { message?: string };
-      candidates?: { content?: { parts?: { text?: string }[] } }[];
-    };
-    if (!res.ok) {
-      lastError = body.error?.message || `Gemini ${model} returned ${res.status}.`;
-      continue;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        const { res, body } = await generateGeminiJson(model, key, imageMime, buffer);
+        if (!res.ok) {
+          lastError = body.error?.message || `Gemini ${model} returned ${res.status}.`;
+          if (res.status === 404) break;
+          if (isBusyGemini(res.status, lastError) && attempt === 0) {
+            await sleep(1200);
+            continue;
+          }
+          break;
+        }
+        const text = body.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!text) {
+          lastError = `Gemini ${model} returned an empty reply.`;
+          break;
+        }
+        const parsed = parseJsonObject(text);
+        const scoreboard = parsed ? fromVisionObject(parsed) : null;
+        if (scoreboard) return scoreboard;
+        lastError = `Gemini ${model} could not map 10 players from that screenshot.`;
+        break;
+      } catch (error) {
+        lastError =
+          error instanceof Error ? error.message : `Gemini ${model} failed.`;
+        if (attempt === 0 && /timeout|abort|network|fetch/i.test(lastError)) {
+          await sleep(800);
+          continue;
+        }
+        break;
+      }
     }
-    const text = body.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!text) {
-      lastError = `Gemini ${model} returned an empty reply.`;
-      continue;
-    }
-    const parsed = parseJsonObject(text);
-    const scoreboard = parsed ? fromVisionObject(parsed) : null;
-    if (scoreboard) return scoreboard;
-    lastError = `Gemini ${model} could not map 10 players from that screenshot.`;
   }
   throw new Error(lastError);
 }
@@ -302,8 +352,14 @@ export async function parseScoreboardImage(
 ): Promise<ParsedScoreboard> {
   const gemini = process.env.GEMINI_API_KEY?.trim() || process.env.GOOGLE_GENERATIVE_AI_API_KEY?.trim();
   const openai = process.env.OPENAI_API_KEY?.trim();
+  let lastError = "";
   if (gemini) {
-    return parseWithGemini(buffer, mime, gemini);
+    try {
+      return await parseWithGemini(buffer, mime, gemini);
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
+      console.warn("Gemini scoreboard parse failed, trying fallback:", lastError);
+    }
   }
   if (openai) {
     const parsed = await parseWithOpenAi(buffer, mime, openai);
@@ -311,8 +367,14 @@ export async function parseScoreboardImage(
   }
   const ocr = await parseWithOcr(buffer).catch(() => null);
   if (ocr) return ocr;
+  if (/high demand|overloaded|unavailable|try again later/i.test(lastError)) {
+    throw new Error(
+      "Gemini is busy right now. Post the **SCOREBOARD** screenshot again in a minute.",
+    );
+  }
   throw new Error(
-    "Could not read that scoreboard screenshot. Post the **SCOREBOARD** tab (heroes, K/D/A, LH/DN, GPM), not Overview.",
+    lastError ||
+      "Could not read that scoreboard screenshot. Post the **SCOREBOARD** tab (heroes, K/D/A, LH/DN, GPM), not Overview.",
   );
 }
 

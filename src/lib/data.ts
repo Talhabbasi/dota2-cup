@@ -1,3 +1,4 @@
+import { unstable_cache } from "next/cache";
 import { prisma } from "./prisma";
 import {
   isDummyDiscordId,
@@ -5,6 +6,7 @@ import {
   publicPlayerWhere,
   publicTeamWhere,
 } from "./dummy";
+import { PUBLIC_PAGE_TAG } from "./page-cache";
 import { getNextScheduledFixture } from "./schedule";
 import { parseRolesJson } from "./roles";
 import { ROLE_LABELS, basePriceFor, type PlayerRole } from "./constants";
@@ -12,6 +14,16 @@ import {
   currentSeasonFilter,
   getCurrentSeasonSafe,
 } from "./seasons";
+
+function cachedPublic<Args extends unknown[], Result>(
+  key: string,
+  fn: (...args: Args) => Promise<Result>,
+) {
+  return unstable_cache(fn, [key], {
+    tags: [PUBLIC_PAGE_TAG],
+    revalidate: 15,
+  });
+}
 
 const matchListSelect = {
   id: true,
@@ -29,7 +41,7 @@ const matchListSelect = {
 
 const teamRefSelect = { select: { id: true, name: true } } as const;
 
-export async function getPlayers() {
+async function loadPlayers() {
   const season = await getCurrentSeasonSafe();
   const players = await prisma.player.findMany({
     where: {
@@ -77,6 +89,8 @@ export async function getPlayers() {
     };
   });
 }
+
+export const getPlayers = cachedPublic("players", loadPlayers);
 
 export async function getPlayer(id: string) {
   const player = await prisma.player.findFirst({
@@ -169,7 +183,7 @@ export async function getPlayer(id: string) {
   };
 }
 
-export async function getTeams() {
+async function loadTeams() {
   const season = await currentSeasonFilter();
   return prisma.team.findMany({
     where: { ...publicTeamWhere, ...season },
@@ -192,10 +206,12 @@ export async function getTeams() {
   });
 }
 
-export async function getTeamCount() {
+export const getTeams = cachedPublic("teams", loadTeams);
+
+export const getTeamCount = cachedPublic("team-count", async () => {
   const season = await currentSeasonFilter();
   return prisma.team.count({ where: { ...publicTeamWhere, ...season } });
-}
+});
 
 export async function getTeam(id: string) {
   const team = await prisma.team.findFirst({
@@ -241,29 +257,32 @@ export async function getTeam(id: string) {
   return team;
 }
 
-export async function getMatches() {
+export const getMatches = cachedPublic("matches", async () => {
   const season = await currentSeasonFilter();
   return prisma.match.findMany({
     where: { ...publicMatchWhere, ...season },
     select: matchListSelect,
     orderBy: { createdAt: "desc" },
   });
-}
+});
 
-export async function getRecentMatches(take = 5) {
-  const season = await currentSeasonFilter();
-  return prisma.match.findMany({
-    where: { ...publicMatchWhere, ...season },
-    select: matchListSelect,
-    orderBy: { createdAt: "desc" },
-    take,
-  });
-}
+export const getRecentMatches = cachedPublic(
+  "recent-matches",
+  async (take = 5) => {
+    const season = await currentSeasonFilter();
+    return prisma.match.findMany({
+      where: { ...publicMatchWhere, ...season },
+      select: matchListSelect,
+      orderBy: { createdAt: "desc" },
+      take,
+    });
+  },
+);
 
-export async function getMatchCount() {
+export const getMatchCount = cachedPublic("match-count", async () => {
   const season = await currentSeasonFilter();
   return prisma.match.count({ where: { ...publicMatchWhere, ...season } });
-}
+});
 
 export async function getMatch(id: string) {
   const match = await prisma.match.findFirst({
@@ -278,7 +297,7 @@ export async function getMatch(id: string) {
   return match;
 }
 
-export async function getStandings() {
+async function loadStandings() {
   const season = await currentSeasonFilter();
   const [teams, decided] = await Promise.all([
     prisma.team.findMany({
@@ -335,6 +354,8 @@ export async function getStandings() {
         b.wins - a.wins || b.points - a.points || a.name.localeCompare(b.name),
     );
 }
+
+export const getStandings = cachedPublic("standings", loadStandings);
 
 export type FixturePreview = {
   radiantTeam: { id: string; name: string };

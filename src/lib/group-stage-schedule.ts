@@ -143,11 +143,17 @@ export async function bookGroupStageRoundRobin(input?: {
 
 export async function getGroupStandings(groupKey: "A" | "B"): Promise<GroupStandingRow[]> {
   const season = await currentSeasonFilter();
-  const teams = await prisma.team.findMany({
-    where: { groupKey, ...publicTeamWhere, ...season },
-    select: { id: true, name: true },
-    orderBy: { name: "asc" },
-  });
+  const [teams, fixtures] = await Promise.all([
+    prisma.team.findMany({
+      where: { groupKey, ...publicTeamWhere, ...season },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    }),
+    prisma.scheduledFixture.findMany({
+      where: { kind: "group", status: "completed", ...season },
+      include: { match: true },
+    }),
+  ]);
   const ids = new Set(teams.map((team) => team.id));
   const rows = new Map<string, GroupStandingRow>(
     teams.map((team) => [
@@ -155,11 +161,6 @@ export async function getGroupStandings(groupKey: "A" | "B"): Promise<GroupStand
       { id: team.id, name: team.name, played: 0, wins: 0, losses: 0, points: 0 },
     ]),
   );
-
-  const fixtures = await prisma.scheduledFixture.findMany({
-    where: { kind: "group", status: "completed", ...season },
-    include: { match: true },
-  });
 
   for (const fixture of fixtures) {
     if (!ids.has(fixture.radiantTeamId) || !ids.has(fixture.direTeamId)) continue;
@@ -193,14 +194,16 @@ export async function getGroupStandings(groupKey: "A" | "B"): Promise<GroupStand
   });
 }
 
+function groupStandingsFinished(rows: GroupStandingRow[]) {
+  return rows.length === 4 && rows.every((row) => row.played === 3);
+}
+
 export async function groupStageComplete() {
   const [groupA, groupB] = await Promise.all([
     getGroupStandings("A"),
     getGroupStandings("B"),
   ]);
-  const finished = (rows: GroupStandingRow[]) =>
-    rows.length === 4 && rows.every((row) => row.played === 3);
-  return finished(groupA) && finished(groupB);
+  return groupStandingsFinished(groupA) && groupStandingsFinished(groupB);
 }
 
 function formatDayBlock(title: string, matches: BookedGroupMatch[]) {
