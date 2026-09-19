@@ -111,10 +111,7 @@ export async function getHeroMatchAppearances(heroId: number, heroName: string) 
     orderBy: { match: { createdAt: "desc" } },
   });
 
-  return players.map((row) => ({
-    ...row,
-    items: parseStoredItems(row.itemsJson),
-  }));
+  return players;
 }
 
 export async function backfillHeroIds() {

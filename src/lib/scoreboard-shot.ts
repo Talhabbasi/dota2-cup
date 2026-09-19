@@ -137,35 +137,68 @@ function fromVisionObject(data: Record<string, unknown>): ParsedScoreboard | nul
   };
 }
 
+function geminiImageMime(mime: string) {
+  const normalized = mime.toLowerCase();
+  if (normalized === "image/jpg" || normalized === "image/pjpeg") return "image/jpeg";
+  if (normalized.startsWith("image/")) return normalized;
+  return "image/jpeg";
+}
+
+const GEMINI_MODELS = ["gemini-3.6-flash", "gemini-flash-latest"];
+
 async function parseWithGemini(
   buffer: Buffer,
   mime: string,
   key: string,
-): Promise<ParsedScoreboard | null> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(key)}`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: [
-        {
-          parts: [
-            { text: PARSE_PROMPT },
-            { inline_data: { mime_type: mime, data: buffer.toString("base64") } },
-          ],
+): Promise<ParsedScoreboard> {
+  const imageMime = geminiImageMime(mime);
+  let lastError = "Gemini did not return a scoreboard.";
+  for (const model of GEMINI_MODELS) {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": key,
         },
-      ],
-      generationConfig: { temperature: 0, responseMimeType: "application/json" },
-    }),
-  });
-  if (!res.ok) return null;
-  const body = (await res.json()) as {
-    candidates?: { content?: { parts?: { text?: string }[] } }[];
-  };
-  const text = body.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) return null;
-  const parsed = parseJsonObject(text);
-  return parsed ? fromVisionObject(parsed) : null;
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                { text: PARSE_PROMPT },
+                {
+                  inline_data: {
+                    mime_type: imageMime,
+                    data: buffer.toString("base64"),
+                  },
+                },
+              ],
+            },
+          ],
+          generationConfig: { temperature: 0, responseMimeType: "application/json" },
+        }),
+      },
+    );
+    const body = (await res.json()) as {
+      error?: { message?: string };
+      candidates?: { content?: { parts?: { text?: string }[] } }[];
+    };
+    if (!res.ok) {
+      lastError = body.error?.message || `Gemini ${model} returned ${res.status}.`;
+      continue;
+    }
+    const text = body.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!text) {
+      lastError = `Gemini ${model} returned an empty reply.`;
+      continue;
+    }
+    const parsed = parseJsonObject(text);
+    const scoreboard = parsed ? fromVisionObject(parsed) : null;
+    if (scoreboard) return scoreboard;
+    lastError = `Gemini ${model} could not map 10 players from that screenshot.`;
+  }
+  throw new Error(lastError);
 }
 
 async function parseWithOpenAi(
@@ -270,8 +303,7 @@ export async function parseScoreboardImage(
   const gemini = process.env.GEMINI_API_KEY?.trim() || process.env.GOOGLE_GENERATIVE_AI_API_KEY?.trim();
   const openai = process.env.OPENAI_API_KEY?.trim();
   if (gemini) {
-    const parsed = await parseWithGemini(buffer, mime, gemini);
-    if (parsed) return parsed;
+    return parseWithGemini(buffer, mime, gemini);
   }
   if (openai) {
     const parsed = await parseWithOpenAi(buffer, mime, openai);
@@ -280,7 +312,7 @@ export async function parseScoreboardImage(
   const ocr = await parseWithOcr(buffer).catch(() => null);
   if (ocr) return ocr;
   throw new Error(
-    "Could not read that scoreboard screenshot. Post the **SCOREBOARD** tab (heroes, items, LH/DN, GPM), not Overview. For item icons, add a free GEMINI_API_KEY from https://aistudio.google.com/apikey to `.env` and restart the bot.",
+    "Could not read that scoreboard screenshot. Post the **SCOREBOARD** tab (heroes, K/D/A, LH/DN, GPM), not Overview.",
   );
 }
 
@@ -312,21 +344,72 @@ function resolveItem(
   return hit ? { key: hit.key, name: hit.name } : { key: "", name: label };
 }
 
+function playerLabels(player: {
+  steamName: string;
+  discordName?: string | null;
+}) {
+  return [player.steamName, player.discordName ?? ""].map(norm).filter(Boolean);
+}
+
 function resolvePlayer(
   name: string,
-  players: { id: string; steamName: string; steam32: number }[],
+  players: {
+    id: string;
+    steamName: string;
+    steam32: number;
+    discordName?: string | null;
+    teamId?: string | null;
+  }[],
 ) {
   const want = norm(name);
   if (!want) return null;
   return (
-    players.find((p) => norm(p.steamName) === want) ??
+    players.find((p) => playerLabels(p).includes(want)) ??
     players.find((p) => {
-      const have = norm(p.steamName);
-      if (have.length < 4 || want.length < 4) return false;
-      return have.includes(want) || want.includes(have);
+      if (want.length < 4) return false;
+      return playerLabels(p).some((have) => {
+        if (have.length < 4) return false;
+        return have.includes(want) || want.includes(have);
+      });
     }) ??
     null
   );
+}
+
+function fillFromTeamRoster<
+  T extends {
+    playerId: string | null;
+    steam32: number;
+    unknown: boolean;
+    side: string;
+  },
+>(
+  rows: T[],
+  registered: {
+    id: string;
+    steam32: number;
+    teamId: string | null;
+  }[],
+  radiantTeamId: string | null,
+  direTeamId: string | null,
+) {
+  const used = new Set(
+    rows.map((row) => row.playerId).filter((id): id is string => Boolean(id)),
+  );
+  for (const row of rows) {
+    if (row.playerId) continue;
+    const teamId = row.side === "radiant" ? radiantTeamId : direTeamId;
+    if (!teamId) continue;
+    const leftover = registered.find(
+      (player) => player.teamId === teamId && !used.has(player.id),
+    );
+    if (!leftover) continue;
+    used.add(leftover.id);
+    row.playerId = leftover.id;
+    row.steam32 = leftover.steam32;
+    row.unknown = false;
+  }
+  return rows;
 }
 
 function resolveTeam(
@@ -354,7 +437,13 @@ export async function applyParsedScoreboard(
     loadHeroCatalog(),
     loadItemCatalog(),
     prisma.player.findMany({
-      select: { id: true, steamName: true, steam32: true, teamId: true },
+      select: {
+        id: true,
+        steamName: true,
+        discordName: true,
+        steam32: true,
+        teamId: true,
+      },
     }),
     prisma.team.findMany({ select: { id: true, name: true } }),
   ]);
@@ -423,6 +512,7 @@ export async function applyParsedScoreboard(
 
   const radiantTeamId = radiantTeam?.id ?? existing?.radiantTeamId ?? null;
   const direTeamId = direTeam?.id ?? existing?.direTeamId ?? null;
+  fillFromTeamRoster(rows, registered, radiantTeamId, direTeamId);
   const winnerTeamId =
     winnerSide === "dire" ? direTeamId : radiantTeamId;
 

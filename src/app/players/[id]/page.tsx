@@ -2,7 +2,6 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { formatDuration, formatRoles, getPlayer, getPlayerMeta } from "@/lib/data";
-import { parseStoredItems } from "@/lib/heroes";
 import {
   MEDAL_LABELS,
   type Medal,
@@ -11,7 +10,6 @@ import { PLAY_WINDOW_LABELS, playWindowOrBoth } from "@/lib/play-window";
 import {
   heroIconUrl,
   heroPortraitUrl,
-  itemIconUrl,
   loadHeroCatalog,
 } from "@/lib/opendota";
 import type { Metadata } from "next";
@@ -71,7 +69,6 @@ export default async function PlayerPage({
     return {
       ...row,
       heroInfo,
-      items: parseStoredItems(row.itemsJson),
       won,
     };
   });
@@ -269,33 +266,6 @@ export default async function PlayerPage({
                     <span>DN {game.denies}</span>
                     <span>GPM {game.gpm}</span>
                     <span>XPM {game.xpm}</span>
-                  </div>
-                  <div className="item-row">
-                    {game.items.length === 0 ? (
-                      <span className="muted">No items</span>
-                    ) : (
-                      game.items.map((item, i) =>
-                        item.key ? (
-                          <div
-                            key={`${game.id}-${i}`}
-                            className="item-chip"
-                            title={item.name}
-                          >
-                            <Image
-                              src={itemIconUrl(item.key)}
-                              alt={item.name}
-                              width={48}
-                              height={36}
-                              className="item-icon"
-                            />
-                          </div>
-                        ) : (
-                          <span key={`${game.id}-${i}`} className="item-chip text">
-                            {item.name}
-                          </span>
-                        ),
-                      )
-                    )}
                   </div>
                 </div>
                 <div className="hero-kda">

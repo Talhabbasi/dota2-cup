@@ -6,7 +6,7 @@ import {
   getHeroMatchAppearances,
 } from "@/lib/heroes";
 import { formatDuration } from "@/lib/data";
-import { itemIconUrl, heroPortraitUrl } from "@/lib/opendota";
+import { heroPortraitUrl } from "@/lib/opendota";
 import type { Metadata } from "next";
 
 export async function generateMetadata({
@@ -114,30 +114,6 @@ export default async function HeroDetailPage({
                   <span>DN {row.denies}</span>
                   <span>GPM {row.gpm}</span>
                   <span>XPM {row.xpm}</span>
-                </div>
-
-                <div className="item-row">
-                  {row.items.length === 0 ? (
-                    <span className="muted">No items</span>
-                  ) : (
-                    row.items.map((item, i) =>
-                      item.key ? (
-                        <div key={`${row.id}-${i}`} className="item-chip" title={item.name}>
-                          <Image
-                            src={itemIconUrl(item.key)}
-                            alt={item.name}
-                            width={48}
-                            height={36}
-                            className="item-icon"
-                          />
-                        </div>
-                      ) : (
-                        <span key={`${row.id}-${i}`} className="item-chip text">
-                          {item.name}
-                        </span>
-                      ),
-                    )
-                  )}
                 </div>
               </article>
             );
