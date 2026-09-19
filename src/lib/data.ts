@@ -14,6 +14,7 @@ import {
   formatDuration,
   formatMatchWhen,
   formatRoles,
+  toIso,
 } from "./format";
 import {
   currentSeasonFilter,
@@ -86,8 +87,11 @@ async function loadPlayers() {
     const isCaptain = membership ? membership.isCaptain : p.isCaptain;
     const rosterRole = membership ? membership.rosterRole : p.rosterRole;
     return {
-      ...p,
-      createdAt: p.createdAt.toISOString(),
+      id: p.id,
+      steamName: p.steamName,
+      medal: p.medal,
+      playWindow: p.playWindow,
+      createdAt: toIso(p.createdAt),
       team,
       teamId,
       isCaptain,
