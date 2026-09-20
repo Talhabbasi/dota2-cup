@@ -56,6 +56,7 @@ const PLAYER_ALIASES: Record<string, string[]> = {
   chessman: ["spoderman"],
   fearless: ["lundplayer"],
   hades7: ["barwa", "hades"],
+  stoicswapcmds: ["stoic"],
 };
 
 function parseDuration(value: string | null | undefined) {
@@ -466,45 +467,6 @@ function resolvePlayer(
   return exact(teamPool) ?? fuzzy(teamPool) ?? exact(players) ?? null;
 }
 
-function fillFromTeamRoster<
-  T extends {
-    playerId: string | null;
-    steam32: number;
-    unknown: boolean;
-    side: string;
-    boardName?: string;
-  },
->(
-  rows: T[],
-  registered: {
-    id: string;
-    steam32: number;
-    teamId: string | null;
-    rosterRole?: string | null;
-  }[],
-  radiantTeamId: string | null,
-  direTeamId: string | null,
-) {
-  const used = new Set(
-    rows.map((row) => row.playerId).filter((id): id is string => Boolean(id)),
-  );
-  for (const row of rows) {
-    if (row.playerId) continue;
-    if (row.boardName?.trim()) continue;
-    const teamId = row.side === "radiant" ? radiantTeamId : direTeamId;
-    if (!teamId) continue;
-    const leftover = registered
-      .filter((player) => player.teamId === teamId && !used.has(player.id))
-      .sort((a, b) => Number(a.rosterRole === "sub") - Number(b.rosterRole === "sub"))[0];
-    if (!leftover) continue;
-    used.add(leftover.id);
-    row.playerId = leftover.id;
-    row.steam32 = leftover.steam32;
-    row.unknown = false;
-  }
-  return rows;
-}
-
 function resolveTeam(
   name: string | undefined,
   teams: { id: string; name: string }[],
@@ -551,7 +513,6 @@ export async function applyParsedScoreboard(
         discordName: true,
         steam32: true,
         teamId: true,
-        rosterRole: true,
       },
     }),
     prisma.team.findMany({ select: { id: true, name: true } }),
@@ -625,7 +586,6 @@ export async function applyParsedScoreboard(
 
   const radiantTeamId = radiantTeam?.id ?? existing?.radiantTeamId ?? null;
   const direTeamId = direTeam?.id ?? existing?.direTeamId ?? null;
-  fillFromTeamRoster(rows, registered, radiantTeamId, direTeamId);
   const winnerTeamId =
     winnerSide === "dire" ? direTeamId : radiantTeamId;
 
