@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { formatDuration, getMatch, getMatchMeta } from "@/lib/data";
 import { formatKillScore, matchKillTotals } from "@/lib/match-score";
 import { loadHeroCatalog, heroIconUrl } from "@/lib/opendota";
+import { isMatchStandIn, unregisteredStandInLabel } from "@/lib/stand-in";
 import type { Metadata } from "next";
 
 export const dynamic = "force-dynamic";
@@ -117,8 +118,6 @@ export default async function MatchPage({
                     <th>Player</th>
                     <th>Hero</th>
                     <th>K/D/A</th>
-                    <th>LH / DN</th>
-                    <th>GPM / XPM</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -126,19 +125,26 @@ export default async function MatchPage({
                     const hero =
                       (p.heroId ? byId.get(p.heroId) : undefined) ??
                       byName.get(p.hero.toLowerCase());
+                    const standIn = isMatchStandIn({
+                      side: p.side,
+                      unknown: p.unknown,
+                      playerTeamId: p.player?.teamId ?? null,
+                      radiantTeamId: match.radiantTeam?.id ?? null,
+                      direTeamId: match.direTeam?.id ?? null,
+                    });
                     return (
                       <tr key={p.id}>
                         <td>
-                          {p.player ? (
-                            <Link href={`/players/${p.player.id}`}>
-                              {p.player.steamName}
-                            </Link>
+                          {p.player && !p.unknown ? (
+                            <>
+                              <Link href={`/players/${p.player.id}`}>
+                                {p.player.steamName}
+                              </Link>
+                              {standIn ? " (stand-in)" : ""}
+                            </>
                           ) : (
-                            `Unknown ${p.steam32}`
+                            unregisteredStandInLabel(p.boardName, p.steam32)
                           )}
-                          {p.unknown ? (
-                            <div className="muted">Unregistered</div>
-                          ) : null}
                         </td>
                         <td>
                           {hero ? (
@@ -159,12 +165,6 @@ export default async function MatchPage({
                         <td>
                           {p.kills}/{p.deaths}/{p.assists}
                         </td>
-                        <td>
-                          {p.lastHits} / {p.denies}
-                        </td>
-                        <td>
-                          {p.gpm} / {p.xpm}
-                        </td>
                       </tr>
                     );
                   })}
@@ -175,18 +175,6 @@ export default async function MatchPage({
         );
       })
       )}
-
-      {match.screenshotPath ? (
-        <section>
-          <h2 className="gold">Scoreboard shot</h2>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={match.screenshotPath}
-            alt="Match scoreboard"
-            className="match-shot"
-          />
-        </section>
-      ) : null}
     </div>
   );
 }

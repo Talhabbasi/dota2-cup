@@ -261,6 +261,7 @@ model MatchPlayer {
   xpm      Int
   itemsJson String
   unknown  Boolean @default(false)
+  boardName String  @default("")
 
   @@index([heroId])
 }

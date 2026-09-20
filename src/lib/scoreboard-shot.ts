@@ -42,6 +42,11 @@ function norm(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]+/g, "");
 }
 
+const PLAYER_ALIASES: Record<string, string[]> = {
+  lordtheepa: ["loradtheeka", "lordtheeka", "theekralord", "theekra"],
+  theekralord: ["loradtheeka", "lordtheepa", "theekra", "lordtheeka"],
+};
+
 function parseDuration(value: string | null | undefined) {
   if (!value) return null;
   const m = value.trim().match(/^(\d+):(\d{2})$/);
@@ -410,7 +415,11 @@ function playerLabels(player: {
   steamName: string;
   discordName?: string | null;
 }) {
-  return [player.steamName, player.discordName ?? ""].map(norm).filter(Boolean);
+  const base = [player.steamName, player.discordName ?? ""]
+    .map(norm)
+    .filter(Boolean);
+  const extra = base.flatMap((label) => PLAYER_ALIASES[label] ?? []);
+  return [...new Set([...base, ...extra])];
 }
 
 function resolvePlayer(
@@ -444,6 +453,7 @@ function fillFromTeamRoster<
     steam32: number;
     unknown: boolean;
     side: string;
+    boardName?: string;
   },
 >(
   rows: T[],
@@ -451,6 +461,7 @@ function fillFromTeamRoster<
     id: string;
     steam32: number;
     teamId: string | null;
+    rosterRole?: string | null;
   }[],
   radiantTeamId: string | null,
   direTeamId: string | null,
@@ -460,11 +471,12 @@ function fillFromTeamRoster<
   );
   for (const row of rows) {
     if (row.playerId) continue;
+    if (row.boardName?.trim()) continue;
     const teamId = row.side === "radiant" ? radiantTeamId : direTeamId;
     if (!teamId) continue;
-    const leftover = registered.find(
-      (player) => player.teamId === teamId && !used.has(player.id),
-    );
+    const leftover = registered
+      .filter((player) => player.teamId === teamId && !used.has(player.id))
+      .sort((a, b) => Number(a.rosterRole === "sub") - Number(b.rosterRole === "sub"))[0];
     if (!leftover) continue;
     used.add(leftover.id);
     row.playerId = leftover.id;
@@ -487,9 +499,24 @@ function resolveTeam(
   );
 }
 
+export async function discordMessageAlreadyIngested(messageId: string) {
+  const key = `shot-${messageId}`;
+  const found = await prisma.match.findFirst({
+    where: {
+      OR: [
+        { openDotaId: key },
+        { screenshotPath: { contains: messageId } },
+      ],
+    },
+    select: { id: true },
+  });
+  return Boolean(found);
+}
+
 export async function applyParsedScoreboard(
   parsed: ParsedScoreboard,
   screenshotPath?: string | null,
+  sourceId?: string | null,
 ) {
   if (parsed.players.length < 8) {
     throw new Error("That screenshot does not look like a 10-player scoreboard.");
@@ -505,6 +532,7 @@ export async function applyParsedScoreboard(
         discordName: true,
         steam32: true,
         teamId: true,
+        rosterRole: true,
       },
     }),
     prisma.team.findMany({ select: { id: true, name: true } }),
@@ -513,28 +541,31 @@ export async function applyParsedScoreboard(
 
   const radiantTeam = resolveTeam(parsed.radiantTeam, teams);
   const direTeam = resolveTeam(parsed.direTeam, teams);
+  const sourceKey = sourceId ? `shot-${sourceId}` : null;
 
-  const existing = await prisma.match.findFirst({
-    where: {
-      OR: [
-        parsed.matchId ? { openDotaId: parsed.matchId } : undefined,
-        radiantTeam && direTeam
-          ? {
-              OR: [
-                { radiantTeamId: radiantTeam.id, direTeamId: direTeam.id },
-                { radiantTeamId: direTeam.id, direTeamId: radiantTeam.id },
-              ],
-            }
-          : undefined,
-        { openDotaId: { startsWith: "manual-" } },
-      ].filter(Boolean) as object[],
-    },
-    include: {
-      players: true,
-      scheduledFixture: { select: { status: true } },
-    },
-    orderBy: { createdAt: "desc" },
-  });
+  const existingWhere = [
+    parsed.matchId ? { openDotaId: parsed.matchId } : undefined,
+    sourceKey ? { openDotaId: sourceKey } : undefined,
+    radiantTeam && direTeam
+      ? {
+          OR: [
+            { radiantTeamId: radiantTeam.id, direTeamId: direTeam.id },
+            { radiantTeamId: direTeam.id, direTeamId: radiantTeam.id },
+          ],
+        }
+      : undefined,
+  ].filter(Boolean) as object[];
+
+  const existing = existingWhere.length
+    ? await prisma.match.findFirst({
+        where: { OR: existingWhere },
+        include: {
+          players: true,
+          scheduledFixture: { select: { status: true } },
+        },
+        orderBy: { createdAt: "desc" },
+      })
+    : null;
 
   const winnerSide =
     parsed.winnerSide ??
@@ -558,6 +589,7 @@ export async function applyParsedScoreboard(
       steam32: mapped?.steam32 ?? prior?.steam32 ?? 0,
       playerId: mapped?.id ?? prior?.playerId ?? null,
       unknown: !(mapped || (prior && !prior.unknown)),
+      boardName: row.name,
       side: row.side,
       hero: hero?.name ?? row.hero,
       heroId: hero?.id ?? 0,
@@ -579,7 +611,10 @@ export async function applyParsedScoreboard(
     winnerSide === "dire" ? direTeamId : radiantTeamId;
 
   const data = {
-    openDotaId: parsed.matchId || existing?.openDotaId || `shot-${Date.now()}`,
+    openDotaId:
+      parsed.matchId ||
+      existing?.openDotaId ||
+      (sourceId ? `shot-${sourceId}` : `shot-${Date.now()}`),
     duration: parsed.durationSeconds ?? existing?.duration ?? null,
     radiantWin: winnerSide === "radiant",
     radiantTeamId,
@@ -622,16 +657,17 @@ export async function applyParsedScoreboard(
     }
   }
 
-  return match;
+  return { match, created: !existing };
 }
 
 export async function ingestScoreboardScreenshot(input: {
   buffer: Buffer;
   mime?: string;
   screenshotPath?: string | null;
+  sourceId?: string | null;
 }) {
   const parsed = await parseScoreboardImage(input.buffer, input.mime);
-  return applyParsedScoreboard(parsed, input.screenshotPath);
+  return applyParsedScoreboard(parsed, input.screenshotPath, input.sourceId);
 }
 
 export async function ingestScoreboardFile(filePath: string) {
@@ -640,5 +676,5 @@ export async function ingestScoreboardFile(filePath: string) {
     : path.join(process.cwd(), filePath.replace(/^\//, ""));
   const buffer = await readFile(abs);
   const mime = abs.endsWith(".png") ? "image/png" : "image/jpeg";
-  return ingestScoreboardScreenshot({ buffer, mime });
+  return ingestScoreboardScreenshot({ buffer, mime }).then((row) => row.match);
 }

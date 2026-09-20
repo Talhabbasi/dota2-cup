@@ -2452,6 +2452,12 @@ tr:last-child td {
   border: 1px solid var(--line);
 }
 
+.team-chip-standin {
+  color: #8a5a12;
+  background: rgba(228, 182, 92, 0.12);
+  border: 1px solid rgba(228, 182, 92, 0.3);
+}
+
 .team-player-name {
   font-family: var(--font-oxanium), sans-serif;
   margin: 0;

@@ -17,6 +17,7 @@ import {
   StringSelectMenuBuilder,
   type AutocompleteInteraction,
   type ChatInputCommandInteraction,
+  type Guild,
   type GuildMember,
   type Interaction,
   type Message,
@@ -117,7 +118,10 @@ import {
   recordPlayerPayment,
 } from "../src/lib/payments";
 import { assignUnknown, ingestLatestCupMatch, ingestMatch, recordManualSeriesWinner } from "../src/lib/results";
-import { ingestScoreboardScreenshot } from "../src/lib/scoreboard-shot";
+import {
+  discordMessageAlreadyIngested,
+  ingestScoreboardScreenshot,
+} from "../src/lib/scoreboard-shot";
 import {
   backfillSeason1,
   createSeason,
@@ -3076,7 +3080,10 @@ function formatMatchReply(match: Awaited<ReturnType<typeof ingestMatch>>): strin
     ?? (match.radiantWin ? "Radiant" : "Dire");
   const unknown = match.players.filter((p) => p.unknown).length;
   const lines = match.players.map((p) => {
-    const name = p.player?.steamName ?? `unknown ${p.steam32}`;
+    const name = p.player?.steamName
+      ?? (p.boardName?.trim()
+        ? `${p.boardName.trim()} (stand-in)`
+        : `unknown ${p.steam32} (stand-in)`);
     return `${p.side === "radiant" ? "R" : "D"} ${name} — ${p.hero} ${p.kills}/${p.deaths}/${p.assists} LH ${p.lastHits}`;
   });
   return [
@@ -3219,17 +3226,132 @@ async function handlePaymentTick(
   }
 }
 
-async function ingestScreenshotFromMessage(message: Message, hint: string) {
+function resultsImageAttachment(message: Message) {
+  return message.attachments.find(
+    (a) =>
+      (a.contentType ?? "").startsWith("image/") ||
+      /\.(png|jpe?g|webp|gif)$/i.test(a.name ?? ""),
+  );
+}
+
+function botAlreadyCheckedResults(message: Message) {
+  return message.reactions.cache.some(
+    (reaction) => reaction.emoji.name === "✅" && reaction.me,
+  );
+}
+
+function isBotMatchImportReply(message: Message, botId: string) {
+  return (
+    message.author.id === botId &&
+    Boolean(message.reference?.messageId) &&
+    /imported\./i.test(message.content)
+  );
+}
+
+async function fetchResultsHistory(channel: TextChannel, max = 150) {
+  const out: Message[] = [];
+  let before: string | undefined;
+  while (out.length < max) {
+    const batch = await channel.messages.fetch({
+      limit: Math.min(100, max - out.length),
+      before,
+    });
+    if (batch.size === 0) break;
+    out.push(...batch.values());
+    before = batch.last()?.id;
+    if (batch.size < 100) break;
+  }
+  return out;
+}
+
+async function ingestScreenshotFromMessage(
+  message: Message,
+  hint: string,
+  options?: { reply?: boolean },
+) {
   const shot = await saveMatchImage(message, hint);
   if (!shot) return null;
-  const match = await ingestScoreboardScreenshot({
+  const result = await ingestScoreboardScreenshot({
     buffer: shot.buffer,
     mime: shot.mime,
+    screenshotPath: shot.screenshotPath,
+    sourceId: message.id,
   });
   void notifySiteRefresh();
-  await message.reply(formatMatchReply(match));
+  if (options?.reply !== false) {
+    await message.reply(formatMatchReply(result.match));
+  }
   if (message.guild) await syncPlayoffMatchesChannel(message.guild);
-  return match;
+  return result;
+}
+
+async function backfillResultsChannel(guild: Guild) {
+  const channel = findTextChannel(guild, resultsChannelName());
+  if (!channel) {
+    console.warn(`No #${resultsChannelName()} in ${guild.name}`);
+    return;
+  }
+  const botId = client.user?.id;
+  if (!botId) return;
+
+  console.log(`Checking #${resultsChannelName()} in ${guild.name} for missing matches…`);
+  const history = await fetchResultsHistory(channel);
+  const alreadyReplied = new Set(
+    history
+      .filter((m) => isBotMatchImportReply(m, botId))
+      .map((m) => m.reference?.messageId)
+      .filter((id): id is string => Boolean(id)),
+  );
+  const shots = history
+    .filter((m) => !m.author.bot && resultsImageAttachment(m))
+    .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+  console.log(
+    `#${resultsChannelName()} has ${shots.length} screenshot${shots.length === 1 ? "" : "s"} to review`,
+  );
+
+  let added = 0;
+  let skipped = 0;
+  let failed = 0;
+
+  for (const message of shots) {
+    if (alreadyReplied.has(message.id) || botAlreadyCheckedResults(message)) {
+      skipped += 1;
+      continue;
+    }
+    if (await discordMessageAlreadyIngested(message.id)) {
+      skipped += 1;
+      continue;
+    }
+    try {
+      console.log(`Ingesting #results screenshot ${message.id}…`);
+      const result = await ingestScreenshotFromMessage(
+        message,
+        `shot-${message.id}`,
+        { reply: false },
+      );
+      if (result) {
+        if (result.created) added += 1;
+        else skipped += 1;
+        await message.react("✅").catch(() => undefined);
+      }
+    } catch (error) {
+      failed += 1;
+      console.warn(
+        `results backfill ${message.id}:`,
+        error instanceof Error ? error.message : error,
+      );
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+  }
+
+  console.log(
+    `#${resultsChannelName()} catch-up (${guild.name}): added ${added}, skipped ${skipped}, failed ${failed}`,
+  );
+  if (added > 0) {
+    await channel.send(
+      `Caught up #${resultsChannelName()}: added **${added}** match${added === 1 ? "" : "es"} that were missing from the site.`,
+    );
+  }
 }
 
 async function handlePrefixResult(message: Message) {
@@ -3240,7 +3362,7 @@ async function handlePrefixResult(message: Message) {
   const raw = text.replace(/^!result\s+/i, "").trim();
   const hasId =
     /\d{8,12}/.test(raw) || /opendota\.com\/matches\/\d+/i.test(text);
-  const hint = raw.match(/\d{8,12}/)?.[0] ?? `shot-${Date.now()}`;
+  const hint = raw.match(/\d{8,12}/)?.[0] ?? `shot-${message.id}`;
   try {
     if (!hasId) {
       const fromShot = await ingestScreenshotFromMessage(message, hint);
@@ -3272,13 +3394,9 @@ async function handleResultsScreenshot(message: Message) {
   if (/^!result\b/i.test(message.content) || /opendota\.com\/matches\/\d+/i.test(message.content)) {
     return;
   }
-  const image = message.attachments.find((a) =>
-    (a.contentType ?? "").startsWith("image/") ||
-    /\.(png|jpe?g|webp|gif)$/i.test(a.name ?? ""),
-  );
-  if (!image) return;
+  if (!resultsImageAttachment(message)) return;
   try {
-    await ingestScreenshotFromMessage(message, `shot-${Date.now()}`);
+    await ingestScreenshotFromMessage(message, `shot-${message.id}`);
   } catch (error) {
     await message.reply(fail(error));
   }
@@ -3497,6 +3615,18 @@ async function refreshPostedLot(sandbox = false) {
 
 client.once(Events.ClientReady, async () => {
   console.log(`Bot online as ${client.user?.tag}`);
+  void (async () => {
+    for (const guild of client.guilds.cache.values()) {
+      try {
+        await backfillResultsChannel(guild);
+      } catch (error) {
+        console.warn(
+          `Could not catch up #${resultsChannelName()} (${guild.name}):`,
+          error instanceof Error ? error.message : error,
+        );
+      }
+    }
+  })();
   try {
     const seeded = await backfillSeason1();
     console.log(

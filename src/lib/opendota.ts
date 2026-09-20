@@ -1,5 +1,6 @@
 export type OpenDotaMatchPlayer = {
   account_id?: number;
+  personaname?: string;
   hero_id: number;
   player_slot: number;
   kills: number;

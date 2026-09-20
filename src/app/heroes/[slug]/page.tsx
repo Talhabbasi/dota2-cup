@@ -7,6 +7,7 @@ import {
 } from "@/lib/heroes";
 import { formatDuration } from "@/lib/data";
 import { heroPortraitUrl } from "@/lib/opendota";
+import { isMatchStandIn, unregisteredStandInLabel } from "@/lib/stand-in";
 import type { Metadata } from "next";
 
 export const dynamic = "force-dynamic";
@@ -78,6 +79,13 @@ export default async function HeroDetailPage({
               row.match.winnerTeam?.name ??
               (row.match.radiantWin ? "Radiant" : "Dire");
             const sideLabel = row.side === "radiant" ? "Radiant" : "Dire";
+            const standIn = isMatchStandIn({
+              side: row.side,
+              unknown: row.unknown,
+              playerTeamId: row.player?.teamId ?? row.player?.team?.id ?? null,
+              radiantTeamId: row.match.radiantTeam?.id ?? null,
+              direTeamId: row.match.direTeam?.id ?? null,
+            });
             return (
               <article key={row.id} className="hero-match-card">
                 <div className="hero-match-top">
@@ -89,17 +97,23 @@ export default async function HeroDetailPage({
                     </Link>
                     <p className="muted">
                       {sideLabel}
-                      {row.player ? (
+                      {row.player && !row.unknown ? (
                         <>
                           {" · "}
                           <Link href={`/players/${row.player.id}`}>
                             {row.player.steamName}
                           </Link>
+                          {standIn ? " (stand-in)" : ""}
+                          {!standIn && row.player.team?.name
+                            ? ` · ${row.player.team.name}`
+                            : ""}
                         </>
-                      ) : null}
-                      {row.player?.team?.name
-                        ? ` · ${row.player.team.name}`
-                        : ""}{" "}
+                      ) : (
+                        <>
+                          {" · "}
+                          {unregisteredStandInLabel(row.boardName, row.steam32)}
+                        </>
+                      )}{" "}
                       · Winner {winner} · {formatDuration(row.match.duration)}
                     </p>
                   </div>
@@ -109,13 +123,6 @@ export default async function HeroDetailPage({
                     </strong>
                     <span className="muted">KDA</span>
                   </div>
-                </div>
-
-                <div className="hero-stat-row">
-                  <span>LH {row.lastHits}</span>
-                  <span>DN {row.denies}</span>
-                  <span>GPM {row.gpm}</span>
-                  <span>XPM {row.xpm}</span>
                 </div>
               </article>
             );

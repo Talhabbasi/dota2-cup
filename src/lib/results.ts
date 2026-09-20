@@ -248,6 +248,7 @@ export async function ingestMatch(input: {
       steam32,
       playerId: mapped?.id ?? null,
       unknown: !mapped,
+      boardName: (p as { personaname?: string }).personaname?.trim() ?? "",
       side,
       hero: hero?.name ?? `Hero ${p.hero_id}`,
       heroId: p.hero_id,

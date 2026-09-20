@@ -303,7 +303,11 @@ export async function getMatch(id: string) {
       radiantTeam: teamRefSelect,
       direTeam: teamRefSelect,
       winnerTeam: teamRefSelect,
-      players: { include: { player: { select: { id: true, steamName: true } } } },
+      players: {
+        include: {
+          player: { select: { id: true, steamName: true, teamId: true } },
+        },
+      },
     },
   });
   return match;

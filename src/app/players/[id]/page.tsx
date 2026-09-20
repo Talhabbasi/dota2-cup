@@ -13,6 +13,7 @@ import {
   loadHeroCatalog,
 } from "@/lib/opendota";
 import type { Metadata } from "next";
+import { isMatchStandIn } from "@/lib/stand-in";
 
 export const dynamic = "force-dynamic";
 
@@ -128,6 +129,8 @@ export default async function PlayerPage({
           <Link href={`/teams/${player.team.id}`} className="badge badge-gold">
             {player.team.name}
           </Link>
+        ) : games.length > 0 ? (
+          <span className="badge">Stand-in</span>
         ) : (
           <span className="badge">Unsigned</span>
         )}
@@ -231,6 +234,12 @@ export default async function PlayerPage({
             const winner =
               game.match.winnerTeam?.name ??
               (game.match.radiantWin ? "Radiant" : "Dire");
+            const standIn = isMatchStandIn({
+              side: game.side,
+              playerTeamId: player.teamId,
+              radiantTeamId: game.match.radiantTeam?.id ?? null,
+              direTeamId: game.match.direTeam?.id ?? null,
+            });
             return (
               <article key={game.id} className="hero-match-card player-game">
                 {game.heroInfo ? (
@@ -256,6 +265,7 @@ export default async function PlayerPage({
                   </Link>
                   <p className="muted">
                     {game.side === "radiant" ? "Radiant" : "Dire"}
+                    {standIn ? " (stand-in)" : ""}
                     {game.won == null ? "" : game.won ? " · Win" : " · Loss"}
                     {" · "}
                     Winner {winner} · {formatDuration(game.match.duration)}
@@ -263,12 +273,6 @@ export default async function PlayerPage({
                       ? ` · Season ${game.match.season.number}`
                       : ""}
                   </p>
-                  <div className="hero-stat-row">
-                    <span>LH {game.lastHits}</span>
-                    <span>DN {game.denies}</span>
-                    <span>GPM {game.gpm}</span>
-                    <span>XPM {game.xpm}</span>
-                  </div>
                 </div>
                 <div className="hero-kda">
                   <strong>
