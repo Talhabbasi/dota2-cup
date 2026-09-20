@@ -43,8 +43,19 @@ function norm(value: string) {
 }
 
 const PLAYER_ALIASES: Record<string, string[]> = {
-  lordtheepa: ["loradtheeka", "lordtheeka", "theekralord", "theekra"],
-  theekralord: ["loradtheeka", "lordtheepa", "theekra", "lordtheeka"],
+  lordtheepa: [
+    "loradtheeka",
+    "lordtheeka",
+    "theekralord",
+    "theekra",
+    "lordtheekra",
+    "lordtheeka",
+  ],
+  theekralord: ["loradtheeka", "lordtheepa", "theekra", "lordtheekra"],
+  ashh: ["ash", "mohsin", "ashhmm"],
+  chessman: ["spoderman"],
+  fearless: ["lundplayer"],
+  hades7: ["barwa", "hades"],
 };
 
 function parseDuration(value: string | null | undefined) {
@@ -431,20 +442,28 @@ function resolvePlayer(
     discordName?: string | null;
     teamId?: string | null;
   }[],
+  teamId?: string | null,
 ) {
   const want = norm(name);
   if (!want) return null;
-  return (
-    players.find((p) => playerLabels(p).includes(want)) ??
-    players.find((p) => {
-      if (want.length < 4) return false;
-      return playerLabels(p).some((have) => {
-        if (have.length < 4) return false;
-        return have.includes(want) || want.includes(have);
-      });
-    }) ??
-    null
-  );
+  const teamPool = teamId
+    ? players.filter((p) => p.teamId === teamId)
+    : players;
+
+  const exact = (list: typeof players) =>
+    list.find((p) => playerLabels(p).includes(want));
+  const fuzzy = (list: typeof players) =>
+    list.find((p) =>
+      playerLabels(p).some((have) => {
+        if (want.length < 5 || have.length < 5) return false;
+        const shorter = want.length <= have.length ? want : have;
+        const longer = want.length <= have.length ? have : want;
+        if (shorter.length / longer.length < 0.7) return false;
+        return longer.includes(shorter);
+      }),
+    );
+
+  return exact(teamPool) ?? fuzzy(teamPool) ?? exact(players) ?? null;
 }
 
 function fillFromTeamRoster<
@@ -575,20 +594,20 @@ export async function applyParsedScoreboard(
       ? "dire"
       : "radiant");
 
-  const rows = parsed.players.map((row, index) => {
+  const rows = parsed.players.map((row) => {
     const hero = resolveHero(row.hero, heroes);
-    const mapped = resolvePlayer(row.name, registered);
-    const prior =
-      existing?.players.filter((p) => p.side === row.side)[
-        parsed.players.filter((p, i) => p.side === row.side && i < index).length
-      ] ?? null;
+    const mapped = resolvePlayer(
+      row.name,
+      registered,
+      row.side === "dire" ? direTeam?.id : radiantTeam?.id,
+    );
     const items = row.items
       .map((label) => resolveItem(label, itemList))
       .filter((item): item is ScoreboardItem => Boolean(item));
     return {
-      steam32: mapped?.steam32 ?? prior?.steam32 ?? 0,
-      playerId: mapped?.id ?? prior?.playerId ?? null,
-      unknown: !(mapped || (prior && !prior.unknown)),
+      steam32: mapped?.steam32 ?? 0,
+      playerId: mapped?.id ?? null,
+      unknown: !mapped,
       boardName: row.name,
       side: row.side,
       hero: hero?.name ?? row.hero,
