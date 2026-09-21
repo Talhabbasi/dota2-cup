@@ -5,52 +5,11 @@ import { pickemSlots, type PickemSlotView } from "@/lib/prediction-bracket";
 import type { InternationalPickemView } from "@/lib/predictions";
 import type { BracketSlot } from "@/lib/playoff-tree";
 
-const LANE_GROUPS: {
-  label: string;
-  note: string;
-  slots: BracketSlot[];
-}[] = [
-  {
-    label: "Upper bracket",
-    note: "10 pts each",
-    slots: ["ub1", "ub2", "uf"],
-  },
-  {
-    label: "Lower bracket",
-    note: "10 pts each",
-    slots: ["lb1", "lb2", "lb3", "lb_final"],
-  },
-  {
-    label: "Grand Final",
-    note: "50 pts",
-    slots: ["final"],
-  },
-];
-
 function node(slots: PickemSlotView[], slot: BracketSlot) {
   return slots.find((row) => row.slotKey === slot) ?? null;
 }
 
-function cardNote(match: PickemSlotView, canPick: boolean) {
-  const ready = Boolean(match.left && match.right);
-  if (match.completed) {
-    if (!match.myPickId) return "No pick";
-    if (match.myPickId === match.winnerTeamId) {
-      return `Correct · +${match.points}`;
-    }
-    return "Missed";
-  }
-  if (match.locked) {
-    return match.myPickId ? "Locked in" : "Locked · no pick";
-  }
-  if (!ready) return match.waiting;
-  if (!canPick) return "";
-  return match.myPickId
-    ? "Picked · save when you are done"
-    : "Tap a team, then Save predictions";
-}
-
-function SlotCard({
+function SlotNode({
   match,
   canPick,
   saving,
@@ -62,23 +21,23 @@ function SlotCard({
   onPick: (slotKey: string, teamId: string) => void;
 }) {
   const ready = Boolean(match.left && match.right);
-  const series = `BO${match.bestOf}`;
   return (
-    <article className="weekend-card pred-card">
-      <div className="weekend-card-head">
-        <span className="weekend-day">
-          {match.matchNumber != null ? `M${match.matchNumber} · ` : ""}
+    <article
+      className={[
+        "ti-node",
+        match.completed ? "ti-node-done" : "",
+        match.locked ? "ti-node-locked" : "",
+        ready && !match.locked && !match.completed ? "ti-node-open" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
+      <div className="ti-node-head">
+        <span>
+          {match.matchNumber != null ? `M${match.matchNumber}` : "M"} ·{" "}
           {match.round}
         </span>
-        <span
-          className={
-            match.completed
-              ? "weekend-status weekend-status-won"
-              : match.locked
-                ? "weekend-status"
-                : "weekend-status weekend-status-next"
-          }
-        >
+        <span>
           {match.completed
             ? "Done"
             : match.locked
@@ -86,42 +45,40 @@ function SlotCard({
               : `${match.points} pts`}
         </span>
       </div>
-      <p className="weekend-pkt">
-        {series} · Winner to {match.winnerGoes} · Loser to {match.loserGoes}
-      </p>
-      <div className="pred-picks">
-        {([match.left, match.right] as const).map((team, index) => {
-          const fallback = index === 0 ? match.leftLabel : match.rightLabel;
-          const selected = Boolean(team && match.myPickId === team.id);
-          const correct =
-            match.completed && selected && match.winnerTeamId === team?.id;
-          const missed =
-            match.completed && selected && match.winnerTeamId !== team?.id;
-          const winner = match.completed && match.winnerTeamId === team?.id;
-          return (
-            <button
-              key={team?.id ?? fallback}
-              type="button"
-              className={[
-                "pred-pick",
-                selected ? "pred-pick-on" : "",
-                correct ? "pred-pick-correct" : "",
-                missed ? "pred-pick-miss" : "",
-                winner ? "pred-pick-winner" : "",
-              ]
-                .filter(Boolean)
-                .join(" ")}
-              disabled={!canPick || match.locked || saving || !ready || !team}
-              onClick={
-                team ? () => onPick(match.slotKey, team.id) : undefined
-              }
-            >
-              {team?.name ?? fallback}
-            </button>
-          );
-        })}
-      </div>
-      <p className="pred-card-note">{cardNote(match, canPick)}</p>
+      {([match.left, match.right] as const).map((team, index) => {
+        const fallback = index === 0 ? match.leftLabel : match.rightLabel;
+        const selected = Boolean(team && match.myPickId === team.id);
+        const correct =
+          match.completed && selected && match.winnerTeamId === team?.id;
+        const missed =
+          match.completed && selected && match.winnerTeamId !== team?.id;
+        const winner = match.completed && match.winnerTeamId === team?.id;
+        return (
+          <button
+            key={team?.id ?? fallback}
+            type="button"
+            className={[
+              "ti-side",
+              selected ? "ti-side-on" : "",
+              correct ? "ti-side-correct" : "",
+              missed ? "ti-side-miss" : "",
+              winner ? "ti-side-winner" : "",
+              !team ? "ti-side-tbd" : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
+            disabled={!canPick || match.locked || saving || !ready || !team}
+            onClick={team ? () => onPick(match.slotKey, team.id) : undefined}
+          >
+            <span className="ti-side-name">{team?.name ?? fallback}</span>
+            {selected ? (
+              <span className="ti-side-mark" aria-hidden>
+                ▶
+              </span>
+            ) : null}
+          </button>
+        );
+      })}
     </article>
   );
 }
@@ -160,35 +117,59 @@ export function InternationalBracket({
     );
   }
 
+  const card = (slot: BracketSlot) => {
+    const match = node(slots, slot);
+    return match ? (
+      <SlotNode
+        match={match}
+        canPick={canPick}
+        saving={saving}
+        onPick={onPick}
+      />
+    ) : null;
+  };
+
   return (
-    <div className="pred-board">
-      {LANE_GROUPS.map((lane) => {
-        const matches = lane.slots
-          .map((slot) => node(slots, slot))
-          .filter((row): row is PickemSlotView => Boolean(row));
-        if (matches.length === 0) return null;
-        return (
-          <section key={lane.label} className="weekend-schedule">
-            <div className="weekend-board">
-              <div className="section-head row">
-                <h2>{lane.label}</h2>
-                <span className="muted">{lane.note}</span>
+    <div className="playoff-graph-wrap ti-pickem-wrap">
+      <p className="pg-hint muted">
+        Tap a winner to send them forward — same as Dota 2 Pick’em. Winners
+        move right. Losers drop to Lower. Later matches fill in as you pick.
+      </p>
+      <div className="playoff-graph-scroll">
+        <div
+          className="playoff-graph ti-pickem"
+          role="img"
+          aria-label="International pick’em bracket"
+        >
+          <div className="ti-pickem-lanes">
+            <div className="pg-lane pg-lane-upper">
+              <span className="pg-lane-label">Upper</span>
+              <div className="pg-stack">
+                {card("ub1")}
+                {card("ub2")}
               </div>
-              <div className="weekend-grid schedule-grid pred-grid">
-                {matches.map((match) => (
-                  <SlotCard
-                    key={match.slotKey}
-                    match={match}
-                    canPick={canPick}
-                    saving={saving}
-                    onPick={onPick}
-                  />
-                ))}
+              <div className="pg-fork" aria-hidden>
+                <span />
               </div>
+              {card("uf")}
             </div>
-          </section>
-        );
-      })}
+            <div className="pg-lane pg-lane-lower">
+              <span className="pg-lane-label">Lower</span>
+              <div className="pg-stack">
+                {card("lb1")}
+                {card("lb2")}
+              </div>
+              <div className="pg-fork" aria-hidden>
+                <span />
+              </div>
+              {card("lb3")}
+              <div className="pg-line" aria-hidden />
+              {card("lb_final")}
+            </div>
+          </div>
+          <div className="ti-gf">{card("final")}</div>
+        </div>
+      </div>
     </div>
   );
 }

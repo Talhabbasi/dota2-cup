@@ -4,7 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { InternationalBracket } from "@/components/international-bracket";
 import { PredictionBoard } from "@/components/prediction-board";
-import { isBracketSlot } from "@/lib/playoff-tree";
+import { BRACKET_SLOTS, isBracketSlot } from "@/lib/playoff-tree";
+import {
+  pickMapFrom,
+  resolvedBracketPicks,
+} from "@/lib/prediction-bracket";
 import type { InternationalPickemView, PredictionStageView } from "@/lib/predictions";
 
 export function PredictionStageTabs({
@@ -27,19 +31,36 @@ export function PredictionStageTabs({
   const [justSaved, setJustSaved] = useState(false);
   const groupOpen = tab === "group";
 
-  const livePicks = useMemo(
-    () => ({ ...pickem.savedPicks, ...committed, ...drafts }),
-    [pickem.savedPicks, committed, drafts],
-  );
-  const dirtyPicks = useMemo(
+  const livePicks = useMemo(() => {
+    const merged = { ...pickem.savedPicks, ...committed, ...drafts };
+    if (!pickem.seeds) return merged;
+    const slotPicks = pickMapFrom(
+      resolvedBracketPicks(pickem.seeds, pickem.actual, merged),
+    );
+    const groupPicks: Record<string, string> = {};
+    for (const [key, value] of Object.entries(merged)) {
+      if (!isBracketSlot(key)) groupPicks[key] = value;
+    }
+    return { ...groupPicks, ...slotPicks };
+  }, [pickem.savedPicks, pickem.seeds, pickem.actual, committed, drafts]);
+  const groupDirty = useMemo(
     () =>
-      Object.entries(drafts).map(([fixtureId, teamId]) => ({
-        fixtureId,
-        teamId,
-      })),
+      Object.entries(drafts)
+        .filter(([fixtureId]) => !isBracketSlot(fixtureId))
+        .map(([fixtureId, teamId]) => ({ fixtureId, teamId })),
     [drafts],
   );
-  const dirtyCount = dirtyPicks.length;
+  const slotDirty = BRACKET_SLOTS.some(
+    (slot) => (livePicks[slot] ?? null) !== (pickem.savedPicks[slot] ?? null),
+  );
+  const dirtyCount =
+    groupDirty.length +
+    (slotDirty
+      ? BRACKET_SLOTS.filter(
+          (slot) =>
+            (livePicks[slot] ?? null) !== (pickem.savedPicks[slot] ?? null),
+        ).length
+      : 0);
 
   useEffect(() => {
     if (dirtyCount === 0) return;
@@ -77,11 +98,14 @@ export function PredictionStageTabs({
 
   async function savePicks() {
     if (!canPick || dirtyCount === 0 || saving) return;
-    const snapshot = drafts;
-    const slots = dirtyPicks
-      .filter((row) => isBracketSlot(row.fixtureId))
-      .map((row) => ({ slotKey: row.fixtureId, teamId: row.teamId }));
-    const picks = dirtyPicks.filter((row) => !isBracketSlot(row.fixtureId));
+    const snapshot = { ...livePicks };
+    const slots = slotDirty
+      ? BRACKET_SLOTS.flatMap((slot) => {
+          const teamId = livePicks[slot];
+          return teamId ? [{ slotKey: slot, teamId }] : [];
+        })
+      : [];
+    const picks = groupDirty;
     setSaving(true);
     setError(null);
     setJustSaved(false);
@@ -178,7 +202,7 @@ export function PredictionStageTabs({
           <div className="section-head row">
             <h2>The International</h2>
             <span className="muted">
-              {pickem.lockLabel ?? "Upper · lower · grand final"}
+              {pickem.lockLabel ?? "Winners move right · losers drop down"}
             </span>
           </div>
           {pickem.unlocked ? (

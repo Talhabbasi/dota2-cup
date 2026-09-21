@@ -318,8 +318,13 @@ export async function saveBracketPicks(
     throw new Error("Pick a winner in an open bracket match.");
   }
 
-  await prisma.$transaction(
-    resolved.map((row) =>
+  const keep = new Set<string>([
+    ...resolved.map((row) => row.slotKey),
+    ...lockedSlots,
+  ]);
+
+  await prisma.$transaction([
+    ...resolved.map((row) =>
       prisma.bracketPick.upsert({
         where: {
           playerId_seasonId_slotKey: {
@@ -337,7 +342,14 @@ export async function saveBracketPicks(
         update: { predictedTeamId: row.teamId },
       }),
     ),
-  );
+    prisma.bracketPick.deleteMany({
+      where: {
+        playerId,
+        seasonId,
+        slotKey: { notIn: [...keep] },
+      },
+    }),
+  ]);
 
   return { saved: resolved.length };
 }

@@ -39,9 +39,9 @@ export default async function PredictionsPage() {
           <h1>Predictions</h1>
           <p className="muted auction-hero-copy">
             Group stage: {PREDICTION_POINTS} points per correct pick, locked
-            Saturday at 10:45 PM PKT. The International uses the same cards —
-            pick the opening matches, then send winners and losers through the
-            tree. Grand Final is {FINAL_PREDICTION_POINTS} points.
+            Saturday at 10:45 PM PKT. The International is a Dota 2 Pick’em
+            tree — tap a winner to send them forward, losers drop to Lower.
+            Grand Final is {FINAL_PREDICTION_POINTS} points.
           </p>
           <div className="teams-list-hero-pills">
             {season ? (
