@@ -39,10 +39,9 @@ export default async function PredictionsPage() {
           <h1>Predictions</h1>
           <p className="muted auction-hero-copy">
             Group stage: {PREDICTION_POINTS} points per correct pick, locked
-            Saturday at 10:45 PM PKT. The International is a fill-in bracket —
-            pick the opening upper and lower matches, then send winners and
-            losers through the tree. Grand Final is {FINAL_PREDICTION_POINTS}{" "}
-            points. The points board is name → points.
+            Saturday at 10:45 PM PKT. The International uses the same cards —
+            pick the opening matches, then send winners and losers through the
+            tree. Grand Final is {FINAL_PREDICTION_POINTS} points.
           </p>
           <div className="teams-list-hero-pills">
             {season ? (
@@ -104,7 +103,7 @@ export default async function PredictionsPage() {
           <>
             <div className="section-head row">
               <h2>Points board</h2>
-              <span className="muted">name → points</span>
+              <span className="muted">Ranked by points</span>
             </div>
             <PredictionLeaderboard rows={board.rows} />
           </>
@@ -116,7 +115,7 @@ export default async function PredictionsPage() {
                 Names and points after group stage
               </span>
             </div>
-            <div className="empty-panel teams-list-empty pred-count-panel">
+            <div className="pred-points-board pred-count-panel">
               <p className="pred-count-num">{board.playerCount}</p>
               <p style={{ margin: 0 }}>
                 {board.playerCount === 1
@@ -124,8 +123,8 @@ export default async function PredictionsPage() {
                   : "players have predicted"}
               </p>
               <p className="muted" style={{ margin: "0.55rem 0 0" }}>
-                The points board with names opens when every group-stage match
-                is done.
+                Names and scores open on this board when every group-stage
+                match is done.
               </p>
             </div>
           </>

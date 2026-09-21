@@ -5,47 +5,49 @@ import { pickemSlots, type PickemSlotView } from "@/lib/prediction-bracket";
 import type { InternationalPickemView } from "@/lib/predictions";
 import type { BracketSlot } from "@/lib/playoff-tree";
 
+const LANE_GROUPS: {
+  label: string;
+  note: string;
+  slots: BracketSlot[];
+}[] = [
+  {
+    label: "Upper bracket",
+    note: "10 pts each",
+    slots: ["ub1", "ub2", "uf"],
+  },
+  {
+    label: "Lower bracket",
+    note: "10 pts each",
+    slots: ["lb1", "lb2", "lb3", "lb_final"],
+  },
+  {
+    label: "Grand Final",
+    note: "50 pts",
+    slots: ["final"],
+  },
+];
+
 function node(slots: PickemSlotView[], slot: BracketSlot) {
   return slots.find((row) => row.slotKey === slot) ?? null;
 }
 
-function PickButton({
-  team,
-  fallback,
-  selected,
-  correct,
-  missed,
-  winner,
-  disabled,
-  onPick,
-}: {
-  team: { id: string; name: string } | null;
-  fallback: string;
-  selected: boolean;
-  correct: boolean;
-  missed: boolean;
-  winner: boolean;
-  disabled: boolean;
-  onPick?: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      className={[
-        "pred-pick",
-        selected ? "pred-pick-on" : "",
-        correct ? "pred-pick-correct" : "",
-        missed ? "pred-pick-miss" : "",
-        winner ? "pred-pick-winner" : "",
-      ]
-        .filter(Boolean)
-        .join(" ")}
-      disabled={disabled || !team}
-      onClick={onPick}
-    >
-      {team?.name ?? fallback}
-    </button>
-  );
+function cardNote(match: PickemSlotView, canPick: boolean) {
+  const ready = Boolean(match.left && match.right);
+  if (match.completed) {
+    if (!match.myPickId) return "No pick";
+    if (match.myPickId === match.winnerTeamId) {
+      return `Correct · +${match.points}`;
+    }
+    return "Missed";
+  }
+  if (match.locked) {
+    return match.myPickId ? "Locked in" : "Locked · no pick";
+  }
+  if (!ready) return match.waiting;
+  if (!canPick) return "";
+  return match.myPickId
+    ? "Picked · save when you are done"
+    : "Tap a team, then Save predictions";
 }
 
 function SlotCard({
@@ -60,18 +62,32 @@ function SlotCard({
   onPick: (slotKey: string, teamId: string) => void;
 }) {
   const ready = Boolean(match.left && match.right);
+  const series = `BO${match.bestOf}`;
   return (
-    <article
-      className={`pg-node pg-node-${match.completed ? "completed" : match.locked ? "waiting" : "upcoming"} ti-slot`}
-    >
-      <div className="pg-node-head">
-        <span>
-          {match.matchNumber != null ? `M${match.matchNumber}` : "M"} · {match.round}
+    <article className="weekend-card pred-card">
+      <div className="weekend-card-head">
+        <span className="weekend-day">
+          {match.matchNumber != null ? `M${match.matchNumber} · ` : ""}
+          {match.round}
         </span>
-        <span>{match.completed ? "Done" : match.locked ? "Locked" : `${match.points} pts`}</span>
+        <span
+          className={
+            match.completed
+              ? "weekend-status weekend-status-won"
+              : match.locked
+                ? "weekend-status"
+                : "weekend-status weekend-status-next"
+          }
+        >
+          {match.completed
+            ? "Done"
+            : match.locked
+              ? "Locked"
+              : `${match.points} pts`}
+        </span>
       </div>
-      <p className="ti-slot-note muted">
-        Winner → {match.winnerGoes} · Loser → {match.loserGoes}
+      <p className="weekend-pkt">
+        {series} · Winner to {match.winnerGoes} · Loser to {match.loserGoes}
       </p>
       <div className="pred-picks">
         {([match.left, match.right] as const).map((team, index) => {
@@ -83,23 +99,29 @@ function SlotCard({
             match.completed && selected && match.winnerTeamId !== team?.id;
           const winner = match.completed && match.winnerTeamId === team?.id;
           return (
-            <PickButton
+            <button
               key={team?.id ?? fallback}
-              team={team}
-              fallback={fallback}
-              selected={selected}
-              correct={correct}
-              missed={missed}
-              winner={Boolean(winner)}
-              disabled={!canPick || match.locked || saving || !ready}
-              onPick={
+              type="button"
+              className={[
+                "pred-pick",
+                selected ? "pred-pick-on" : "",
+                correct ? "pred-pick-correct" : "",
+                missed ? "pred-pick-miss" : "",
+                winner ? "pred-pick-winner" : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
+              disabled={!canPick || match.locked || saving || !ready || !team}
+              onClick={
                 team ? () => onPick(match.slotKey, team.id) : undefined
               }
-            />
+            >
+              {team?.name ?? fallback}
+            </button>
           );
         })}
       </div>
-      {!ready ? <p className="pg-when muted">{match.waiting}</p> : null}
+      <p className="pred-card-note">{cardNote(match, canPick)}</p>
     </article>
   );
 }
@@ -108,26 +130,25 @@ export function InternationalBracket({
   view,
   canPick,
   saving,
-  drafts,
+  picks,
   onPick,
 }: {
   view: InternationalPickemView;
   canPick: boolean;
   saving: boolean;
-  drafts: Record<string, string>;
+  picks: Partial<Record<string, string>>;
   onPick: (slotKey: string, teamId: string) => void;
 }) {
   const slots = useMemo(() => {
     if (!view.seeds) return view.slots;
-    const picks = { ...view.savedPicks, ...drafts };
     return pickemSlots(
       view.seeds,
       view.actual,
-      picks,
+      picks as Partial<Record<BracketSlot, string>>,
       new Set(view.lockedSlots),
       view.treeLocked,
     );
-  }, [view, drafts]);
+  }, [view, picks]);
 
   if (!view.unlocked) {
     return (
@@ -139,49 +160,35 @@ export function InternationalBracket({
     );
   }
 
-  const card = (slot: BracketSlot) => {
-    const match = node(slots, slot);
-    return match ? (
-      <SlotCard
-        match={match}
-        canPick={canPick}
-        saving={saving}
-        onPick={onPick}
-      />
-    ) : null;
-  };
-
   return (
-    <div className="playoff-graph-scroll">
-      <div className="playoff-graph ti-pickem" role="img" aria-label="International prediction bracket">
-        <div className="pg-lane pg-lane-upper">
-          <span className="pg-lane-label">Upper</span>
-          <div className="pg-stack">
-            {card("ub1")}
-            {card("ub2")}
-          </div>
-          <div className="pg-fork" aria-hidden>
-            <span />
-          </div>
-          {card("uf")}
-          <div className="pg-line" aria-hidden />
-          {card("final")}
-        </div>
-        <div className="pg-lane pg-lane-lower">
-          <span className="pg-lane-label">Lower</span>
-          <div className="pg-stack">
-            {card("lb1")}
-            {card("lb2")}
-          </div>
-          <div className="pg-fork" aria-hidden>
-            <span />
-          </div>
-          {card("lb3")}
-          <div className="pg-line" aria-hidden />
-          {card("lb_final")}
-          <div className="pg-rise" aria-hidden />
-        </div>
-      </div>
+    <div className="pred-board">
+      {LANE_GROUPS.map((lane) => {
+        const matches = lane.slots
+          .map((slot) => node(slots, slot))
+          .filter((row): row is PickemSlotView => Boolean(row));
+        if (matches.length === 0) return null;
+        return (
+          <section key={lane.label} className="weekend-schedule">
+            <div className="weekend-board">
+              <div className="section-head row">
+                <h2>{lane.label}</h2>
+                <span className="muted">{lane.note}</span>
+              </div>
+              <div className="weekend-grid schedule-grid pred-grid">
+                {matches.map((match) => (
+                  <SlotCard
+                    key={match.slotKey}
+                    match={match}
+                    canPick={canPick}
+                    saving={saving}
+                    onPick={onPick}
+                  />
+                ))}
+              </div>
+            </div>
+          </section>
+        );
+      })}
     </div>
   );
 }

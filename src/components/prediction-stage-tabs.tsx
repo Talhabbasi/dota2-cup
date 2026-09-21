@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { InternationalBracket } from "@/components/international-bracket";
 import { PredictionBoard } from "@/components/prediction-board";
+import { isBracketSlot } from "@/lib/playoff-tree";
 import type { InternationalPickemView, PredictionStageView } from "@/lib/predictions";
 
 export function PredictionStageTabs({
@@ -14,6 +16,7 @@ export function PredictionStageTabs({
   pickem: InternationalPickemView;
   canPick: boolean;
 }) {
+  const router = useRouter();
   const [tab, setTab] = useState<"group" | "international">(
     group.stageLocked && pickem.unlocked ? "international" : "group",
   );
@@ -24,6 +27,10 @@ export function PredictionStageTabs({
   const [justSaved, setJustSaved] = useState(false);
   const groupOpen = tab === "group";
 
+  const livePicks = useMemo(
+    () => ({ ...pickem.savedPicks, ...committed, ...drafts }),
+    [pickem.savedPicks, committed, drafts],
+  );
   const dirtyPicks = useMemo(
     () =>
       Object.entries(drafts).map(([fixtureId, teamId]) => ({
@@ -70,6 +77,11 @@ export function PredictionStageTabs({
 
   async function savePicks() {
     if (!canPick || dirtyCount === 0 || saving) return;
+    const snapshot = drafts;
+    const slots = dirtyPicks
+      .filter((row) => isBracketSlot(row.fixtureId))
+      .map((row) => ({ slotKey: row.fixtureId, teamId: row.teamId }));
+    const picks = dirtyPicks.filter((row) => !isBracketSlot(row.fixtureId));
     setSaving(true);
     setError(null);
     setJustSaved(false);
@@ -77,25 +89,20 @@ export function PredictionStageTabs({
       const res = await fetch("/api/predictions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(
-          tab === "international"
-            ? {
-                slots: dirtyPicks.map((row) => ({
-                  slotKey: row.fixtureId,
-                  teamId: row.teamId,
-                })),
-              }
-            : { picks: dirtyPicks },
-        ),
+        body: JSON.stringify({
+          ...(picks.length > 0 ? { picks } : {}),
+          ...(slots.length > 0 ? { slots } : {}),
+        }),
       });
       const data = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) {
         setError(data.error ?? "Could not save those picks.");
         return;
       }
-      setCommitted((prev) => ({ ...prev, ...drafts }));
+      setCommitted((prev) => ({ ...prev, ...snapshot }));
       setDrafts({});
       setJustSaved(true);
+      router.refresh();
     } catch {
       setError("Could not save those picks.");
     } finally {
@@ -179,9 +186,15 @@ export function PredictionStageTabs({
               view={pickem}
               canPick={canPick}
               saving={saving}
-              drafts={drafts}
+              picks={livePicks}
               onPick={(slotKey, teamId) =>
-                onPick(slotKey, teamId, pickem.savedPicks[slotKey as keyof typeof pickem.savedPicks] ?? null)
+                onPick(
+                  slotKey,
+                  teamId,
+                  (isBracketSlot(slotKey)
+                    ? pickem.savedPicks[slotKey]
+                    : undefined) ?? null,
+                )
               }
             />
           ) : (

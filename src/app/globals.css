@@ -5548,6 +5548,7 @@ tr:last-child td {
 
 .pred-count-panel {
   text-align: center;
+  padding: 1.6rem 1.2rem;
 }
 
 .pred-count-num {
@@ -5740,26 +5741,55 @@ tr:last-child td {
   color: var(--gold);
 }
 
+.pred-points-board {
+  padding: 1.1rem 1.15rem 1.15rem;
+  border-radius: 24px;
+  border: 1px solid rgba(224, 179, 74, 0.18);
+  background:
+    radial-gradient(720px 220px at 100% 0%, rgba(224, 179, 74, 0.1), transparent 55%),
+    linear-gradient(180deg, #181c26 0%, #12151c 100%);
+  box-shadow: var(--shadow);
+}
+
+.pred-points-head {
+  display: grid;
+  grid-template-columns: 2.2rem minmax(0, 1fr) 4.2rem;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0 0.7rem 0.55rem;
+  font-family: var(--font-oxanium), sans-serif;
+  font-size: 0.65rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.pred-points-head span:last-child {
+  text-align: right;
+}
+
 .pred-points-list {
   list-style: none;
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 0.35rem;
+  gap: 0.45rem;
 }
 
 .pred-points-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  gap: 0.65rem;
-  align-items: baseline;
-  padding: 0.45rem 0;
-  border-bottom: 1px solid rgba(228, 182, 92, 0.12);
-  font-size: 1.02rem;
+  grid-template-columns: 2.2rem minmax(0, 1fr) 4.2rem;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.7rem 0.7rem;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  background: rgba(8, 10, 14, 0.45);
 }
 
 .pred-points-you {
-  color: var(--gold);
+  border-color: rgba(228, 182, 92, 0.45);
+  background: rgba(228, 182, 92, 0.12);
 }
 
 .pred-points-name {
@@ -5767,27 +5797,16 @@ tr:last-child td {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.pred-points-arrow {
-  color: var(--muted);
-}
-
-.pred-points-value {
-  font-variant-numeric: tabular-nums;
-  min-width: 2.5rem;
-  text-align: right;
-}
-
-.ti-slot {
+  display: flex;
+  align-items: center;
   min-width: 0;
 }
 
-.ti-slot-note {
-  margin: 0 0 0.45rem;
-  font-size: 0.72rem;
-}
-
-.ti-pickem .pred-picks {
-  margin-top: 0.2rem;
+.pred-points-value {
+  font-family: var(--font-oxanium), sans-serif;
+  font-size: 1.15rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--gold);
+  text-align: right;
+  line-height: 1;
 }
