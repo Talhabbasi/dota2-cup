@@ -12,15 +12,6 @@ import {
 import {
   BRACKET_META,
   BRACKET_SLOTS,
-  type BracketSlot,
-  type GroupSeeds,
-  type NamedTeam,
-  type SlotResult,
-} from "./playoff-tree";
-
-export {
-  BRACKET_META,
-  BRACKET_SLOTS,
   PLAYOFF_BOOK_KINDS,
   eliminatedFromSeeds,
   initialPairings,
@@ -35,6 +26,26 @@ export {
   type SlotPairing,
   type SlotResult,
 } from "./playoff-tree";
+
+export {
+  BRACKET_META,
+  BRACKET_SLOTS,
+  PLAYOFF_BOOK_KINDS,
+  eliminatedFromSeeds,
+  initialPairings,
+  isBracketSlot,
+  isPlayoffBookKind,
+  pairingReady,
+  unlockedPairings,
+};
+export type {
+  BracketMeta,
+  BracketSlot,
+  GroupSeeds,
+  NamedTeam,
+  SlotPairing,
+  SlotResult,
+};
 
 export function seedsFromStandings(
   groupA: GroupStandingRow[],
