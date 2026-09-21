@@ -105,8 +105,8 @@ export const CUP_RULES = {
         "8 teams in **2 groups of 4**. Admin: `/playoff groups` then `/schedule groups` (Group A Saturday, Group B Sunday).",
         "Group stage: **single round-robin** — each team plays **3** best-of-1 matches (6 games per group, 12 total).",
         "Fixtures are posted in **#matches** (registered players only) and on the website Schedule page.",
-        "When both groups are done, **4th place in each group is eliminated**. **Group A 3rd vs Group B 3rd** is a **Bo1 Advancement Match** (winner to playoffs, loser out).",
-        "Upper Round 1 is **A1 vs B2** and **B1 vs A2** (Bo1). Losers drop to the lower bracket. The Advancement winner enters Lower Round 1.",
+        "When both groups are done, **4th place in each group is eliminated**. **3rd place does not play each other.** Group A 3rd waits for the loser of **A1 vs B2**. Group B 3rd waits for the loser of **B1 vs A2**.",
+        "Upper Round 1 is **A1 vs B2** and **B1 vs A2** (Bo1). Those losers drop into Lower Round 1 against the waiting 3rd-place teams. The two Lower Round 1 winners play, then the Upper Final loser.",
         "Upper Final and Lower Final are Bo1. The **Grand Final is Bo3**.",
         `Every series is **best of ${REGULAR_BEST_OF}** except the grand final (**best of ${FINAL_BEST_OF}**, first to 2).`,
         "Playoff matches are Saturday or Sunday only, **10:00 AM–3:00 AM PKT**. Group-stage nights stay **10:00 PM–6:00 AM PKT**.",
@@ -264,7 +264,7 @@ export function getChannelGuides(): { channelName: ChannelGuideName; embed: Embe
         [
           "Group A plays Saturday, Group B plays Sunday. Every group match is **Bo1**.",
           "Each team plays **3** group games (6 per group, 12 total).",
-          "After groups: 4th out, 3rd-place Advancement Match (Bo1), then upper/lower playoffs. Grand Final **Bo3**.",
+          "After groups: 4th out. 3rd in each group waits for a crossover loser (A3 vs A1–B2 loser, B3 vs B1–A2 loser), then upper/lower playoffs. Grand Final **Bo3**.",
           "Kickoffs: group stage **10:00 PM–4:00 AM PKT**; playoffs **Saturday/Sunday 10:00 AM–3:00 AM PKT**.",
           "Same fixtures on the website **Schedule** and **Playoffs** pages.",
           "Admin: `/schedule groups` to book the grid, `/playoff open` after groups, `/schedule edit` to move a match.",
@@ -276,7 +276,7 @@ export function getChannelGuides(): { channelName: ChannelGuideName; embed: Embe
       channelName: "schedule",
       embed: guideEmbed(
         "#schedule — Fixtures & match times",
-        "8 teams, 2 groups, then a 5-team double-elimination playoff.",
+        "8 teams, 2 groups, then a 6-team double-elimination playoff.",
         [
           "Everyone: `/playoff status` or `/schedule list`.",
           "Admin: `/schedule groups` books the 12-match group round-robin (posts in **#matches**).",

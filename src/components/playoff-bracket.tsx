@@ -132,8 +132,9 @@ export function PlayoffBracket({ view }: { view: PlayoffView }) {
       {!view.groupStageComplete ? (
         <p className="muted playoff-later">
           Playoffs unlock after every Group A and Group B match is completed.
-          4th place is eliminated. Group A 3rd plays Group B 3rd in a Bo1
-          Advancement Match. See the <Link href="/schedule">schedule</Link>.
+          4th place is eliminated. Each 3rd-place team waits for a crossover
+          loser: A3 vs the A1–B2 loser, B3 vs the B1–A2 loser. See the{" "}
+          <Link href="/schedule">schedule</Link>.
         </p>
       ) : view.eliminated.length > 0 ? (
         <p className="playoff-elim-banner">
@@ -144,21 +145,15 @@ export function PlayoffBracket({ view }: { view: PlayoffView }) {
 
       <div className="playoff-rounds">
         <Round
-          title="Advancement Match"
-          note="Group A 3rd vs Group B 3rd. Bo1. Winner joins the playoffs; loser is eliminated."
-          slots={["adv"]}
-          matches={view.matches}
-        />
-        <Round
           title="Upper Bracket"
-          note="Match 1: Group A 1st vs Group B 2nd. Match 2: Group B 1st vs Group A 2nd. Both Bo1."
+          note="Match 1: Group A 1st vs Group B 2nd. Match 2: Group B 1st vs Group A 2nd. Both Bo1. Losers drop to Lower Round 1."
           slots={["ub1", "ub2", "uf"]}
           matches={view.matches}
         />
         <Round
           title="Lower Bracket"
-          note="Match 3 puts the Advancement winner against the Match 1 loser. All Bo1."
-          slots={["lb1", "lb2", "lb_final"]}
+          note="Group A 3rd waits for the Match 1 loser. Group B 3rd waits for the Match 2 loser. Those winners play, then the Upper Final loser. All Bo1."
+          slots={["lb1", "lb2", "lb3", "lb_final"]}
           matches={view.matches}
         />
         <Round

@@ -9,193 +9,32 @@ import {
   groupStageComplete,
   type GroupStandingRow,
 } from "./group-stage-schedule";
+import {
+  BRACKET_META,
+  BRACKET_SLOTS,
+  type BracketSlot,
+  type GroupSeeds,
+  type NamedTeam,
+  type SlotResult,
+} from "./playoff-tree";
 
-export const BRACKET_SLOTS = [
-  "adv",
-  "ub1",
-  "ub2",
-  "lb1",
-  "lb2",
-  "uf",
-  "lb_final",
-  "final",
-] as const;
-
-export type BracketSlot = (typeof BRACKET_SLOTS)[number];
-
-export const PLAYOFF_BOOK_KINDS = [
-  "adv",
-  "ub",
-  "ub_final",
-  "lb",
-  "lb_final",
-  "final",
-] as const;
-
-export type NamedTeam = { id: string; name: string };
-
-export type GroupSeeds = {
-  a1: NamedTeam;
-  a2: NamedTeam;
-  a3: NamedTeam;
-  a4: NamedTeam;
-  b1: NamedTeam;
-  b2: NamedTeam;
-  b3: NamedTeam;
-  b4: NamedTeam;
-};
-
-export type SlotResult = {
-  winner: NamedTeam;
-  loser: NamedTeam;
-};
-
-export type SlotPairing = {
-  left: NamedTeam | null;
-  right: NamedTeam | null;
-  leftLabel: string;
-  rightLabel: string;
-};
-
-export type BracketMeta = {
-  slotKey: BracketSlot;
-  kind: (typeof PLAYOFF_BOOK_KINDS)[number];
-  matchNumber: number | null;
-  bestOf: number;
-  label: string;
-  stage: "advancement" | "upper" | "lower" | "grand";
-  round: string;
-  leftLabel: string;
-  rightLabel: string;
-  waiting: string;
-  winnerGoes: string;
-  loserGoes: string;
-};
-
-export const BRACKET_META: Record<BracketSlot, BracketMeta> = {
-  adv: {
-    slotKey: "adv",
-    kind: "adv",
-    matchNumber: null,
-    bestOf: REGULAR_BEST_OF,
-    label: "Advancement Match",
-    stage: "advancement",
-    round: "Advancement",
-    leftLabel: "Group A 3rd",
-    rightLabel: "Group B 3rd",
-    waiting: "Waiting for Group A and Group B to finish",
-    winnerGoes: "Playoffs · Lower Bracket",
-    loserGoes: "Eliminated",
-  },
-  ub1: {
-    slotKey: "ub1",
-    kind: "ub",
-    matchNumber: 1,
-    bestOf: REGULAR_BEST_OF,
-    label: "Match 1 · Upper Round 1",
-    stage: "upper",
-    round: "Upper Round 1",
-    leftLabel: "Group A 1st",
-    rightLabel: "Group B 2nd",
-    waiting: "Waiting for Group A and Group B to finish",
-    winnerGoes: "Upper Final",
-    loserGoes: "Lower Round 1",
-  },
-  ub2: {
-    slotKey: "ub2",
-    kind: "ub",
-    matchNumber: 2,
-    bestOf: REGULAR_BEST_OF,
-    label: "Match 2 · Upper Round 1",
-    stage: "upper",
-    round: "Upper Round 1",
-    leftLabel: "Group B 1st",
-    rightLabel: "Group A 2nd",
-    waiting: "Waiting for Group A and Group B to finish",
-    winnerGoes: "Upper Final",
-    loserGoes: "Lower Round 2",
-  },
-  lb1: {
-    slotKey: "lb1",
-    kind: "lb",
-    matchNumber: 3,
-    bestOf: REGULAR_BEST_OF,
-    label: "Match 3 · Lower Round 1",
-    stage: "lower",
-    round: "Lower Round 1",
-    leftLabel: "Advancement winner",
-    rightLabel: "Match 1 loser",
-    waiting: "Waiting for the Advancement Match and Upper Round 1 Match 1",
-    winnerGoes: "Lower Round 2",
-    loserGoes: "Eliminated",
-  },
-  lb2: {
-    slotKey: "lb2",
-    kind: "lb",
-    matchNumber: 4,
-    bestOf: REGULAR_BEST_OF,
-    label: "Match 4 · Lower Round 2",
-    stage: "lower",
-    round: "Lower Round 2",
-    leftLabel: "Match 3 winner",
-    rightLabel: "Match 2 loser",
-    waiting: "Waiting for Lower Round 1 and Upper Round 1 Match 2",
-    winnerGoes: "Lower Final",
-    loserGoes: "Eliminated",
-  },
-  uf: {
-    slotKey: "uf",
-    kind: "ub_final",
-    matchNumber: 5,
-    bestOf: REGULAR_BEST_OF,
-    label: "Match 5 · Upper Final",
-    stage: "upper",
-    round: "Upper Final",
-    leftLabel: "Match 1 winner",
-    rightLabel: "Match 2 winner",
-    waiting: "Waiting for both Upper Round 1 matches",
-    winnerGoes: "Grand Final",
-    loserGoes: "Lower Final",
-  },
-  lb_final: {
-    slotKey: "lb_final",
-    kind: "lb_final",
-    matchNumber: 6,
-    bestOf: REGULAR_BEST_OF,
-    label: "Match 6 · Lower Final",
-    stage: "lower",
-    round: "Lower Final",
-    leftLabel: "Match 4 winner",
-    rightLabel: "Upper Final loser",
-    waiting: "Waiting for Lower Round 2 and the Upper Final",
-    winnerGoes: "Grand Final",
-    loserGoes: "Eliminated",
-  },
-  final: {
-    slotKey: "final",
-    kind: "final",
-    matchNumber: 7,
-    bestOf: FINAL_BEST_OF,
-    label: "Match 7 · Grand Final",
-    stage: "grand",
-    round: "Grand Final",
-    leftLabel: "Upper Final winner",
-    rightLabel: "Lower Final winner",
-    waiting: "Waiting for the Upper Final and Lower Final",
-    winnerGoes: "Champion",
-    loserGoes: "Runner-up",
-  },
-};
-
-export function isPlayoffBookKind(kind: string | null | undefined) {
-  return Boolean(
-    kind && (PLAYOFF_BOOK_KINDS as readonly string[]).includes(kind),
-  );
-}
-
-export function isBracketSlot(slotKey: string | null | undefined): slotKey is BracketSlot {
-  return Boolean(slotKey && (BRACKET_SLOTS as readonly string[]).includes(slotKey));
-}
+export {
+  BRACKET_META,
+  BRACKET_SLOTS,
+  PLAYOFF_BOOK_KINDS,
+  eliminatedFromSeeds,
+  initialPairings,
+  isBracketSlot,
+  isPlayoffBookKind,
+  pairingReady,
+  unlockedPairings,
+  type BracketMeta,
+  type BracketSlot,
+  type GroupSeeds,
+  type NamedTeam,
+  type SlotPairing,
+  type SlotResult,
+} from "./playoff-tree";
 
 export function seedsFromStandings(
   groupA: GroupStandingRow[],
@@ -217,98 +56,6 @@ export function seedsFromStandings(
     b3: { id: b[2].id, name: b[2].name },
     b4: { id: b[3].id, name: b[3].name },
   };
-}
-
-export function eliminatedFromSeeds(seeds: GroupSeeds): NamedTeam[] {
-  return [seeds.a4, seeds.b4];
-}
-
-export function initialPairings(seeds: GroupSeeds): Record<
-  "adv" | "ub1" | "ub2",
-  { left: NamedTeam; right: NamedTeam }
-> {
-  return {
-    adv: { left: seeds.a3, right: seeds.b3 },
-    ub1: { left: seeds.a1, right: seeds.b2 },
-    ub2: { left: seeds.b1, right: seeds.a2 },
-  };
-}
-
-export function unlockedPairings(
-  seeds: GroupSeeds | null,
-  results: Partial<Record<BracketSlot, SlotResult>>,
-): Record<BracketSlot, SlotPairing> {
-  const empty = (slot: BracketSlot): SlotPairing => ({
-    left: null,
-    right: null,
-    leftLabel: BRACKET_META[slot].leftLabel,
-    rightLabel: BRACKET_META[slot].rightLabel,
-  });
-
-  const out = Object.fromEntries(
-    BRACKET_SLOTS.map((slot) => [slot, empty(slot)]),
-  ) as Record<BracketSlot, SlotPairing>;
-
-  if (seeds) {
-    const first = initialPairings(seeds);
-    out.adv = {
-      ...out.adv,
-      left: first.adv.left,
-      right: first.adv.right,
-    };
-    out.ub1 = {
-      ...out.ub1,
-      left: first.ub1.left,
-      right: first.ub1.right,
-    };
-    out.ub2 = {
-      ...out.ub2,
-      left: first.ub2.left,
-      right: first.ub2.right,
-    };
-  }
-
-  if (results.adv && results.ub1) {
-    out.lb1 = {
-      ...out.lb1,
-      left: results.adv.winner,
-      right: results.ub1.loser,
-    };
-  }
-  if (results.lb1 && results.ub2) {
-    out.lb2 = {
-      ...out.lb2,
-      left: results.lb1.winner,
-      right: results.ub2.loser,
-    };
-  }
-  if (results.ub1 && results.ub2) {
-    out.uf = {
-      ...out.uf,
-      left: results.ub1.winner,
-      right: results.ub2.winner,
-    };
-  }
-  if (results.lb2 && results.uf) {
-    out.lb_final = {
-      ...out.lb_final,
-      left: results.lb2.winner,
-      right: results.uf.loser,
-    };
-  }
-  if (results.uf && results.lb_final) {
-    out.final = {
-      ...out.final,
-      left: results.uf.winner,
-      right: results.lb_final.winner,
-    };
-  }
-
-  return out;
-}
-
-export function pairingReady(pair: SlotPairing) {
-  return Boolean(pair.left && pair.right);
 }
 
 function teamOf(
@@ -508,7 +255,7 @@ export async function maybeOpenPlayoffsFromGroups() {
   if (!seeds) return { opened: false as const, created: [] as BracketSlot[] };
 
   const bySlot = await fixturesBySlot();
-  if (bySlot.has("adv") && bySlot.has("ub1") && bySlot.has("ub2")) {
+  if (bySlot.has("ub1") && bySlot.has("ub2")) {
     return { opened: false as const, created: [] as BracketSlot[] };
   }
 
@@ -517,7 +264,7 @@ export async function maybeOpenPlayoffsFromGroups() {
   const created: BracketSlot[] = [];
   let cursor = after;
 
-  for (const slot of ["ub1", "ub2", "adv"] as const) {
+  for (const slot of ["ub1", "ub2"] as const) {
     if (bySlot.has(slot)) continue;
     const pair = first[slot];
     const booked = await bookSlot({
@@ -542,7 +289,7 @@ export async function advanceBracket() {
   const pairings = unlockedPairings(seeds, results);
   const created: BracketSlot[] = [];
 
-  const dependents: BracketSlot[] = ["lb1", "lb2", "uf", "lb_final", "final"];
+  const dependents: BracketSlot[] = ["lb1", "lb2", "lb3", "uf", "lb_final", "final"];
   for (const slot of dependents) {
     if (bySlot.has(slot)) continue;
     const pair = pairings[slot];
@@ -550,14 +297,16 @@ export async function advanceBracket() {
     const afterTimes = [await lastGroupKickoff()];
     const prereqSlots: BracketSlot[] =
       slot === "lb1"
-        ? ["adv", "ub1"]
+        ? ["ub1"]
         : slot === "lb2"
-          ? ["lb1", "ub2"]
-          : slot === "uf"
-            ? ["ub1", "ub2"]
-            : slot === "lb_final"
-              ? ["lb2", "uf"]
-              : ["uf", "lb_final"];
+          ? ["ub2"]
+          : slot === "lb3"
+            ? ["lb1", "lb2"]
+            : slot === "uf"
+              ? ["ub1", "ub2"]
+              : slot === "lb_final"
+                ? ["lb3", "uf"]
+                : ["uf", "lb_final"];
     for (const key of prereqSlots) {
       const fixture = bySlot.get(key);
       if (fixture) afterTimes.push(fixture.scheduledAt);
@@ -587,9 +336,9 @@ export async function assertPlayoffMatchAllowed(kind: string) {
   const bySlot = await fixturesBySlot();
   const done = (slot: BracketSlot) => bySlot.get(slot)?.status === "completed";
 
-  if (kind === "lb" && !(done("adv") && done("ub1"))) {
+  if (kind === "lb" && !(done("ub1") || done("ub2"))) {
     throw new Error(
-      "Lower bracket Match 3 unlocks after the Advancement Match and Upper Round 1 Match 1.",
+      "Lower bracket matches unlock after Upper Round 1. Group A 3rd plays the A1 vs B2 loser; Group B 3rd plays the B1 vs A2 loser.",
     );
   }
   if (kind === "ub_final" && !(done("ub1") && done("ub2"))) {
@@ -597,7 +346,7 @@ export async function assertPlayoffMatchAllowed(kind: string) {
       "The Upper Final unlocks after both Upper Round 1 matches are completed.",
     );
   }
-  if (kind === "lb_final" && !(done("lb2") && done("uf"))) {
+  if (kind === "lb_final" && !(done("lb3") && done("uf"))) {
     throw new Error(
       "The Lower Final unlocks after Lower Round 2 and the Upper Final.",
     );

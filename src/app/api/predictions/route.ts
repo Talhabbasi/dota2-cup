@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { currentPlayer } from "@/lib/auth";
 import { publicErrorMessage } from "@/lib/public-error";
-import { saveMatchPredictions } from "@/lib/predictions";
+import { saveBracketPicks, saveMatchPredictions } from "@/lib/predictions";
 
 type PredictionBody = {
   fixtureId?: string;
   teamId?: string;
   picks?: { fixtureId?: string; teamId?: string }[];
+  slots?: { slotKey?: string; teamId?: string }[];
 };
 
 function picksFromBody(body: PredictionBody) {
@@ -43,8 +44,14 @@ export async function POST(request: Request) {
   }
 
   const body = (await request.json().catch(() => ({}))) as PredictionBody;
+  const slots = (body.slots ?? [])
+    .map((row) => ({
+      slotKey: row.slotKey?.trim() ?? "",
+      teamId: row.teamId?.trim() ?? "",
+    }))
+    .filter((row) => row.slotKey && row.teamId);
   const picks = picksFromBody(body);
-  if (picks.length === 0) {
+  if (picks.length === 0 && slots.length === 0) {
     return NextResponse.json(
       { error: "Pick a match and a team." },
       { status: 400 },
@@ -52,8 +59,17 @@ export async function POST(request: Request) {
   }
 
   try {
-    const result = await saveMatchPredictions(player.id, picks);
-    return NextResponse.json({ ok: true, saved: result.saved });
+    const saved = { fixtures: 0, slots: 0 };
+    if (picks.length > 0) {
+      saved.fixtures = (await saveMatchPredictions(player.id, picks)).saved;
+    }
+    if (slots.length > 0) {
+      saved.slots = (await saveBracketPicks(player.id, slots)).saved;
+    }
+    return NextResponse.json({
+      ok: true,
+      saved: saved.fixtures + saved.slots,
+    });
   } catch (error) {
     console.error(error);
     return NextResponse.json(

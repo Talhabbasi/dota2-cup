@@ -5369,7 +5369,7 @@ tr:last-child td {
 }
 
 .pg-lane-lower {
-  grid-template-columns: 7.2rem minmax(13.5rem, 1fr) 1.4rem minmax(13.5rem, 1fr) 1.4rem minmax(13.5rem, 1fr) 1.4rem minmax(14rem, 1fr) 1.2rem;
+  grid-template-columns: 7.2rem minmax(13.5rem, 1fr) 1.8rem minmax(13.5rem, 1fr) 1.4rem minmax(14rem, 1fr) 1.2rem;
 }
 
 .pg-lane-upper {
@@ -5732,65 +5732,6 @@ tr:last-child td {
   color: var(--muted);
 }
 
-.pred-chart-you {
-  margin: 0 0 0.85rem;
-}
-
-.pred-chart-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.55rem;
-}
-
-.pred-chart-row {
-  display: grid;
-  grid-template-columns: 2.1rem 1fr;
-  gap: 0.65rem;
-  align-items: start;
-  padding: 0.7rem 0.7rem 0.75rem;
-  border-radius: 14px;
-  border: 1px solid transparent;
-  background: var(--bg-elev);
-}
-
-.pred-chart-you-row {
-  border-color: rgba(228, 182, 92, 0.42);
-  box-shadow: 0 8px 22px rgba(48, 38, 22, 0.08);
-}
-
-.pred-chart-rank {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.85rem;
-  height: 1.85rem;
-  border-radius: 999px;
-  font-size: 0.78rem;
-  font-weight: 700;
-  background: rgba(228, 182, 92, 0.14);
-  color: var(--gold);
-}
-
-.pred-chart-meta {
-  display: flex;
-  justify-content: space-between;
-  gap: 0.75rem;
-  align-items: baseline;
-}
-
-.pred-chart-name {
-  color: inherit;
-  text-decoration: none;
-  font-weight: 650;
-}
-
-.pred-chart-name:hover {
-  color: var(--gold);
-}
-
 .pred-you-tag {
   margin-left: 0.4rem;
   font-size: 0.68rem;
@@ -5799,27 +5740,54 @@ tr:last-child td {
   color: var(--gold);
 }
 
-.pred-chart-pts {
-  white-space: nowrap;
-  font-size: 0.88rem;
+.pred-points-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.35rem;
 }
 
-.pred-chart-track {
-  margin-top: 0.4rem;
-  height: 0.45rem;
-  border-radius: 99px;
-  background: rgba(111, 103, 92, 0.22);
+.pred-points-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 0.65rem;
+  align-items: baseline;
+  padding: 0.45rem 0;
+  border-bottom: 1px solid rgba(228, 182, 92, 0.12);
+  font-size: 1.02rem;
+}
+
+.pred-points-you {
+  color: var(--gold);
+}
+
+.pred-points-name {
+  font-weight: 650;
   overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.pred-chart-fill {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, #c9a15a, var(--gold));
+.pred-points-arrow {
+  color: var(--muted);
 }
 
-.pred-chart-sub {
-  margin: 0.35rem 0 0;
-  font-size: 0.78rem;
+.pred-points-value {
+  font-variant-numeric: tabular-nums;
+  min-width: 2.5rem;
+  text-align: right;
+}
+
+.ti-slot {
+  min-width: 0;
+}
+
+.ti-slot-note {
+  margin: 0 0 0.45rem;
+  font-size: 0.72rem;
+}
+
+.ti-pickem .pred-picks {
+  margin-top: 0.2rem;
 }

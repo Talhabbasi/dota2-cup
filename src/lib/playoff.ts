@@ -570,7 +570,7 @@ export type PlayoffMatchView = {
   kind: string;
   label: string;
   round: string;
-  stage: "advancement" | "upper" | "lower" | "grand";
+  stage: "upper" | "lower" | "grand";
   matchNumber: number | null;
   status: "empty" | "scheduled" | "completed";
   displayStatus: "waiting" | "upcoming" | "live" | "completed";
@@ -757,7 +757,7 @@ export async function openPlayoffsFromGroups() {
   const { complete } = await loadPlayoffSeeds();
   if (!complete) {
     throw new Error(
-      "Finish every Group A and Group B match first. 4th place is then eliminated and the Advancement Match (A3 vs B3) plus Upper Round 1 are booked automatically.",
+      "Finish every Group A and Group B match first. 4th place is then eliminated and Upper Round 1 (A1 vs B2, B1 vs A2) is booked automatically. Each 3rd-place team waits for a crossover loser.",
     );
   }
   const opened = await maybeOpenPlayoffsFromGroups();
@@ -855,14 +855,11 @@ export function formatPlayoffStatus(view: PlayoffView) {
   lines.push("", formatPlayoffGraph(view));
 
   const byStage = {
-    advancement: view.matches.filter((match) => match.stage === "advancement"),
     upper: view.matches.filter((match) => match.stage === "upper"),
     lower: view.matches.filter((match) => match.stage === "lower"),
     grand: view.matches.filter((match) => match.stage === "grand"),
   };
 
-  lines.push("", "**Advancement Match** (Bo1 · winner to playoffs, loser eliminated)");
-  for (const match of byStage.advancement) lines.push(formatMatchLine(match));
   lines.push("", "**Upper Bracket**");
   for (const match of byStage.upper) lines.push(formatMatchLine(match));
   lines.push("", "**Lower Bracket**");
@@ -896,9 +893,13 @@ export function formatPlayoffGraph(view: PlayoffView) {
     `Upper  ${label("ub1")}`,
     "           └─► Upper Final ─► Grand Final Bo3",
     `       ${label("ub2")}`,
-    `Lower  ${label("adv")} ─► ${label("lb1")} ─► ${label("lb2")} ─► ${label("lb_final")} ─► Grand Final`,
+    `Lower  ${label("lb1")}`,
+    "           └─► Lower Round 2 ─► Lower Final ─► Grand Final",
+    `       ${label("lb2")}`,
     "```",
     `Upper Final: ${label("uf")}`,
+    `Lower Round 2: ${label("lb3")}`,
+    `Lower Final: ${label("lb_final")}`,
     `Grand Final: ${label("final")}`,
   ].join("\n");
 }

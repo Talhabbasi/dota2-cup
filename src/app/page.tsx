@@ -85,8 +85,8 @@ export default async function Home() {
           </article>
           <article>
             <span>02</span>
-            <h2>Advancement</h2>
-            <p>A3 vs B3 in a single match. Winner keeps the run alive.</p>
+            <h2>Crossovers</h2>
+            <p>A1 vs B2 and B1 vs A2. Each 3rd waits for a loser.</p>
           </article>
           <article>
             <span>03</span>

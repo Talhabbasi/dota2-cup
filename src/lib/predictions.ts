@@ -2,6 +2,21 @@ import { prisma } from "./prisma";
 import { publicFixtureWhere, publicPlayerWhere } from "./dummy";
 import { isPlayoffKind, playoffRoundLabel } from "./playoff";
 import {
+  BRACKET_SLOTS,
+  isBracketSlot,
+  loadPlayoffSeeds,
+  seriesWinnerLoser,
+  type BracketSlot,
+  type GroupSeeds,
+  type SlotResult,
+} from "./playoff-bracket";
+import {
+  pickMapFrom,
+  pickemSlots,
+  resolvedBracketPicks,
+  type PickemSlotView,
+} from "./prediction-bracket";
+import {
   formatScheduleWhen,
   localParts,
   scheduleUtcOffsetHours,
@@ -251,6 +266,170 @@ export async function saveMatchPrediction(input: {
   ]);
 }
 
+export async function saveBracketPicks(
+  playerId: string,
+  picks: { slotKey: string; teamId: string }[],
+) {
+  const { complete, seeds } = await loadPlayoffSeeds();
+  if (!complete || !seeds) {
+    throw new Error(
+      "The International unlocks after every group-stage match is done.",
+    );
+  }
+
+  const seasonId = await currentSeasonId();
+  const now = new Date();
+  const fixtures = await prisma.scheduledFixture.findMany({
+    where: {
+      ...publicFixtureWhere,
+      slotKey: { in: [...BRACKET_SLOTS] },
+    },
+    include: {
+      radiantTeam: { select: { id: true, name: true } },
+      direTeam: { select: { id: true, name: true } },
+    },
+  });
+  const firstKickoff = fixtures.reduce<Date | null>((soonest, row) => {
+    if (!soonest || row.scheduledAt < soonest) return row.scheduledAt;
+    return soonest;
+  }, null);
+  if (firstKickoff && now >= firstKickoff) {
+    throw new Error("The International bracket is locked.");
+  }
+
+  const actual: Partial<Record<BracketSlot, SlotResult>> = {};
+  const lockedSlots = new Set<BracketSlot>();
+  for (const fixture of fixtures) {
+    if (!isBracketSlot(fixture.slotKey)) continue;
+    if (fixture.status === "completed") {
+      const outcome = seriesWinnerLoser(fixture);
+      if (outcome) actual[fixture.slotKey] = outcome;
+      lockedSlots.add(fixture.slotKey);
+    } else if (now >= fixture.scheduledAt) {
+      lockedSlots.add(fixture.slotKey);
+    }
+  }
+
+  const incoming = pickMapFrom(picks);
+  const resolved = resolvedBracketPicks(seeds, actual, incoming).filter(
+    (row) => !lockedSlots.has(row.slotKey),
+  );
+  if (resolved.length === 0) {
+    throw new Error("Pick a winner in an open bracket match.");
+  }
+
+  await prisma.$transaction(
+    resolved.map((row) =>
+      prisma.bracketPick.upsert({
+        where: {
+          playerId_seasonId_slotKey: {
+            playerId,
+            seasonId,
+            slotKey: row.slotKey,
+          },
+        },
+        create: {
+          playerId,
+          seasonId,
+          slotKey: row.slotKey,
+          predictedTeamId: row.teamId,
+        },
+        update: { predictedTeamId: row.teamId },
+      }),
+    ),
+  );
+
+  return { saved: resolved.length };
+}
+
+export type InternationalPickemView = {
+  unlocked: boolean;
+  treeLocked: boolean;
+  lockLabel: string | null;
+  seeds: GroupSeeds | null;
+  actual: Partial<Record<BracketSlot, SlotResult>>;
+  lockedSlots: BracketSlot[];
+  savedPicks: Partial<Record<BracketSlot, string>>;
+  slots: PickemSlotView[];
+};
+
+export async function getInternationalPickem(
+  playerId?: string | null,
+): Promise<InternationalPickemView> {
+  const { complete, seeds } = await loadPlayoffSeeds();
+  if (!complete || !seeds) {
+    return {
+      unlocked: false,
+      treeLocked: true,
+      lockLabel: "Unlocks when every group-stage match is done",
+      seeds: null,
+      actual: {},
+      lockedSlots: [],
+      savedPicks: {},
+      slots: [],
+    };
+  }
+
+  const now = new Date();
+  const season = await getCurrentSeasonSafe();
+  const fixtures = await prisma.scheduledFixture.findMany({
+    where: {
+      ...publicFixtureWhere,
+      slotKey: { in: [...BRACKET_SLOTS] },
+    },
+    include: {
+      radiantTeam: { select: { id: true, name: true } },
+      direTeam: { select: { id: true, name: true } },
+    },
+  });
+  const firstKickoff = fixtures.reduce<Date | null>((soonest, row) => {
+    if (!soonest || row.scheduledAt < soonest) return row.scheduledAt;
+    return soonest;
+  }, null);
+  const treeLocked = Boolean(firstKickoff && now >= firstKickoff);
+
+  const actual: Partial<Record<BracketSlot, SlotResult>> = {};
+  const lockedSlots = new Set<BracketSlot>();
+  for (const fixture of fixtures) {
+    if (!isBracketSlot(fixture.slotKey)) continue;
+    if (fixture.status === "completed") {
+      const outcome = seriesWinnerLoser(fixture);
+      if (outcome) actual[fixture.slotKey] = outcome;
+      lockedSlots.add(fixture.slotKey);
+    } else if (now >= fixture.scheduledAt) {
+      lockedSlots.add(fixture.slotKey);
+    }
+  }
+
+  const stored =
+    playerId && season
+      ? await prisma.bracketPick
+          .findMany({
+            where: { playerId, seasonId: season.id },
+            select: { slotKey: true, predictedTeamId: true },
+          })
+          .catch(() => [])
+      : [];
+  const picks = pickMapFrom(
+    stored.map((row) => ({ slotKey: row.slotKey, teamId: row.predictedTeamId })),
+  );
+
+  return {
+    unlocked: true,
+    treeLocked,
+    lockLabel: treeLocked
+      ? "Locked when the first playoff match started"
+      : firstKickoff
+        ? `Locks ${formatScheduleWhen(firstKickoff)}`
+        : "Fill the tree. Locks at the first playoff match.",
+    seeds,
+    actual,
+    lockedSlots: [...lockedSlots],
+    savedPicks: picks,
+    slots: pickemSlots(seeds, actual, picks, lockedSlots, treeLocked),
+  };
+}
+
 export async function scorePredictionsForFixture(fixtureId: string) {
   const fixture = await prisma.scheduledFixture.findUnique({
     where: { id: fixtureId },
@@ -278,6 +457,23 @@ export async function scorePredictionsForFixture(fixtureId: string) {
       }),
     ),
   );
+
+  if (fixture.slotKey && isBracketSlot(fixture.slotKey) && fixture.seasonId) {
+    const bracketPicks = await prisma.bracketPick.findMany({
+      where: { seasonId: fixture.seasonId, slotKey: fixture.slotKey },
+    });
+    await Promise.all(
+      bracketPicks.map((pick) =>
+        prisma.bracketPick.update({
+          where: { id: pick.id },
+          data: {
+            pointsAwarded: pick.predictedTeamId === winnerId ? points : 0,
+            scoredAt,
+          },
+        }),
+      ),
+    );
+  }
 }
 
 function toMatchView(
@@ -472,6 +668,34 @@ export async function getPredictionLeaderboard(youPlayerId?: string | null) {
     current.picks += 1;
     if (pick.pointsAwarded > 0) current.correct += 1;
     byPlayer.set(pick.playerId, current);
+  }
+
+  try {
+    const bracketPicks = await prisma.bracketPick.findMany({
+      where: {
+        seasonId: season.id,
+        player: publicPlayerWhere,
+      },
+      select: {
+        playerId: true,
+        pointsAwarded: true,
+        player: { select: { steamName: true, discordName: true } },
+      },
+    });
+    for (const pick of bracketPicks) {
+      const current = byPlayer.get(pick.playerId) ?? {
+        name: pick.player.steamName || pick.player.discordName,
+        points: 0,
+        correct: 0,
+        picks: 0,
+      };
+      current.points += pick.pointsAwarded;
+      current.picks += 1;
+      if (pick.pointsAwarded > 0) current.correct += 1;
+      byPlayer.set(pick.playerId, current);
+    }
+  } catch {
+    /* table may not exist until db push */
   }
 
   const sorted = [...byPlayer.entries()].sort((a, b) => {

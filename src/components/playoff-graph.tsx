@@ -168,11 +168,14 @@ export function PlayoffGraph({
           </div>
           <div className="pg-lane pg-lane-lower">
             <span className="pg-lane-label">Lower</span>
-            {node("adv")}
-            <div className="pg-line" aria-hidden />
-            {node("lb1")}
-            <div className="pg-line" aria-hidden />
-            {node("lb2")}
+            <div className="pg-stack">
+              {node("lb1")}
+              {node("lb2")}
+            </div>
+            <div className="pg-fork" aria-hidden>
+              <span />
+            </div>
+            {node("lb3")}
             <div className="pg-line" aria-hidden />
             {node("lb_final")}
             <div className="pg-rise" aria-hidden title="Lower Final winner to Grand Final" />

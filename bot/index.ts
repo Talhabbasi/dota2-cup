@@ -2908,7 +2908,7 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
             result.created.length
               ? `Playoffs opened. Booked **${result.created.length}** match(es): ${result.created.join(", ")}.`
               : "Playoff slots that are already unlocked were already booked.",
-            "4th in each group is eliminated. Advancement is A3 vs B3 (Bo1). Grand Final is Bo3.",
+            "4th in each group is eliminated. Each 3rd waits for a crossover loser. Grand Final is Bo3.",
             "",
             formatPlayoffStatus(view),
           ].join("\n"),

@@ -57,8 +57,8 @@ export function playoffEmbeds(view: PlayoffView) {
 
   const overview = [
     "Same bracket as the website. 4th in each group is eliminated.",
-    "Group A 3rd vs Group B 3rd is a **Bo1** Advancement Match.",
-    "Upper Round 1: A1 vs B2, B1 vs A2. Every match is **Bo1** except the Grand Final (**Bo3**).",
+    "Upper Round 1: **A1 vs B2** and **B1 vs A2**. Each 3rd waits for a loser: **A3 vs Match 1 loser**, **B3 vs Match 2 loser**.",
+    "Every match is **Bo1** except the Grand Final (**Bo3**).",
     `Full bracket: **${site}/playoffs**`,
   ];
 
@@ -85,10 +85,6 @@ export function playoffEmbeds(view: PlayoffView) {
           rankBlock("**Group B**", view.standingsB, view.groupStageComplete),
         ].join("\n"),
       ),
-    new EmbedBuilder()
-      .setColor(GOLD)
-      .setTitle("Advancement Match · Bo1")
-      .setDescription(matches("advancement") || "Waiting for both groups to finish."),
     new EmbedBuilder()
       .setColor(GOLD)
       .setTitle("Upper Bracket")

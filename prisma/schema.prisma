@@ -27,6 +27,7 @@ model Season {
   payments     Payment[]
   cupSettings  CupSettings[]
   predictions  MatchPrediction[]
+  bracketPicks BracketPick[]
 }
 
 model PostedRelease {
@@ -88,6 +89,7 @@ model Player {
   payments    Payment[]
   seasons     SeasonPlayer[]
   predictions MatchPrediction[]
+  bracketPicks BracketPick[]
 }
 
 model CupSettings {
@@ -118,6 +120,7 @@ model Team {
   direFixtures    ScheduledFixture[] @relation("FixtureDire")
   championships   Season[] @relation("SeasonChampion")
   predictedWins   MatchPrediction[] @relation("PredictedTeam")
+  bracketPicks    BracketPick[] @relation("BracketPredictedTeam")
 
   @@index([seasonId])
 }
@@ -240,6 +243,26 @@ model MatchPrediction {
   @@index([fixtureId])
   @@index([playerId, seasonId])
   @@index([seasonId, pointsAwarded])
+}
+
+model BracketPick {
+  id              String    @id @default(cuid())
+  playerId        String
+  seasonId        String
+  slotKey         String
+  predictedTeamId String
+  pointsAwarded   Int       @default(0)
+  scoredAt        DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  player        Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  season        Season @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  predictedTeam Team   @relation("BracketPredictedTeam", fields: [predictedTeamId], references: [id], onDelete: Cascade)
+
+  @@unique([playerId, seasonId, slotKey])
+  @@index([seasonId, slotKey])
+  @@index([playerId, seasonId])
 }
 
 model MatchPlayer {

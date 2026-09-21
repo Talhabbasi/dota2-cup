@@ -42,10 +42,11 @@ export default async function PlayoffsPage() {
           <p className="eyebrow">Tournament</p>
           <h1>Playoffs</h1>
           <p className="lede">
-            After the group stage: 4th is eliminated, 3rd plays a Bo1 Advancement
-            Match, then a 5-team double-elimination bracket. Grand Final is Bo3;
-            every other series is Bo1. Follow the graph, then the match cards.
-            See the <Link href="/schedule">schedule</Link>.
+            After the group stage: 4th is eliminated. 3rd in each group waits
+            for a crossover loser — A3 vs the loser of A1 vs B2, B3 vs the loser
+            of B1 vs A2 — then a 6-team double-elimination bracket. Grand Final
+            is Bo3; every other series is Bo1. Follow the graph, then the match
+            cards. See the <Link href="/schedule">schedule</Link>.
           </p>
           <div className="teams-list-hero-pills">
             <span className="teams-list-hero-pill">

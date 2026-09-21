@@ -1,19 +1,22 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { InternationalBracket } from "@/components/international-bracket";
 import { PredictionBoard } from "@/components/prediction-board";
-import type { PredictionStageView } from "@/lib/predictions";
+import type { InternationalPickemView, PredictionStageView } from "@/lib/predictions";
 
 export function PredictionStageTabs({
   group,
-  international,
+  pickem,
   canPick,
 }: {
   group: PredictionStageView;
-  international: PredictionStageView;
+  pickem: InternationalPickemView;
   canPick: boolean;
 }) {
-  const [tab, setTab] = useState<"group" | "international">("group");
+  const [tab, setTab] = useState<"group" | "international">(
+    group.stageLocked && pickem.unlocked ? "international" : "group",
+  );
   const [committed, setCommitted] = useState<Record<string, string>>({});
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
@@ -74,7 +77,16 @@ export function PredictionStageTabs({
       const res = await fetch("/api/predictions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ picks: dirtyPicks }),
+        body: JSON.stringify(
+          tab === "international"
+            ? {
+                slots: dirtyPicks.map((row) => ({
+                  slotKey: row.fixtureId,
+                  teamId: row.teamId,
+                })),
+              }
+            : { picks: dirtyPicks },
+        ),
       });
       const data = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) {
@@ -121,9 +133,13 @@ export function PredictionStageTabs({
           onClick={() => setTab("international")}
         >
           The International
-          {international.stageLocked ? (
+          {pickem.unlocked ? (
+            pickem.treeLocked ? (
+              <span className="pred-tab-state">Locked</span>
+            ) : null
+          ) : (
             <span className="pred-tab-state">Locked</span>
-          ) : null}
+          )}
         </button>
       </div>
 
@@ -155,28 +171,27 @@ export function PredictionStageTabs({
           <div className="section-head row">
             <h2>The International</h2>
             <span className="muted">
-              {international.stageLocked
-                ? international.lockLabel
-                : "Upper · lower · grand final"}
+              {pickem.lockLabel ?? "Upper · lower · grand final"}
             </span>
           </div>
-          {international.stageLocked ? (
+          {pickem.unlocked ? (
+            <InternationalBracket
+              view={pickem}
+              canPick={canPick}
+              saving={saving}
+              drafts={drafts}
+              onPick={(slotKey, teamId) =>
+                onPick(slotKey, teamId, pickem.savedPicks[slotKey as keyof typeof pickem.savedPicks] ?? null)
+              }
+            />
+          ) : (
             <div className="empty-panel teams-list-empty">
               <p className="muted" style={{ margin: 0 }}>
                 Upper bracket, lower bracket, and the Grand Final stay locked
-                until every group-stage match is complete. Points from this
-                stage still add to the same board.
+                until every group-stage match is complete. Tap the opening
+                matches, then follow winners and losers through the tree.
               </p>
             </div>
-          ) : (
-            <PredictionBoard
-              {...boardProps}
-              nights={international.nights}
-              stageLocked={false}
-              emptyText="Playoff matches appear here when the bracket is booked."
-              lockedNote="This series is locked"
-              openHint="Tap a team, then Save predictions"
-            />
           )}
         </section>
       )}

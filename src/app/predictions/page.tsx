@@ -4,6 +4,7 @@ import { PredictionStageTabs } from "@/components/prediction-stage-tabs";
 import {
   FINAL_PREDICTION_POINTS,
   PREDICTION_POINTS,
+  getInternationalPickem,
   getPredictionBoard,
   getPredictionLeaderboard,
 } from "@/lib/predictions";
@@ -22,9 +23,10 @@ export default async function PredictionsPage() {
     currentPlayer(),
     getCurrentSeasonSafe(),
   ]);
-  const [stages, board] = await Promise.all([
+  const [stages, board, pickem] = await Promise.all([
     getPredictionBoard(player?.id),
     getPredictionLeaderboard(player?.id),
+    getInternationalPickem(player?.id),
   ]);
   const canPick = Boolean(player);
 
@@ -36,12 +38,11 @@ export default async function PredictionsPage() {
           <p className="eyebrow">Pick’em</p>
           <h1>Predictions</h1>
           <p className="muted auction-hero-copy">
-            Group stage: {PREDICTION_POINTS} points per correct pick, all
-            locked Saturday at 10:45 PM PKT. The
-            International (upper, lower, Grand Final) stays locked until every
-            group-stage match is done — Grand Final is{" "}
-            {FINAL_PREDICTION_POINTS} points. Names and points stay hidden
-            until group stage is complete.
+            Group stage: {PREDICTION_POINTS} points per correct pick, locked
+            Saturday at 10:45 PM PKT. The International is a fill-in bracket —
+            pick the opening upper and lower matches, then send winners and
+            losers through the tree. Grand Final is {FINAL_PREDICTION_POINTS}{" "}
+            points. The points board is name → points.
           </p>
           <div className="teams-list-hero-pills">
             {season ? (
@@ -61,13 +62,19 @@ export default async function PredictionsPage() {
               )}
             </span>
             <span className="teams-list-hero-pill">
-              {stages.international.stageLocked ? (
-                <>
-                  <strong>Locked</strong> International
-                </>
+              {pickem.unlocked ? (
+                pickem.treeLocked ? (
+                  <>
+                    <strong>Locked</strong> International
+                  </>
+                ) : (
+                  <>
+                    <strong>Open</strong> International
+                  </>
+                )
               ) : (
                 <>
-                  <strong>{stages.international.openCount}</strong> playoff open
+                  <strong>Locked</strong> International
                 </>
               )}
             </span>
@@ -88,7 +95,7 @@ export default async function PredictionsPage() {
 
       <PredictionStageTabs
         group={stages.group}
-        international={stages.international}
+        pickem={pickem}
         canPick={canPick}
       />
 
@@ -97,9 +104,9 @@ export default async function PredictionsPage() {
           <>
             <div className="section-head row">
               <h2>Points board</h2>
-              <span className="muted">Highest to lowest · all stages</span>
+              <span className="muted">name → points</span>
             </div>
-            <PredictionLeaderboard rows={board.rows} youRank={board.youRank} />
+            <PredictionLeaderboard rows={board.rows} />
           </>
         ) : (
           <>
