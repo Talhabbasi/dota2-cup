@@ -6,13 +6,12 @@ import {
   publicPlayerWhere,
   publicTeamWhere,
 } from "./dummy";
-import { PUBLIC_PAGE_TAG } from "./cache-tags";
+import { PUBLIC_PAGE_TAG, PUBLIC_REVALIDATE_SECONDS } from "./cache-tags";
 import { getNextScheduledFixture } from "./schedule";
 import { parseRolesJson } from "./roles";
 import { basePriceFor } from "./constants";
 import {
   formatDuration,
-  formatMatchWhen,
   formatRoles,
   toIso,
 } from "./format";
@@ -21,7 +20,7 @@ import {
   getCurrentSeasonSafe,
 } from "./seasons";
 
-export { formatDuration, formatMatchWhen, formatRoles };
+export { formatDuration, formatRoles };
 
 function cachedPublic<Args extends unknown[], Result>(
   key: string,
@@ -29,7 +28,7 @@ function cachedPublic<Args extends unknown[], Result>(
 ) {
   return unstable_cache(fn, [key], {
     tags: [PUBLIC_PAGE_TAG],
-    revalidate: 15,
+    revalidate: PUBLIC_REVALIDATE_SECONDS,
   });
 }
 
@@ -45,6 +44,7 @@ const matchListSelect = {
   direTeam: { select: { id: true, name: true } },
   winnerTeam: { select: { id: true, name: true } },
   players: { select: { side: true, kills: true } },
+  scheduledFixture: { select: { bestOf: true } },
 } as const;
 
 const teamRefSelect = { select: { id: true, name: true } } as const;
@@ -379,6 +379,7 @@ export type FixturePreview = {
   scheduledAt?: Date;
   bestOf?: number;
   kind?: string;
+  slotKey?: string | null;
 };
 
 export async function getUpcomingFixture(): Promise<FixturePreview | null> {
@@ -397,6 +398,7 @@ export async function getUpcomingFixture(): Promise<FixturePreview | null> {
       scheduledAt: scheduled.scheduledAt,
       bestOf: scheduled.bestOf,
       kind: scheduled.kind,
+      slotKey: scheduled.slotKey,
     };
   } catch {
     return null;

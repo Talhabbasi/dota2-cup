@@ -61,16 +61,26 @@ function heroSlug(npcName: string): string {
   return npcName.replace(/^npc_dota_hero_/, "");
 }
 
+/** Steam CDN keys that differ from common / renamed hero names. */
+const HERO_CDN_SLUG: Record<string, string> = {
+  outworld_destroyer: "obsidian_destroyer",
+  outworld_devourer: "obsidian_destroyer",
+};
+
+function cdnSlug(slug: string) {
+  return HERO_CDN_SLUG[slug] ?? slug;
+}
+
 export function heroPortraitUrl(slug: string) {
-  return `https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/${slug}.png`;
+  return `https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/${cdnSlug(slug)}.png`;
 }
 
 export function heroRenderUrl(slug: string) {
-  return `https://cdn.cloudflare.steamstatic.com/apps/dota2/videos/dota_react/heroes/renders/${slug}.png`;
+  return `https://cdn.cloudflare.steamstatic.com/apps/dota2/videos/dota_react/heroes/renders/${cdnSlug(slug)}.png`;
 }
 
 export function heroIconUrl(slug: string): string {
-  return `https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/icons/${slug}.png`;
+  return `https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/icons/${cdnSlug(slug)}.png`;
 }
 
 export function itemIconUrl(key: string): string {

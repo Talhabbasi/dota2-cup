@@ -12,6 +12,7 @@ export function PageLoader() {
             alt=""
             width={40}
             height={40}
+            sizes="40px"
             className="page-loader-icon"
           />
         </span>

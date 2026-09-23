@@ -1,7 +1,9 @@
+import { unstable_cache } from "next/cache";
 import { prisma } from "./prisma";
 import { publicTeamWhere } from "./dummy";
 import { formatScheduleWhen, scheduleUtcOffsetHours } from "./schedule";
 import { currentSeasonFilter } from "./seasons";
+import { PUBLIC_PAGE_TAG, PUBLIC_REVALIDATE_SECONDS } from "./cache-tags";
 import {
   createScheduledMatch,
   upcomingWeekendDates,
@@ -141,58 +143,62 @@ export async function bookGroupStageRoundRobin(input?: {
   return { saturday, sunday, fixtures: booked };
 }
 
-export async function getGroupStandings(groupKey: "A" | "B"): Promise<GroupStandingRow[]> {
-  const season = await currentSeasonFilter();
-  const [teams, fixtures] = await Promise.all([
-    prisma.team.findMany({
-      where: { groupKey, ...publicTeamWhere, ...season },
-      select: { id: true, name: true },
-      orderBy: { name: "asc" },
-    }),
-    prisma.scheduledFixture.findMany({
-      where: { kind: "group", status: "completed", ...season },
-      include: { match: true },
-    }),
-  ]);
-  const ids = new Set(teams.map((team) => team.id));
-  const rows = new Map<string, GroupStandingRow>(
-    teams.map((team) => [
-      team.id,
-      { id: team.id, name: team.name, played: 0, wins: 0, losses: 0, points: 0 },
-    ]),
-  );
+export const getGroupStandings = unstable_cache(
+  async (groupKey: "A" | "B"): Promise<GroupStandingRow[]> => {
+    const season = await currentSeasonFilter();
+    const [teams, fixtures] = await Promise.all([
+      prisma.team.findMany({
+        where: { groupKey, ...publicTeamWhere, ...season },
+        select: { id: true, name: true },
+        orderBy: { name: "asc" },
+      }),
+      prisma.scheduledFixture.findMany({
+        where: { kind: "group", status: "completed", ...season },
+        include: { match: true },
+      }),
+    ]);
+    const ids = new Set(teams.map((team) => team.id));
+    const rows = new Map<string, GroupStandingRow>(
+      teams.map((team) => [
+        team.id,
+        { id: team.id, name: team.name, played: 0, wins: 0, losses: 0, points: 0 },
+      ]),
+    );
 
-  for (const fixture of fixtures) {
-    if (!ids.has(fixture.radiantTeamId) || !ids.has(fixture.direTeamId)) continue;
-    const radiant = rows.get(fixture.radiantTeamId);
-    const dire = rows.get(fixture.direTeamId);
-    if (!radiant || !dire) continue;
+    for (const fixture of fixtures) {
+      if (!ids.has(fixture.radiantTeamId) || !ids.has(fixture.direTeamId)) continue;
+      const radiant = rows.get(fixture.radiantTeamId);
+      const dire = rows.get(fixture.direTeamId);
+      if (!radiant || !dire) continue;
 
-    let winnerId: string | null = null;
-    if (fixture.radiantWins > fixture.direWins) winnerId = fixture.radiantTeamId;
-    else if (fixture.direWins > fixture.radiantWins) winnerId = fixture.direTeamId;
-    else if (fixture.match?.winnerTeamId) winnerId = fixture.match.winnerTeamId;
-    if (!winnerId) continue;
+      let winnerId: string | null = null;
+      if (fixture.radiantWins > fixture.direWins) winnerId = fixture.radiantTeamId;
+      else if (fixture.direWins > fixture.radiantWins) winnerId = fixture.direTeamId;
+      else if (fixture.match?.winnerTeamId) winnerId = fixture.match.winnerTeamId;
+      if (!winnerId) continue;
 
-    radiant.played += 1;
-    dire.played += 1;
-    if (winnerId === radiant.id) {
-      radiant.wins += 1;
-      radiant.points += 1;
-      dire.losses += 1;
-    } else if (winnerId === dire.id) {
-      dire.wins += 1;
-      dire.points += 1;
-      radiant.losses += 1;
+      radiant.played += 1;
+      dire.played += 1;
+      if (winnerId === radiant.id) {
+        radiant.wins += 1;
+        radiant.points += 1;
+        dire.losses += 1;
+      } else if (winnerId === dire.id) {
+        dire.wins += 1;
+        dire.points += 1;
+        radiant.losses += 1;
+      }
     }
-  }
 
-  return [...rows.values()].sort((a, b) => {
-    if (b.points !== a.points) return b.points - a.points;
-    if (b.wins !== a.wins) return b.wins - a.wins;
-    return a.name.localeCompare(b.name);
-  });
-}
+    return [...rows.values()].sort((a, b) => {
+      if (b.points !== a.points) return b.points - a.points;
+      if (b.wins !== a.wins) return b.wins - a.wins;
+      return a.name.localeCompare(b.name);
+    });
+  },
+  ["group-standings"],
+  { tags: [PUBLIC_PAGE_TAG], revalidate: PUBLIC_REVALIDATE_SECONDS },
+);
 
 function groupStandingsFinished(rows: GroupStandingRow[]) {
   return rows.length === 4 && rows.every((row) => row.played === 3);

@@ -1,8 +1,11 @@
+import { PageHeader } from "@/components/common";
+import { GroupStandingsTable } from "@/components/group-standings";
 import { StandingsBoard } from "@/components/standings-board";
+import { getGroupStandings } from "@/lib/group-stage-schedule";
 import { getStandings } from "@/lib/data";
 import { pageMeta } from "@/lib/seo";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 30;
 
 export const metadata = pageMeta(
   "League Standings",
@@ -10,9 +13,13 @@ export const metadata = pageMeta(
 );
 
 export default async function TablePage() {
-  const rows = await getStandings();
+  const [groupA, groupB, overall] = await Promise.all([
+    getGroupStandings("A"),
+    getGroupStandings("B"),
+    getStandings(),
+  ]);
 
-  const views = rows.map((row) => ({
+  const views = overall.map((row) => ({
     id: row.id,
     name: row.name,
     played: row.played,
@@ -21,29 +28,38 @@ export default async function TablePage() {
     points: row.points,
   }));
 
-  const totalGames = views.reduce((n, r) => n + r.played, 0);
+  const groupGames =
+    groupA.reduce((n, r) => n + r.played, 0) +
+    groupB.reduce((n, r) => n + r.played, 0);
+  const hasGroups = groupA.length > 0 || groupB.length > 0;
+  const markA =
+    groupA.length === 4 && groupA.every((row) => row.played === 3);
+  const markB =
+    groupB.length === 4 && groupB.every((row) => row.played === 3);
 
   return (
     <div className="page standings-page">
-      <header className="teams-list-hero standings-hero">
-        <div className="team-hero-glow" aria-hidden />
-        <div className="teams-list-hero-body">
-          <p className="eyebrow">League</p>
-          <h1>Standings</h1>
-          {views.length > 0 ? (
-            <div className="teams-list-hero-pills">
-              <span className="teams-list-hero-pill">
-                <strong>{views.length}</strong> teams
-              </span>
-              <span className="teams-list-hero-pill">
-                <strong>{totalGames}</strong> games played
-              </span>
-            </div>
-          ) : null}
-        </div>
-      </header>
+      <PageHeader
+        className="standings-hero"
+        eyebrow="League"
+        title="Standings"
+        pills={
+          hasGroups || views.length > 0
+            ? [
+                {
+                  value: groupA.length + groupB.length || views.length,
+                  label: "teams",
+                },
+                {
+                  value: groupGames || views.reduce((n, r) => n + r.played, 0),
+                  label: "games played",
+                },
+              ]
+            : undefined
+        }
+      />
 
-      {views.length === 0 ? (
+      {!hasGroups && views.length === 0 ? (
         <div className="empty-panel teams-list-empty">
           <span className="team-empty-matches-icon" aria-hidden>
             🏆
@@ -53,7 +69,31 @@ export default async function TablePage() {
           </p>
         </div>
       ) : (
-        <StandingsBoard rows={views} />
+        <div className="grid gap-8">
+          {hasGroups ? (
+            <div className="group-standings-row-wrap">
+              <GroupStandingsTable
+                title="Group A"
+                rows={groupA}
+                markLastEliminated={markA}
+              />
+              <GroupStandingsTable
+                title="Group B"
+                rows={groupB}
+                markLastEliminated={markB}
+              />
+            </div>
+          ) : null}
+
+          {views.length > 0 ? (
+            <section className="grid gap-3">
+              <h2 className="m-0 font-display text-xl tracking-wide text-foreground">
+                Overall
+              </h2>
+              <StandingsBoard rows={views} />
+            </section>
+          ) : null}
+        </div>
       )}
     </div>
   );

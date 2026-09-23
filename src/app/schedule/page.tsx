@@ -1,10 +1,11 @@
+import { PageHeader } from "@/components/common";
 import { CupScheduleBoard } from "@/components/cup-schedule";
 import { GroupStandingsTable } from "@/components/group-standings";
 import { getGroupStandings } from "@/lib/group-stage-schedule";
 import { listCupSchedule } from "@/lib/schedule-crud";
 import { pageMeta } from "@/lib/seo";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 30;
 
 export const metadata = pageMeta(
   "Match Schedule",
@@ -21,29 +22,29 @@ export default async function SchedulePage() {
 
   return (
     <div className="page schedule-page">
-      <header className="teams-list-hero">
-        <div className="team-hero-glow" aria-hidden />
-        <div className="teams-list-hero-body">
-          <p className="eyebrow">Fixtures</p>
-          <h1>Schedule</h1>
-          <p className="lede">
+      <PageHeader
+        eyebrow="Fixtures"
+        title="Schedule"
+        subtitle={
+          <>
             Group A Saturday, Group B Sunday, then weekend playoffs. Group
             kickoffs 10:00 PM–4:00 AM PKT. Playoffs Saturday/Sunday 10:00 AM–3:00
             AM PKT. Admins: <strong>/schedule groups</strong>,{" "}
             <strong>/schedule edit</strong>, <strong>/playoff open</strong>.
-          </p>
-          {fixtures.length > 0 ? (
-            <div className="teams-list-hero-pills">
-              <span className="teams-list-hero-pill">
-                <strong>{upcoming.length}</strong> upcoming
-              </span>
-              <span className="teams-list-hero-pill">
-                <strong>{fixtures.length - upcoming.length}</strong> played
-              </span>
-            </div>
-          ) : null}
-        </div>
-      </header>
+          </>
+        }
+        pills={
+          fixtures.length > 0
+            ? [
+                { value: upcoming.length, label: "upcoming" },
+                {
+                  value: fixtures.length - upcoming.length,
+                  label: "played",
+                },
+              ]
+            : undefined
+        }
+      />
       <div className="group-standings-row-wrap">
         <GroupStandingsTable
           title="Group A"

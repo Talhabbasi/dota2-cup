@@ -1,13 +1,15 @@
 import Link from "next/link";
+import { PageHeader } from "@/components/common";
 import { GroupStandingsTable } from "@/components/group-standings";
 import { PlayoffBracket } from "@/components/playoff-bracket";
-import { PlayoffGraph, type GroupGraphMatch } from "@/components/playoff-graph";
+import { PlayoffGraphLazy } from "@/components/playoff-graph-lazy";
+import type { GroupGraphMatch } from "@/components/playoff-graph";
 import { getGroupStandings } from "@/lib/group-stage-schedule";
 import { getPlayoffView } from "@/lib/playoff";
 import { listCupSchedule } from "@/lib/schedule-crud";
 import { pageMeta } from "@/lib/seo";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 30;
 
 export const metadata = pageMeta(
   "Playoff Bracket",
@@ -36,28 +38,35 @@ export default async function PlayoffsPage() {
 
   return (
     <div className="page playoffs-page">
-      <header className="teams-list-hero">
-        <div className="team-hero-glow" aria-hidden />
-        <div className="teams-list-hero-body">
-          <p className="eyebrow">Tournament</p>
-          <h1>Playoffs</h1>
-          <p className="lede">
+      <PageHeader
+        eyebrow="Tournament"
+        title="Playoffs"
+        subtitle={
+          <>
             After the group stage: 4th is eliminated. 3rd in each group waits
             for a crossover loser — A3 vs the loser of A1 vs B2, B3 vs the loser
             of B1 vs A2 — then a 6-team double-elimination bracket. Grand Final
             is Bo3; every other series is Bo1. Follow the graph, then the match
             cards. See the <Link href="/schedule">schedule</Link>.
-          </p>
-          <div className="teams-list-hero-pills">
-            <span className="teams-list-hero-pill">
-              <strong>Group A</strong> {view.groupA.length} teams
-            </span>
-            <span className="teams-list-hero-pill">
-              <strong>Group B</strong> {view.groupB.length} teams
-            </span>
-          </div>
-        </div>
-      </header>
+          </>
+        }
+        pills={[
+          {
+            label: (
+              <>
+                <strong>Group A</strong> {view.groupA.length} teams
+              </>
+            ),
+          },
+          {
+            label: (
+              <>
+                <strong>Group B</strong> {view.groupB.length} teams
+              </>
+            ),
+          },
+        ]}
+      />
 
       <div className="group-standings-row-wrap">
         <GroupStandingsTable
@@ -72,7 +81,7 @@ export default async function PlayoffsPage() {
         />
       </div>
 
-      <PlayoffGraph view={view} groupMatches={groupMatches} />
+      <PlayoffGraphLazy view={view} groupMatches={groupMatches} />
       <PlayoffBracket view={view} />
     </div>
   );

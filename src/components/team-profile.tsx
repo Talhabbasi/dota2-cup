@@ -1,85 +1,121 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { Crown } from "lucide-react";
+import {
+  EsportsCard,
+  EsportsTable,
+  EsportsTableBody,
+  EsportsTableCell,
+  EsportsTableHead,
+  EsportsTableHeader,
+  EsportsTableRow,
+  StatTile,
+  TeamBadge,
+} from "@/components/common";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import {
   MAX_ROSTER,
   MEDAL_LABELS,
   MIN_ROSTER,
+  ROLE_SHORT,
+  STARTING_ROLES,
   type Medal,
+  type StartingRole,
 } from "@/lib/constants";
+import { cn } from "@/lib/utils";
 
 export type TeamPlayerView = {
   id: string;
   steamName: string;
   medal: string;
   rolesLabel: string;
+  roleKeys: string[];
   playWindowLabel: string;
   isCaptain: boolean;
   isSub: boolean;
 };
 
-const MEDAL_ACCENT: Partial<Record<Medal, string>> = {
-  immortal: "#c45cff",
-  divine: "#e4b65c",
-  ancient: "#5cb87a",
-  legend: "#5b9fd4",
-  archon: "#8b7ad8",
-};
-
 function initials(name: string) {
   const parts = name.replace(/[^\w\s]/g, " ").trim().split(/\s+/);
-  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  if (parts.length >= 2) return (parts[0]![0]! + parts[1]![0]!).toUpperCase();
   return name.slice(0, 2).toUpperCase();
 }
 
-function PlayerCard({ player }: { player: TeamPlayerView }) {
-  const medal = player.medal as Medal;
-  const accent = MEDAL_ACCENT[medal] ?? "var(--gold)";
+function starterPos(player: TeamPlayerView, index: number): number {
+  for (const role of STARTING_ROLES) {
+    if (player.roleKeys.includes(role)) {
+      const short = ROLE_SHORT[role as StartingRole];
+      const n = Number(short);
+      if (Number.isFinite(n) && n >= 1 && n <= 5) return n;
+    }
+  }
+  return index + 1;
+}
 
+function medalLabel(medal: string) {
+  return MEDAL_LABELS[medal as Medal] ?? medal;
+}
+
+function RosterPlayerRow({
+  player,
+  position,
+}: {
+  player: TeamPlayerView;
+  position: string;
+}) {
   return (
-    <Link
-      href={`/players/${player.id}`}
-      className="team-player-card"
-      style={{ "--player-accent": accent } as React.CSSProperties}
-    >
-      <div className="team-player-card-top">
-        <span className="team-player-avatar" aria-hidden>
-          {initials(player.steamName)}
-        </span>
-        <div className="team-player-badges">
-          {player.isCaptain ? (
-            <span className="team-chip team-chip-captain">Captain</span>
-          ) : null}
-          {player.isSub ? (
-            <span className="team-chip team-chip-sub">Sub</span>
-          ) : null}
-        </div>
-      </div>
-      <h3 className="team-player-name">{player.steamName}</h3>
-      <p className="team-player-meta">
-        <span className="team-medal-pill">
-          {MEDAL_LABELS[medal] ?? player.medal}
-        </span>
-        <span className="team-role-pill">{player.rolesLabel}</span>
-        <span className="team-window-pill" title="Weekend availability">
-          {player.playWindowLabel}
-        </span>
-      </p>
-      <span className="team-player-cta">View profile →</span>
-    </Link>
+    <EsportsTableRow>
+      <EsportsTableCell className="w-14 font-mono text-sm tabular-nums text-muted-foreground">
+        {position}
+      </EsportsTableCell>
+      <EsportsTableCell>
+        <Link
+          href={`/players/${player.id}`}
+          className="flex min-w-0 items-center gap-3 text-foreground!"
+        >
+          <Avatar className="size-8 bg-[#0a0d14] ring-1 ring-white/15">
+            <AvatarFallback className="bg-transparent text-[0.62rem] font-bold tracking-[0.12em] text-foreground">
+              {initials(player.steamName)}
+            </AvatarFallback>
+          </Avatar>
+          <span className="min-w-0 truncate font-medium">
+            {player.steamName}
+            {player.isCaptain ? (
+              <Badge
+                variant="outline"
+                className="ml-2 border-amber-500/40 bg-amber-500/10 text-[0.58rem] tracking-[0.1em] text-amber-300 uppercase"
+              >
+                Captain
+              </Badge>
+            ) : null}
+          </span>
+        </Link>
+      </EsportsTableCell>
+      <EsportsTableCell>
+        <span className="team-medal-pill">{medalLabel(player.medal)}</span>
+      </EsportsTableCell>
+      <EsportsTableCell className="text-muted-foreground">
+        {player.rolesLabel || "—"}
+      </EsportsTableCell>
+      <EsportsTableCell className="hidden text-muted-foreground sm:table-cell">
+        {player.playWindowLabel}
+      </EsportsTableCell>
+    </EsportsTableRow>
   );
 }
 
-function OpenSlot({ label, variant }: { label: string; variant: "starter" | "sub" }) {
+function OpenSlotRow({ position }: { position: string }) {
   return (
-    <div className={`team-open-slot team-open-slot-${variant}`}>
-      <span className="team-open-slot-icon" aria-hidden>
-        +
-      </span>
-      <p className="team-open-slot-title">Open slot</p>
-      <p className="team-open-slot-hint">{label}</p>
-    </div>
+    <EsportsTableRow className="opacity-60">
+      <EsportsTableCell className="w-14 font-mono text-sm tabular-nums text-muted-foreground">
+        {position}
+      </EsportsTableCell>
+      <EsportsTableCell colSpan={4} className="text-muted-foreground">
+        Open slot
+      </EsportsTableCell>
+    </EsportsTableRow>
   );
 }
 
@@ -102,69 +138,79 @@ export function TeamProfileHero({
   losses: number;
   playWindowLabel?: string | null;
 }) {
-  const pct = Math.round((playerCount / MAX_ROSTER) * 100);
   const rosterReady = starterCount >= MIN_ROSTER;
+  const fillPct = Math.round((playerCount / MAX_ROSTER) * 100);
 
   return (
-    <header className="team-hero">
-      <div className="team-hero-glow" aria-hidden />
-      <div className="team-hero-body">
-        <p className="eyebrow">Franchise</p>
-        <h1 className="team-hero-title">{teamName}</h1>
-        <p className="team-hero-sub">
-          {captainName ? (
-            <>
-              Captain <strong>{captainName}</strong>
-            </>
-          ) : (
-            "No captain assigned"
-          )}
-          {playWindowLabel ? (
-            <>
-              {" "}
-              · Availability <strong>{playWindowLabel}</strong>
-            </>
-          ) : null}
-        </p>
-
-        <div className="team-hero-stats">
-          <div className="team-stat-pill">
-            <span className="team-stat-label">Roster</span>
-            <strong>
-              {playerCount}/{MAX_ROSTER}
-            </strong>
-          </div>
-          <div className="team-stat-pill">
-            <span className="team-stat-label">Starters</span>
-            <strong>
-              {starterCount}/{MIN_ROSTER}
-            </strong>
-          </div>
-          <div className="team-stat-pill">
-            <span className="team-stat-label">Subs</span>
-            <strong>
-              {subCount}/2
-            </strong>
-          </div>
-          <div className="team-stat-pill">
-            <span className="team-stat-label">Record</span>
-            <strong>
-              {wins}W–{losses}L
-            </strong>
+    <header className="relative overflow-hidden rounded-xl border border-white/10 bg-[#121824]">
+      <div
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_12%_0%,rgba(245,158,11,0.14),transparent_55%)]"
+        aria-hidden
+      />
+      <div className="relative flex flex-col gap-6 p-5 sm:p-7">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <p className="eyebrow">Franchise</p>
+            <div className="mt-2 flex min-w-0 items-center gap-3">
+              <TeamBadge name={teamName} size="lg" showName={false} />
+              <h1 className="m-0 truncate font-display text-3xl font-bold tracking-tight sm:text-4xl">
+                {teamName}
+              </h1>
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              {captainName ? (
+                <Badge
+                  variant="outline"
+                  className="gap-1.5 border-amber-500/35 bg-amber-500/10 text-amber-300"
+                >
+                  <Crown className="size-3" aria-hidden />
+                  Captain {captainName}
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="border-white/15 text-muted-foreground">
+                  No captain assigned
+                </Badge>
+              )}
+              {playWindowLabel ? (
+                <Badge variant="outline" className="border-white/15 text-muted-foreground">
+                  {playWindowLabel}
+                </Badge>
+              ) : null}
+              <Badge
+                variant="outline"
+                className={cn(
+                  "border-white/15",
+                  rosterReady
+                    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                    : "text-muted-foreground",
+                )}
+              >
+                {rosterReady
+                  ? "Starting five ready"
+                  : `${MIN_ROSTER - starterCount} starter slots open`}
+              </Badge>
+            </div>
           </div>
         </div>
 
-        <div className="team-roster-meter">
-          <div className="team-roster-meter-head">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <StatTile label="Wins" value={wins} />
+          <StatTile label="Losses" value={losses} />
+          <StatTile label="Starters" value={`${starterCount}/${MIN_ROSTER}`} />
+          <StatTile label="Roster" value={`${playerCount}/${MAX_ROSTER}`} />
+        </div>
+
+        <div>
+          <div className="mb-1.5 flex items-center justify-between text-[0.68rem] tracking-[0.12em] text-muted-foreground uppercase">
             <span>Roster fill</span>
-            <span className={rosterReady ? "gold" : "muted"}>
-              {rosterReady ? "Starting five ready" : `${MIN_ROSTER - starterCount} starter slots open`}
+            <span className="font-mono tabular-nums text-foreground">
+              {subCount}/2 subs · {fillPct}%
             </span>
           </div>
-          <div className="team-roster-meter-track">
+          <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
             <span
-              className="team-roster-meter-fill"
-              style={{ width: `${pct}%` }}
+              className="block h-full rounded-full bg-amber-500/80 transition-[width] duration-300"
+              style={{ width: `${fillPct}%` }}
             />
           </div>
         </div>
@@ -180,83 +226,92 @@ export function TeamRosterBoard({
   starters: TeamPlayerView[];
   subs: TeamPlayerView[];
 }) {
-  const [view, setView] = useState<"starters" | "all">("all");
-  const starterSlots = Array.from({ length: MIN_ROSTER }, (_, i) => starters[i] ?? null);
+  const starterSlots = Array.from({ length: MIN_ROSTER }, (_, i) => {
+    const player = starters[i] ?? null;
+    return {
+      player,
+      position: player ? `Pos ${starterPos(player, i)}` : `Pos ${i + 1}`,
+    };
+  });
   const subSlots = Array.from({ length: 2 }, (_, i) => subs[i] ?? null);
 
   return (
-    <section className="team-roster-panel">
-      <div className="team-roster-panel-head">
-        <div>
-          <h2>Roster</h2>
+    <section className="flex flex-col gap-6">
+      <div>
+        <div className="section-head mb-3">
+          <h2>Starting five</h2>
+          <span className="muted">
+            {starters.length}/{MIN_ROSTER}
+          </span>
         </div>
-        <div className="team-view-toggle" role="tablist" aria-label="Roster view">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={view === "all"}
-            className={view === "all" ? "active" : ""}
-            onClick={() => setView("all")}
-          >
-            Full board
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={view === "starters"}
-            className={view === "starters" ? "active" : ""}
-            onClick={() => setView("starters")}
-          >
-            Starters only
-          </button>
-        </div>
-      </div>
-
-      <div className="team-slot-section">
-        <h3 className="team-slot-label">
-          Starting five
-          <span className="muted">{starters.length}/{MIN_ROSTER}</span>
-        </h3>
-        <div className="team-slot-grid">
-          {starterSlots.map((player, i) =>
-            player ? (
-              <PlayerCard key={player.id} player={player} />
-            ) : (
-              <OpenSlot
-                key={`open-starter-${i}`}
-                variant="starter"
-                label="Open"
-              />
-            ),
-          )}
-        </div>
-      </div>
-
-      {view === "all" ? (
-        <div className="team-slot-section">
-          <h3 className="team-slot-label">
-            Substitutes
-            <span className="muted">{subs.length}/2</span>
-          </h3>
-          <div className="team-slot-grid team-slot-grid-subs">
-            {subSlots.map((player, i) =>
-              player ? (
-                <PlayerCard key={player.id} player={player} />
-              ) : (
-                <OpenSlot
-                  key={`open-sub-${i}`}
-                  variant="sub"
-                  label="Open"
+        <EsportsTable>
+          <EsportsTableHeader>
+            <EsportsTableRow>
+              <EsportsTableHead>Pos</EsportsTableHead>
+              <EsportsTableHead>Player</EsportsTableHead>
+              <EsportsTableHead>Medal</EsportsTableHead>
+              <EsportsTableHead>Roles</EsportsTableHead>
+              <EsportsTableHead className="hidden sm:table-cell">
+                Window
+              </EsportsTableHead>
+            </EsportsTableRow>
+          </EsportsTableHeader>
+          <EsportsTableBody>
+            {starterSlots.map((slot, i) =>
+              slot.player ? (
+                <RosterPlayerRow
+                  key={slot.player.id}
+                  player={slot.player}
+                  position={slot.position}
                 />
+              ) : (
+                <OpenSlotRow key={`open-starter-${i}`} position={slot.position} />
               ),
             )}
-          </div>
-        </div>
-      ) : null}
+          </EsportsTableBody>
+        </EsportsTable>
+      </div>
 
-      {starters.length === 0 && subs.length === 0 ? (
-        <p className="team-roster-foot muted">No players on this roster yet.</p>
-      ) : null}
+      <div>
+        <div className="section-head mb-3">
+          <h2>Substitutes</h2>
+          <span className="muted">{subs.length}/2</span>
+        </div>
+        {subs.length === 0 && starters.length === 0 ? (
+          <EsportsCard interactive={false} className="p-5">
+            <p className="m-0 text-sm text-muted-foreground">
+              No players on this roster yet.
+            </p>
+          </EsportsCard>
+        ) : (
+          <EsportsTable>
+            <EsportsTableHeader>
+              <EsportsTableRow>
+                <EsportsTableHead>Slot</EsportsTableHead>
+                <EsportsTableHead>Player</EsportsTableHead>
+                <EsportsTableHead>Medal</EsportsTableHead>
+                <EsportsTableHead>Roles</EsportsTableHead>
+                <EsportsTableHead className="hidden sm:table-cell">
+                  Window
+                </EsportsTableHead>
+              </EsportsTableRow>
+            </EsportsTableHeader>
+            <EsportsTableBody>
+              {subSlots.map((player, i) =>
+                player ? (
+                  <RosterPlayerRow
+                    key={player.id}
+                    player={player}
+                    position="SUB"
+                  />
+                ) : (
+                  <OpenSlotRow key={`open-sub-${i}`} position="SUB" />
+                ),
+              )}
+            </EsportsTableBody>
+          </EsportsTable>
+        )}
+      </div>
     </section>
   );
 }

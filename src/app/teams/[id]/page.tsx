@@ -15,7 +15,7 @@ import {
 } from "@/lib/play-window";
 import { isRosterSub, parseRolesJson, sortTeamRoster } from "@/lib/roles";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 30;
 
 export async function generateMetadata({
   params,
@@ -40,11 +40,13 @@ function toPlayerView(player: {
   isCaptain: boolean;
   rosterRole: string | null;
 }): TeamPlayerView {
+  const roleKeys = parseRolesJson(player.rolesJson);
   return {
     id: player.id,
     steamName: player.steamName,
     medal: player.medal,
-    rolesLabel: formatRoles(parseRolesJson(player.rolesJson)),
+    rolesLabel: formatRoles(roleKeys),
+    roleKeys,
     playWindowLabel: PLAY_WINDOW_SHORT[playWindowOrBoth(player.playWindow)],
     isCaptain: player.isCaptain,
     isSub: isRosterSub(player.rosterRole),

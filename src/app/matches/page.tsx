@@ -1,9 +1,10 @@
+import { PageHeader } from "@/components/common";
 import { MatchesGrid, type MatchListView } from "@/components/matches-grid";
 import { getMatches } from "@/lib/data";
 import { matchKillTotals } from "@/lib/match-score";
 import { pageMeta } from "@/lib/seo";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 30;
 
 export const metadata = pageMeta(
   "Match Results",
@@ -44,25 +45,21 @@ export default async function MatchesPage() {
 
   return (
     <div className="page matches-list-page">
-      <header className="teams-list-hero matches-list-hero">
-        <div className="team-hero-glow" aria-hidden />
-        <div className="teams-list-hero-body">
-          <p className="eyebrow">Scoreboard</p>
-          <h1>Matches</h1>
-          {views.length > 0 ? (
-            <div className="teams-list-hero-pills">
-              <span className="teams-list-hero-pill">
-                <strong>{views.length}</strong> games logged
-              </span>
-              {totalKills > 0 ? (
-                <span className="teams-list-hero-pill">
-                  <strong>{totalKills}</strong> total kills tracked
-                </span>
-              ) : null}
-            </div>
-          ) : null}
-        </div>
-      </header>
+      <PageHeader
+        className="matches-list-hero"
+        eyebrow="Scoreboard"
+        title="Matches"
+        pills={
+          views.length > 0
+            ? [
+                { value: views.length, label: "games logged" },
+                ...(totalKills > 0
+                  ? [{ value: totalKills, label: "total kills tracked" }]
+                  : []),
+              ]
+            : undefined
+        }
+      />
 
       {views.length === 0 ? (
         <div className="empty-panel teams-list-empty">

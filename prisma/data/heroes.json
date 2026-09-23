@@ -3178,7 +3178,7 @@
   {
     "id": 76,
     "slug": "obsidian_destroyer",
-    "name": "Outworld Devourer",
+    "name": "Outworld Destroyer",
     "npcName": "npc_dota_hero_obsidian_destroyer",
     "primaryAttr": "int",
     "attackType": "Ranged",

@@ -1,6 +1,8 @@
+import { unstable_cache } from "next/cache";
 import { MIN_ROSTER } from "./constants";
 import { matchKickoffWindow } from "./play-window";
 import { prisma } from "./prisma";
+import { PUBLIC_PAGE_TAG, PUBLIC_REVALIDATE_SECONDS } from "./cache-tags";
 import {
   FINAL_BEST_OF,
   REGULAR_BEST_OF,
@@ -686,72 +688,76 @@ function matchViewFromSlot(
   };
 }
 
-export async function getPlayoffView(): Promise<PlayoffView> {
-  const [teams, seeded, season] = await Promise.all([
-    liveTeams(),
-    loadPlayoffSeeds(),
-    currentSeasonFilter(),
-  ]);
-  const { groupA: standingsA, groupB: standingsB, complete, seeds } = seeded;
-  const now = new Date();
-  const fixtures = await prisma.scheduledFixture.findMany({
-    where: {
-      AND: [
-        publicFixtureWhere,
-        season,
-        {
-          OR: [
-            { kind: { in: [...PLAYOFF_KINDS] } },
-            { slotKey: { in: [...PLAYOFF_SLOTS, ...BRACKET_SLOTS] } },
-          ],
-        },
-      ],
-    },
-    include: {
-      radiantTeam: { select: { id: true, name: true } },
-      direTeam: { select: { id: true, name: true } },
-    },
-  });
-  const bySlot = new Map(
-    fixtures.filter((row) => row.slotKey).map((row) => [row.slotKey as string, row]),
-  );
-  const results: Partial<
-    Record<BracketSlot, { winner: { id: string; name: string }; loser: { id: string; name: string } }>
-  > = {};
-  for (const slot of BRACKET_SLOTS) {
-    const fixture = bySlot.get(slot);
-    if (!fixture || fixture.status !== "completed") continue;
-    const outcome = seriesWinnerLoser(fixture);
-    if (outcome) results[slot] = outcome;
-  }
-  const pairings = unlockedPairings(seeds, results);
-  const matches = BRACKET_SLOTS.map((slotKey) =>
-    matchViewFromSlot(slotKey, bySlot.get(slotKey), pairings[slotKey], now),
-  );
+export const getPlayoffView = unstable_cache(
+  async (): Promise<PlayoffView> => {
+    const [teams, seeded, season] = await Promise.all([
+      liveTeams(),
+      loadPlayoffSeeds(),
+      currentSeasonFilter(),
+    ]);
+    const { groupA: standingsA, groupB: standingsB, complete, seeds } = seeded;
+    const now = new Date();
+    const fixtures = await prisma.scheduledFixture.findMany({
+      where: {
+        AND: [
+          publicFixtureWhere,
+          season,
+          {
+            OR: [
+              { kind: { in: [...PLAYOFF_KINDS] } },
+              { slotKey: { in: [...PLAYOFF_SLOTS, ...BRACKET_SLOTS] } },
+            ],
+          },
+        ],
+      },
+      include: {
+        radiantTeam: { select: { id: true, name: true } },
+        direTeam: { select: { id: true, name: true } },
+      },
+    });
+    const bySlot = new Map(
+      fixtures.filter((row) => row.slotKey).map((row) => [row.slotKey as string, row]),
+    );
+    const results: Partial<
+      Record<BracketSlot, { winner: { id: string; name: string }; loser: { id: string; name: string } }>
+    > = {};
+    for (const slot of BRACKET_SLOTS) {
+      const fixture = bySlot.get(slot);
+      if (!fixture || fixture.status !== "completed") continue;
+      const outcome = seriesWinnerLoser(fixture);
+      if (outcome) results[slot] = outcome;
+    }
+    const pairings = unlockedPairings(seeds, results);
+    const matches = BRACKET_SLOTS.map((slotKey) =>
+      matchViewFromSlot(slotKey, bySlot.get(slotKey), pairings[slotKey], now),
+    );
 
-  return {
-    groupA: teams
-      .filter((team) => team.groupKey === "A")
-      .map((team) => ({ id: team.id, name: team.name })),
-    groupB: teams
-      .filter((team) => team.groupKey === "B")
-      .map((team) => ({ id: team.id, name: team.name })),
-    unassigned: teams
-      .filter((team) => team.groupKey !== "A" && team.groupKey !== "B")
-      .map((team) => ({ id: team.id, name: team.name })),
-    matches,
-    groupRoundRobin: fixtures.filter((row) => row.kind === "group").length,
-    groupStageComplete: complete,
-    standingsA,
-    standingsB,
-    eliminated: complete && standingsA[3] && standingsB[3]
-      ? [
-          { id: standingsA[3].id, name: standingsA[3].name },
-          { id: standingsB[3].id, name: standingsB[3].name },
-        ]
-      : [],
-  };
-}
+    return {
+      groupA: teams
+        .filter((team) => team.groupKey === "A")
+        .map((team) => ({ id: team.id, name: team.name })),
+      groupB: teams
+        .filter((team) => team.groupKey === "B")
+        .map((team) => ({ id: team.id, name: team.name })),
+      unassigned: teams
+        .filter((team) => team.groupKey !== "A" && team.groupKey !== "B")
+        .map((team) => ({ id: team.id, name: team.name })),
+      matches,
+      groupRoundRobin: fixtures.filter((row) => row.kind === "group").length,
+      groupStageComplete: complete,
+      standingsA,
+      standingsB,
+      eliminated: complete && standingsA[3] && standingsB[3]
+        ? [
+            { id: standingsA[3].id, name: standingsA[3].name },
+            { id: standingsB[3].id, name: standingsB[3].name },
+          ]
+        : [],
+    };
+  },
+  ["playoff-view"],
+  { tags: [PUBLIC_PAGE_TAG], revalidate: PUBLIC_REVALIDATE_SECONDS },
+);
 
 export async function openPlayoffsFromGroups() {
   const { complete } = await loadPlayoffSeeds();

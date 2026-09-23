@@ -11,17 +11,23 @@ import "./globals.css";
 const oxanium = Oxanium({
   variable: "--font-oxanium",
   subsets: ["latin"],
+  display: "swap",
+  preload: true,
 });
 
 const sora = Sora({
   variable: "--font-sora",
   subsets: ["latin"],
+  display: "swap",
+  preload: true,
 });
 
 const bebas = Bebas_Neue({
   weight: "400",
   variable: "--font-bebas",
   subsets: ["latin"],
+  display: "swap",
+  preload: false,
 });
 
 export const metadata: Metadata = {
@@ -59,13 +65,13 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${oxanium.variable} ${sora.variable} ${bebas.variable} h-full antialiased`}
+      className={`${oxanium.variable} ${sora.variable} ${bebas.variable} dark h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
         <Providers>
           <NavigationLoader />
-          <Nav />
           <ClosedBanner />
+          <Nav />
           <main className="flex-1">{children}</main>
           <SiteFooter />
         </Providers>

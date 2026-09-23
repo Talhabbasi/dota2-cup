@@ -1,11 +1,15 @@
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { formatDuration, formatRoles, getPlayer, getPlayerMeta } from "@/lib/data";
+import { Swords } from "lucide-react";
 import {
-  MEDAL_LABELS,
-  type Medal,
-} from "@/lib/constants";
+  EsportsCard,
+  MatchStatusBadge,
+  StatTile,
+  TeamBadge,
+} from "@/components/common";
+import { formatDuration, formatRoles, getPlayer, getPlayerMeta } from "@/lib/data";
+import { MEDAL_LABELS, type Medal } from "@/lib/constants";
 import { PLAY_WINDOW_LABELS, playWindowOrBoth } from "@/lib/play-window";
 import {
   heroIconUrl,
@@ -15,7 +19,7 @@ import {
 import type { Metadata } from "next";
 import { isMatchStandIn } from "@/lib/stand-in";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 30;
 
 export async function generateMetadata({
   params,
@@ -78,6 +82,14 @@ export default async function PlayerPage({
 
   const wins = games.filter((g) => g.won === true).length;
   const losses = games.filter((g) => g.won === false).length;
+  const totalKills = games.reduce((n, g) => n + g.kills, 0);
+  const totalDeaths = games.reduce((n, g) => n + g.deaths, 0);
+  const totalAssists = games.reduce((n, g) => n + g.assists, 0);
+  const kda =
+    games.length > 0
+      ? ((totalKills + totalAssists) / Math.max(1, totalDeaths)).toFixed(2)
+      : "—";
+
   const heroCounts = new Map<
     string,
     { slug: string; name: string; plays: number; kills: number; deaths: number; assists: number }
@@ -108,112 +120,122 @@ export default async function PlayerPage({
         ← Players
       </Link>
 
-      <div className="page-head">
-        <p className="eyebrow">
-          {player.currentSeason
-            ? `Season ${player.currentSeason.number}`
-            : "Player"}
-        </p>
-        <h1>{player.steamName}</h1>
-        <p className="lede">
-          {MEDAL_LABELS[player.medal as Medal] ?? player.medal}
-          {player.isCaptain ? " · Captain" : ""}
-        </p>
-        <p className="muted" style={{ margin: "0 0 0.8rem" }}>
-          {formatRoles(player.roles)}
-          {player.rosterRole === "sub" ? " · Sub" : ""}
-          {" · "}
-          {PLAY_WINDOW_LABELS[playWindowOrBoth(player.playWindow)]}
-        </p>
-        {player.team ? (
-          <Link href={`/teams/${player.team.id}`} className="badge badge-gold">
-            {player.team.name}
-          </Link>
-        ) : games.length > 0 ? (
-          <span className="badge">Stand-in</span>
-        ) : (
-          <span className="badge">Unsigned</span>
-        )}
-      </div>
+      <EsportsCard interactive={false} className="mb-6 overflow-hidden">
+        <div className="border-b border-white/10 px-5 py-4">
+          <p className="m-0 text-[0.68rem] font-semibold tracking-[0.16em] text-primary uppercase">
+            {player.currentSeason
+              ? `Season ${player.currentSeason.number}`
+              : "Player"}
+          </p>
+          <h1 className="mt-2 mb-2 font-display text-3xl tracking-wide text-foreground uppercase">
+            {player.steamName}
+          </h1>
+          <p className="m-0 text-sm text-muted-foreground">
+            {MEDAL_LABELS[player.medal as Medal] ?? player.medal}
+            {player.isCaptain ? " · 👑 Captain" : ""}
+            {" · "}
+            {formatRoles(player.roles)}
+            {player.rosterRole === "sub" ? " · Sub" : ""}
+            {" · "}
+            {PLAY_WINDOW_LABELS[playWindowOrBoth(player.playWindow)]}
+          </p>
+          <div className="mt-3">
+            {player.team ? (
+              <Link href={`/teams/${player.team.id}`}>
+                <TeamBadge name={player.team.name} />
+              </Link>
+            ) : games.length > 0 ? (
+              <span className="text-sm text-muted-foreground">Stand-in</span>
+            ) : (
+              <span className="text-sm text-muted-foreground">Unsigned</span>
+            )}
+          </div>
+        </div>
+        <ul className="m-0 grid list-none grid-cols-2 gap-3 p-5 sm:grid-cols-4">
+          <li>
+            <StatTile label="Games" value={games.length || "0"} />
+          </li>
+          <li>
+            <StatTile
+              label="Record"
+              value={games.length ? `${wins}W–${losses}L` : "—"}
+            />
+          </li>
+          <li>
+            <StatTile icon={<Swords />} label="Avg KDA" value={kda} />
+          </li>
+          <li>
+            <StatTile label="Heroes" value={topHeroes.length || "—"} />
+          </li>
+        </ul>
+      </EsportsCard>
 
       {player.seasonHistory.length > 0 ? (
-        <section className="player-season-history">
+        <section className="mb-6">
           <div className="section-head">
             <h2>Seasons</h2>
           </div>
-          <ul className="player-season-list">
+          <div className="grid gap-2">
             {player.seasonHistory.map((row) => (
-              <li key={row.seasonId}>
-                <span className="player-season-name">
-                  Season {row.number}
-                  {row.name !== `Season ${row.number}` ? ` · ${row.name}` : ""}
-                  {row.live ? (
-                    <span className="badge badge-gold">Live</span>
-                  ) : null}
-                </span>
-                {row.teamId && row.teamName ? (
-                  <Link href={`/teams/${row.teamId}`}>
-                    {row.teamName}
-                    {row.isCaptain ? " · Captain" : ""}
-                    {row.rosterRole === "sub" ? " · Sub" : ""}
-                  </Link>
-                ) : (
-                  <span className="muted">Unsigned</span>
-                )}
-              </li>
+              <EsportsCard key={row.seasonId} className="px-4 py-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-medium text-foreground">
+                    Season {row.number}
+                    {row.name !== `Season ${row.number}` ? ` · ${row.name}` : ""}
+                    {row.live ? (
+                      <span className="ml-2 text-[0.65rem] text-amber-400 uppercase">
+                        Live
+                      </span>
+                    ) : null}
+                  </span>
+                  {row.teamId && row.teamName ? (
+                    <Link href={`/teams/${row.teamId}`}>
+                      <TeamBadge name={row.teamName} size="sm" />
+                    </Link>
+                  ) : (
+                    <span className="text-sm text-muted-foreground">Unsigned</span>
+                  )}
+                </div>
+              </EsportsCard>
             ))}
-          </ul>
+          </div>
         </section>
       ) : null}
 
-      <section className="lot-stats" style={{ marginBottom: "2rem" }}>
-        <div className="stat">
-          <span className="muted">All-time games</span>
-          <b>{games.length || "0"}</b>
-        </div>
-        <div className="stat">
-          <span className="muted">Record</span>
-          <b>{games.length ? `${wins}W – ${losses}L` : "—"}</b>
-        </div>
-        <div className="stat">
-          <span className="muted">All-time heroes</span>
-          <b>{topHeroes.length || "—"}</b>
-        </div>
-      </section>
-
       {topHeroes.length > 0 ? (
-        <section style={{ marginBottom: "2rem" }}>
+        <section className="mb-6">
           <div className="section-head">
-            <h2>All-time heroes</h2>
+            <h2>Signature heroes</h2>
           </div>
-          <div className="player-hero-strip">
+          <div className="flex flex-wrap gap-2">
             {topHeroes.map((hero) =>
               hero.slug ? (
                 <Link
                   key={hero.slug}
                   href={`/heroes/${hero.slug}`}
-                  className="player-hero-chip"
+                  className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-[#121824] px-2.5 py-2 transition hover:border-amber-500/30"
                 >
                   <Image
                     src={heroIconUrl(hero.slug)}
                     alt={hero.name}
-                    width={40}
-                    height={40}
-                    className="match-hero-icon"
+                    width={32}
+                    height={32}
+                    sizes="32px"
+                    className="rounded"
                   />
-                  <span>
+                  <span className="text-sm text-foreground">
                     {hero.name}
-                    <strong>
+                    <span className="mt-0.5 block font-mono text-[0.65rem] tabular-nums text-muted-foreground">
                       {hero.plays} · {hero.kills}/{hero.deaths}/{hero.assists}
-                    </strong>
+                    </span>
                   </span>
                 </Link>
               ) : (
-                <span key={hero.name} className="player-hero-chip">
-                  <span>
-                    {hero.name}
-                    <strong>{hero.plays} plays</strong>
-                  </span>
+                <span
+                  key={hero.name}
+                  className="inline-flex rounded-lg border border-white/10 bg-[#121824] px-2.5 py-2 text-sm"
+                >
+                  {hero.name}
                 </span>
               ),
             )}
@@ -225,15 +247,14 @@ export default async function PlayerPage({
         <h2>Match history</h2>
       </div>
       {games.length === 0 ? (
-        <div className="empty-panel">
-          <p className="muted">No posted matches yet for this Steam account.</p>
-        </div>
+        <EsportsCard interactive={false} className="p-6">
+          <p className="m-0 text-muted-foreground">
+            No posted matches yet for this Steam account.
+          </p>
+        </EsportsCard>
       ) : (
-        <div className="hero-match-stack">
+        <div className="grid gap-3">
           {games.map((game) => {
-            const winner =
-              game.match.winnerTeam?.name ??
-              (game.match.radiantWin ? "Radiant" : "Dire");
             const standIn = isMatchStandIn({
               side: game.side,
               playerTeamId: player.teamId,
@@ -241,46 +262,58 @@ export default async function PlayerPage({
               direTeamId: game.match.direTeam?.id ?? null,
             });
             return (
-              <article key={game.id} className="hero-match-card player-game">
-                {game.heroInfo ? (
-                  <Link href={`/heroes/${game.heroInfo.slug}`} className="player-game-art">
-                    <Image
-                      src={heroPortraitUrl(game.heroInfo.slug)}
-                      alt={game.heroInfo.name}
-                      width={220}
-                      height={124}
-                    />
-                    <span>{game.heroInfo.name}</span>
-                  </Link>
-                ) : (
-                  <div className="player-game-art">
-                    <span>{game.hero}</span>
+              <EsportsCard key={game.id} className="overflow-hidden">
+                <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
+                  {game.heroInfo ? (
+                    <Link
+                      href={`/heroes/${game.heroInfo.slug}`}
+                      className="relative block h-20 w-full shrink-0 overflow-hidden rounded-lg sm:h-16 sm:w-28"
+                    >
+                      <Image
+                        src={heroPortraitUrl(game.heroInfo.slug)}
+                        alt={game.heroInfo.name}
+                        fill
+                        sizes="112px"
+                        className="object-cover"
+                      />
+                    </Link>
+                  ) : null}
+                  <div className="min-w-0 flex-1">
+                    <Link
+                      href={`/matches/${game.match.id}`}
+                      className="font-medium text-foreground!"
+                    >
+                      {game.match.radiantTeam?.name ?? "Radiant"} vs{" "}
+                      {game.match.direTeam?.name ?? "Dire"}
+                    </Link>
+                    <p className="mt-1 mb-0 text-sm text-muted-foreground">
+                      {game.side === "radiant" ? "Radiant" : "Dire"}
+                      {standIn ? " (stand-in)" : ""}
+                      {" · "}
+                      {formatDuration(game.match.duration)}
+                      {game.match.season
+                        ? ` · Season ${game.match.season.number}`
+                        : ""}
+                    </p>
                   </div>
-                )}
-                <div>
-                  <Link href={`/matches/${game.match.id}`} className="hero-match-title">
-                    {game.match.radiantTeam?.name ?? "Radiant"}{" "}
-                    <span className="muted">vs</span>{" "}
-                    {game.match.direTeam?.name ?? "Dire"}
-                  </Link>
-                  <p className="muted">
-                    {game.side === "radiant" ? "Radiant" : "Dire"}
-                    {standIn ? " (stand-in)" : ""}
-                    {game.won == null ? "" : game.won ? " · Win" : " · Loss"}
-                    {" · "}
-                    Winner {winner} · {formatDuration(game.match.duration)}
-                    {game.match.season
-                      ? ` · Season ${game.match.season.number}`
-                      : ""}
-                  </p>
+                  <div className="flex shrink-0 items-center gap-3">
+                    <MatchStatusBadge
+                      status="completed"
+                      label={
+                        game.won == null ? "FT" : game.won ? "WIN" : "LOSS"
+                      }
+                    />
+                    <div className="text-right">
+                      <p className="m-0 font-mono text-lg font-bold tabular-nums text-foreground">
+                        {game.kills}/{game.deaths}/{game.assists}
+                      </p>
+                      <p className="m-0 text-[0.62rem] tracking-wide text-muted-foreground uppercase">
+                        KDA
+                      </p>
+                    </div>
+                  </div>
                 </div>
-                <div className="hero-kda">
-                  <strong>
-                    {game.kills}/{game.deaths}/{game.assists}
-                  </strong>
-                  <span className="muted">KDA</span>
-                </div>
-              </article>
+              </EsportsCard>
             );
           })}
         </div>

@@ -1,15 +1,18 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 export function usePagedList<T>(items: T[], pageSize: number) {
   const [page, setPage] = useState(1);
-  const pageCount = Math.max(1, Math.ceil(items.length / pageSize));
-
-  useEffect(() => {
+  const [prevItems, setPrevItems] = useState(items);
+  const [prevPageSize, setPrevPageSize] = useState(pageSize);
+  if (items !== prevItems || pageSize !== prevPageSize) {
+    setPrevItems(items);
+    setPrevPageSize(pageSize);
     setPage(1);
-  }, [items, pageSize]);
+  }
 
+  const pageCount = Math.max(1, Math.ceil(items.length / pageSize));
   const safePage = Math.min(page, pageCount);
   const slice = useMemo(
     () => items.slice((safePage - 1) * pageSize, safePage * pageSize),

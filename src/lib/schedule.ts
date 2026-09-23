@@ -1,5 +1,5 @@
 import { MIN_ROSTER } from "./constants";
-import { formatMatchTimesAllZones, weekendSlotLabel } from "./match-times";
+import { weekendSlotLabel } from "./match-times";
 import {
   deriveTeamPlayWindow,
   matchKickoffWindow,
@@ -12,6 +12,8 @@ import { prisma } from "./prisma";
 import { hasScheduleTable, safeScheduleQuery } from "./schedule-db";
 import { publicFixtureWhere } from "./dummy";
 import { currentSeasonId, currentSeasonFilter, recordSeasonChampion } from "./seasons";
+import { unstable_cache } from "next/cache";
+import { PUBLIC_PAGE_TAG, PUBLIC_REVALIDATE_SECONDS } from "./cache-tags";
 
 export const MAX_GAMES_PER_TEAM_PER_WEEKEND = 2;
 export const MATCHES_PER_WEEKEND = 3;
@@ -98,8 +100,13 @@ export function scheduleLateMinuteLocal(): number {
   return Number.isFinite(n) ? Math.min(59, Math.max(0, n)) : 30;
 }
 
-export function localParts(date: Date, offsetH: number) {
-  const shifted = new Date(date.getTime() + offsetH * 3_600_000);
+export function asDate(value: Date | string | number): Date {
+  if (value instanceof Date) return value;
+  return new Date(value);
+}
+
+export function localParts(date: Date | string, offsetH: number) {
+  const shifted = new Date(asDate(date).getTime() + offsetH * 3_600_000);
   return {
     year: shifted.getUTCFullYear(),
     month: shifted.getUTCMonth(),
@@ -539,19 +546,23 @@ function weekendChampionFromFixtures(
   return top.count > 0 ? top : null;
 }
 
-export async function getActiveWeekendBundle() {
-  return safeScheduleQuery(null, async () => {
-    const next = await getNextScheduledFixture();
-    if (!next) return null;
+export const getActiveWeekendBundle = unstable_cache(
+  async () => {
+    return safeScheduleQuery(null, async () => {
+      const next = await getNextScheduledFixture();
+      if (!next) return null;
 
-    const fixtures = await getWeekendFixtures(next.weekendIndex);
-    return {
-      weekendIndex: next.weekendIndex,
-      fixtures,
-      champion: weekendChampionFromFixtures(fixtures),
-    };
-  });
-}
+      const fixtures = await getWeekendFixtures(next.weekendIndex);
+      return {
+        weekendIndex: next.weekendIndex,
+        fixtures,
+        champion: weekendChampionFromFixtures(fixtures),
+      };
+    });
+  },
+  ["active-weekend-bundle"],
+  { tags: [PUBLIC_PAGE_TAG], revalidate: PUBLIC_REVALIDATE_SECONDS },
+);
 
 export async function getWeekendChampion(weekendIndex: number) {
   return safeScheduleQuery(null, async () => {

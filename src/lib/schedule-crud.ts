@@ -1,8 +1,10 @@
 import { Prisma } from "@prisma/client";
+import { unstable_cache } from "next/cache";
 import { prisma } from "./prisma";
 import { hasScheduleTable, safeScheduleQuery } from "./schedule-db";
 import { publicFixtureWhere } from "./dummy";
 import { currentSeasonId, currentSeasonFilter } from "./seasons";
+import { PUBLIC_PAGE_TAG, PUBLIC_REVALIDATE_SECONDS } from "./cache-tags";
 import {
   formatScheduleWhen,
   localParts,
@@ -381,7 +383,7 @@ export async function listEditableFixtures(limit = 25) {
   );
 }
 
-export async function listCupSchedule(opts?: { publicOnly?: boolean }) {
+async function listCupScheduleImpl(opts?: { publicOnly?: boolean }) {
   const season = await currentSeasonFilter();
   return safeScheduleQuery([], () =>
     prisma.scheduledFixture.findMany({
@@ -392,6 +394,17 @@ export async function listCupSchedule(opts?: { publicOnly?: boolean }) {
       orderBy: { scheduledAt: "asc" },
     }),
   );
+}
+
+const listPublicCupScheduleCached = unstable_cache(
+  () => listCupScheduleImpl({ publicOnly: true }),
+  ["cup-schedule-public"],
+  { tags: [PUBLIC_PAGE_TAG], revalidate: PUBLIC_REVALIDATE_SECONDS },
+);
+
+export async function listCupSchedule(opts?: { publicOnly?: boolean }) {
+  if (opts?.publicOnly) return listPublicCupScheduleCached();
+  return listCupScheduleImpl(opts);
 }
 
 async function requireFixture(id: string) {

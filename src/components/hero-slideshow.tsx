@@ -42,11 +42,13 @@ const SLIDES = [
 ] as const;
 
 const HOLD_MS = 7000;
+const HERO_SIZES = "(max-width: 768px) 100vw, (max-width: 1280px) 100vw, 1200px";
 
 export function HeroSlideshow() {
   const [index, setIndex] = useState(0);
   const [ready, setReady] = useState(false);
   const [paused, setPaused] = useState(false);
+  const [mounted, setMounted] = useState(() => new Set([0]));
   const indexRef = useRef(0);
 
   const go = useCallback((next: number) => {
@@ -54,6 +56,28 @@ export function HeroSlideshow() {
     if (wrapped === indexRef.current) return;
     indexRef.current = wrapped;
     setIndex(wrapped);
+    setMounted((prev) => {
+      const prefetch = (wrapped + 1) % SLIDES.length;
+      if (prev.has(wrapped) && prev.has(prefetch)) return prev;
+      const nextSet = new Set(prev);
+      nextSet.add(wrapped);
+      nextSet.add(prefetch);
+      return nextSet;
+    });
+  }, []);
+
+  useEffect(() => {
+    // Warm the slide after the LCP image so transitions stay smooth.
+    const prefetch = 1 % SLIDES.length;
+    const id = window.setTimeout(() => {
+      setMounted((prev) => {
+        if (prev.has(prefetch)) return prev;
+        const nextSet = new Set(prev);
+        nextSet.add(prefetch);
+        return nextSet;
+      });
+    }, 2500);
+    return () => window.clearTimeout(id);
   }, []);
 
   useEffect(() => {
@@ -76,24 +100,31 @@ export function HeroSlideshow() {
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
     >
-      {SLIDES.map((slide, i) => (
-        <div
-          key={slide.src}
-          className={i === index ? "hero-slide is-active" : "hero-slide"}
-          aria-hidden={i !== index}
-        >
-          <Image
-            src={slide.src}
-            alt={i === index ? slide.alt : ""}
-            fill
-            priority={i < 2}
-            quality={82}
-            sizes="1920px"
-            className="hero-slide-photo"
-            style={{ objectPosition: slide.position }}
-          />
-        </div>
-      ))}
+      {SLIDES.map((slide, i) => {
+        const active = i === index;
+        const shouldRender = mounted.has(i);
+        return (
+          <div
+            key={slide.src}
+            className={active ? "hero-slide is-active" : "hero-slide"}
+            aria-hidden={!active}
+          >
+            {shouldRender ? (
+              <Image
+                src={slide.src}
+                alt={active ? slide.alt : ""}
+                fill
+                priority={i === 0}
+                loading={i === 0 ? "eager" : "lazy"}
+                quality={75}
+                sizes={HERO_SIZES}
+                className="hero-slide-photo"
+                style={{ objectPosition: slide.position }}
+              />
+            ) : null}
+          </div>
+        );
+      })}
       <div className="hero-slide-nav" role="tablist" aria-label="Dota 2 backgrounds">
         {SLIDES.map((slide, i) => (
           <button

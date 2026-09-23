@@ -8,7 +8,7 @@ import {
   type HeroInfo,
 } from "./opendota";
 import { publicMatchWhere, publicPlayerWhere } from "./dummy";
-import { PUBLIC_PAGE_TAG } from "./cache-tags";
+import { PUBLIC_PAGE_TAG, PUBLIC_REVALIDATE_SECONDS } from "./cache-tags";
 import { currentSeasonFilter } from "./seasons";
 
 export type HeroTournamentStat = HeroInfo & {
@@ -88,7 +88,7 @@ async function loadHeroTournamentStats(): Promise<HeroTournamentStat[]> {
 export const getHeroTournamentStats = unstable_cache(
   loadHeroTournamentStats,
   ["hero-stats"],
-  { tags: [PUBLIC_PAGE_TAG], revalidate: 15 },
+  { tags: [PUBLIC_PAGE_TAG], revalidate: PUBLIC_REVALIDATE_SECONDS },
 );
 
 export async function getHeroBySlug(slug: string) {

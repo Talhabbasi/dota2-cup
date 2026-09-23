@@ -10,7 +10,7 @@ import { heroPortraitUrl } from "@/lib/opendota";
 import { isMatchStandIn, unregisteredStandInLabel } from "@/lib/stand-in";
 import type { Metadata } from "next";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 30;
 
 export async function generateMetadata({
   params,
@@ -49,6 +49,7 @@ export default async function HeroDetailPage({
           alt={hero.name}
           width={512}
           height={288}
+          sizes="(max-width: 768px) 100vw, 360px"
           className="hero-detail-art"
           priority
         />

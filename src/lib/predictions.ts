@@ -17,6 +17,7 @@ import {
   type PickemSlotView,
 } from "./prediction-bracket";
 import {
+  asDate,
   formatScheduleWhen,
   localParts,
   scheduleUtcOffsetHours,
@@ -57,17 +58,17 @@ export function predictionPointsFor(kind: string, slotKey?: string | null) {
 }
 
 export function groupStageLockAt(
-  fixtures: { kind: string; scheduledAt: Date }[],
+  fixtures: { kind: string; scheduledAt: Date | string }[],
 ) {
   const group = fixtures.filter((row) =>
     isGroupStagePredictionFixture(row.kind),
   );
   if (group.length === 0) return null;
-  const earliest = group.reduce(
-    (soonest, row) =>
-      row.scheduledAt < soonest ? row.scheduledAt : soonest,
-    group[0].scheduledAt,
-  );
+  const earliest = group.reduce((soonest, row) => {
+    const at = asDate(row.scheduledAt).getTime();
+    const best = asDate(soonest).getTime();
+    return at < best ? row.scheduledAt : soonest;
+  }, group[0].scheduledAt);
   const offsetH = scheduleUtcOffsetHours();
   const { year, month, day } = localParts(earliest, offsetH);
   return new Date(

@@ -1,8 +1,9 @@
+import { PageHeader, StatTile } from "@/components/common";
 import { HeroesGrid } from "@/components/heroes-grid";
 import { getHeroTournamentStats } from "@/lib/heroes";
 import { pageMeta } from "@/lib/seo";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 30;
 
 export const metadata = pageMeta(
   "Dota 2 Heroes",
@@ -11,28 +12,49 @@ export const metadata = pageMeta(
 
 export default async function HeroesPage() {
   const heroes = await getHeroTournamentStats();
-  const played = heroes.filter((h) => h.plays > 0).length;
+  const played = heroes.filter((h) => h.plays > 0);
+  const unpicked = heroes.length - played.length;
   const totalPicks = heroes.reduce((n, h) => n + h.plays, 0);
+  const mostPicked =
+    played.length > 0
+      ? [...played].sort((a, b) => b.plays - a.plays || a.name.localeCompare(b.name))[0]
+      : null;
 
   return (
     <div className="page heroes-list-page">
-      <header className="teams-list-hero heroes-list-hero">
-        <div className="team-hero-glow" aria-hidden />
-        <div className="teams-list-hero-body">
-          <p className="eyebrow">Pool</p>
-          <h1>Heroes</h1>
-          <div className="teams-list-hero-pills">
-            <span className="teams-list-hero-pill">
-              <strong>{played}</strong> / {heroes.length} picked
-            </span>
-            {totalPicks > 0 ? (
-              <span className="teams-list-hero-pill">
-                <strong>{totalPicks}</strong> hero picks in matches
-              </span>
-            ) : null}
-          </div>
-        </div>
-      </header>
+      <PageHeader
+        className="heroes-list-hero"
+        eyebrow="Pool"
+        title="Heroes"
+        pills={[
+          {
+            value: (
+              <>
+                {played.length} / {heroes.length}
+              </>
+            ),
+            label: "picked",
+          },
+          ...(totalPicks > 0
+            ? [{ value: totalPicks, label: "hero picks in matches" }]
+            : []),
+        ]}
+      />
+
+      <ul className="mb-6 grid list-none grid-cols-1 gap-3 p-0 sm:grid-cols-3">
+        <li>
+          <StatTile
+            label="Most picked"
+            value={mostPicked ? mostPicked.name : "—"}
+          />
+        </li>
+        <li>
+          <StatTile label="Total picks" value={totalPicks} />
+        </li>
+        <li>
+          <StatTile label="Unpicked" value={unpicked} />
+        </li>
+      </ul>
 
       <HeroesGrid heroes={heroes} />
     </div>

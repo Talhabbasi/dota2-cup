@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { PageHeader } from "@/components/common";
 import { pageMeta } from "@/lib/seo";
 import { getSeasonHistory } from "@/lib/seasons";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 30;
 
 export const metadata = pageMeta(
   "Season Archive",
@@ -24,23 +25,20 @@ export default async function SeasonsPage() {
 
   return (
     <div className="page seasons-page">
-      <header className="teams-list-hero">
-        <div className="team-hero-glow" aria-hidden />
-        <div className="teams-list-hero-body">
-          <p className="eyebrow">Archive</p>
-          <h1>Seasons</h1>
-          <div className="teams-list-hero-pills">
-            <span className="teams-list-hero-pill">
-              <strong>{seasons.length}</strong> season
-              {seasons.length === 1 ? "" : "s"}
-            </span>
-            <span className="teams-list-hero-pill">
-              <strong>{seasons.length}</strong> champion
-              {seasons.length === 1 ? "" : "s"}
-            </span>
-          </div>
-        </div>
-      </header>
+      <PageHeader
+        eyebrow="Archive"
+        title="Seasons"
+        pills={[
+          {
+            value: seasons.length,
+            label: `season${seasons.length === 1 ? "" : "s"}`,
+          },
+          {
+            value: seasons.length,
+            label: `champion${seasons.length === 1 ? "" : "s"}`,
+          },
+        ]}
+      />
 
       {seasons.length === 0 ? (
         <div className="empty-panel teams-list-empty">

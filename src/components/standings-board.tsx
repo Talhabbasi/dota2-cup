@@ -1,7 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { memo, useMemo, useState } from "react";
+import {
+  EsportsTable,
+  EsportsTableBody,
+  EsportsTableCell,
+  EsportsTableHead,
+  EsportsTableHeader,
+  EsportsTableRow,
+  TeamBadge,
+} from "@/components/common";
+import { cn } from "@/lib/utils";
 
 export type StandingRowView = {
   id: string;
@@ -14,72 +24,78 @@ export type StandingRowView = {
 
 type SortKey = "points" | "wins" | "name";
 
-function teamMonogram(name: string) {
-  const words = name.trim().split(/\s+/).filter(Boolean);
-  if (words.length >= 2) {
-    return (words[0][0] + words[1][0]).toUpperCase();
-  }
-  return name.slice(0, 2).toUpperCase();
+function byPoints(a: StandingRowView, b: StandingRowView) {
+  return b.points - a.points || b.wins - a.wins || a.name.localeCompare(b.name);
 }
 
-function rankClass(rank: number) {
-  return `standings-rank rank rank-${Math.min(rank, 4)}`;
+function rowTone(rank: number) {
+  if (rank <= 2) return "bg-amber-500/5";
+  if (rank <= 4) return "bg-cyan-400/5";
+  return "opacity-50";
 }
 
-function StandingRow({
+function rowEdge(rank: number) {
+  if (rank <= 2) return "border-l-4! border-l-amber-500!";
+  if (rank <= 4) return "border-l-4! border-l-cyan-400!";
+  return "border-l-4! border-l-transparent!";
+}
+
+type RankedStanding = StandingRowView & { rank: number };
+
+const StandingTableRow = memo(function StandingTableRow({
   row,
-  rank,
   compact,
 }: {
-  row: StandingRowView;
-  rank: number;
-  compact?: boolean;
+  row: RankedStanding;
+  compact: boolean;
 }) {
   const winRate =
     row.played > 0 ? Math.round((row.wins / row.played) * 100) : null;
 
   return (
-    <Link
-      href={`/teams/${row.id}`}
-      className={`standings-row ${compact ? "standings-row-compact" : ""}`}
-    >
-      <span className={rankClass(rank)} aria-label={`Rank ${rank}`}>
-        {rank}
-      </span>
-      <span className="standings-monogram" aria-hidden>
-        {teamMonogram(row.name)}
-      </span>
-      <div className="standings-team">
-        <strong>{row.name}</strong>
-        {!compact ? (
-          <span className="muted">
-            {row.played} played
-            {winRate != null ? ` · ${winRate}% wins` : ""}
-          </span>
-        ) : null}
-      </div>
-      <div className="standings-stats">
-        <span className="standings-stat">
-          <b>{row.played}</b>
-          <small>P</small>
-        </span>
-        <span className="standings-stat">
-          <b>{row.wins}</b>
-          <small>W</small>
-        </span>
-        <span className="standings-stat">
-          <b>{row.losses}</b>
-          <small>L</small>
-        </span>
-      </div>
-      <div className="standings-points">
-        <strong>{row.points}</strong>
-        <small>pts</small>
-      </div>
-      <span className="standings-row-cta">Team →</span>
-    </Link>
+    <EsportsTableRow className={rowTone(row.rank)}>
+      <EsportsTableCell
+        className={cn(
+          "w-12 font-mono text-sm tabular-nums text-muted-foreground",
+          rowEdge(row.rank),
+        )}
+      >
+        {row.rank}
+      </EsportsTableCell>
+      <EsportsTableCell>
+        <Link
+          href={`/teams/${row.id}`}
+          className="flex min-w-0 flex-col gap-0.5 text-foreground!"
+        >
+          <TeamBadge name={row.name} />
+          {!compact ? (
+            <span className="pl-11.5 text-xs text-muted-foreground sm:pl-12">
+              {row.played} played
+              {winRate != null ? ` · ${winRate}% wins` : ""}
+            </span>
+          ) : null}
+        </Link>
+      </EsportsTableCell>
+      {(
+        [
+          ["played", row.played],
+          ["wins", row.wins],
+          ["losses", row.losses],
+        ] as const
+      ).map(([key, value]) => (
+        <EsportsTableCell
+          key={key}
+          className="text-right! font-mono text-sm tabular-nums"
+        >
+          {value}
+        </EsportsTableCell>
+      ))}
+      <EsportsTableCell className="text-right! font-mono text-sm font-bold tabular-nums text-amber-400">
+        {row.points}
+      </EsportsTableCell>
+    </EsportsTableRow>
   );
-}
+});
 
 export function StandingsBoard({
   rows,
@@ -92,40 +108,34 @@ export function StandingsBoard({
 }) {
   const [sort, setSort] = useState<SortKey>("points");
 
-  const sorted = useMemo(() => {
+  const ranked = useMemo(() => {
+    const byStanding = [...rows].sort(byPoints);
+    const rankOf = new Map(byStanding.map((row, index) => [row.id, index + 1]));
     const list = [...rows];
     if (sort === "wins") {
       list.sort(
-        (a, b) =>
-          b.wins - a.wins ||
-          b.points - a.points ||
-          a.name.localeCompare(b.name),
+        (a, b) => b.wins - a.wins || b.points - a.points || a.name.localeCompare(b.name),
       );
     } else if (sort === "name") {
       list.sort((a, b) => a.name.localeCompare(b.name));
     } else {
-      list.sort(
-        (a, b) =>
-          b.points - a.points ||
-          b.wins - a.wins ||
-          a.name.localeCompare(b.name),
-      );
+      list.sort(byPoints);
     }
-    return list;
+    return list.map((row) => ({ ...row, rank: rankOf.get(row.id) ?? rows.length }));
   }, [rows, sort]);
 
-  const visible = limit ? sorted.slice(0, limit) : sorted;
-  const leader = sorted[0];
-  const totalPlayed = rows.reduce((n, r) => n + r.played, 0);
+  const visible = limit ? ranked.slice(0, limit) : ranked;
+  const leader = [...rows].sort(byPoints)[0];
+  const totalPlayed = rows.reduce((n, row) => n + row.played, 0);
 
   return (
-    <div className={`standings-board ${compact ? "standings-board-compact" : ""}`}>
+    <div>
       {!compact ? (
-        <div className="standings-board-toolbar">
-          <p className="muted standings-board-meta">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <p className="m-0 text-sm text-muted-foreground">
             {leader ? (
               <>
-                Leader <strong>{leader.name}</strong>
+                Leader <strong className="text-foreground">{leader.name}</strong>
                 {leader.points > 0 ? ` · ${leader.points} pts` : ""}
               </>
             ) : (
@@ -134,67 +144,57 @@ export function StandingsBoard({
             {totalPlayed > 0 ? (
               <>
                 {" "}
-                · <strong>{totalPlayed}</strong> games logged
+                · <strong className="text-foreground">{totalPlayed}</strong> games logged
               </>
             ) : null}
           </p>
           <div className="team-view-toggle" role="tablist" aria-label="Sort standings">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={sort === "points"}
-              className={sort === "points" ? "active" : ""}
-              onClick={() => setSort("points")}
-            >
-              Points
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={sort === "wins"}
-              className={sort === "wins" ? "active" : ""}
-              onClick={() => setSort("wins")}
-            >
-              Wins
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={sort === "name"}
-              className={sort === "name" ? "active" : ""}
-              onClick={() => setSort("name")}
-            >
-              A–Z
-            </button>
+            {(
+              [
+                ["points", "Points"],
+                ["wins", "Wins"],
+                ["name", "A–Z"],
+              ] as const
+            ).map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                role="tab"
+                aria-selected={sort === key}
+                className={sort === key ? "active" : ""}
+                onClick={() => setSort(key)}
+              >
+                {label}
+              </button>
+            ))}
           </div>
         </div>
       ) : null}
 
-      <div className="standings-board-head" aria-hidden>
-        <span>#</span>
-        <span />
-        <span>Team</span>
-        <span>P · W · L</span>
-        <span>Pts</span>
-        <span />
-      </div>
-
-      <div className="standings-board-list">
-        {visible.length === 0 ? (
-          <div className="standings-board-empty muted">
-            Results land after the first posted match.
-          </div>
-        ) : (
-          visible.map((row, i) => (
-            <StandingRow
-              key={row.id}
-              row={row}
-              rank={i + 1}
-              compact={compact}
-            />
-          ))
-        )}
-      </div>
+      {visible.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-white/10 bg-[#121824] px-4 py-6 text-center text-sm text-muted-foreground">
+          Results land after the first posted match.
+        </div>
+      ) : (
+        <EsportsTable>
+          <EsportsTableHeader>
+            <EsportsTableRow className="hover:bg-transparent">
+              <EsportsTableHead className="w-12">#</EsportsTableHead>
+              <EsportsTableHead>Team</EsportsTableHead>
+              {["P", "W", "L", "PTS"].map((label) => (
+                <EsportsTableHead key={label} className="text-right!">
+                  {label}
+                </EsportsTableHead>
+              ))}
+            </EsportsTableRow>
+          </EsportsTableHeader>
+          <EsportsTableBody>
+            {visible.map((row) => (
+              <StandingTableRow key={row.id} row={row} compact={compact} />
+            ))}
+          </EsportsTableBody>
+        </EsportsTable>
+      )}
     </div>
   );
 }
