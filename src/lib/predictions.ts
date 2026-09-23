@@ -499,7 +499,7 @@ function toMatchView(
     stageLocked ||
     fixture.status === "completed" ||
     (isInternationalPredictionFixture(fixture.kind) &&
-      now >= fixture.scheduledAt);
+      now >= asDate(fixture.scheduledAt));
   return {
     id: fixture.id,
     roundLabel: roundLabel(fixture),

@@ -1,7 +1,7 @@
 import { unstable_cache } from "next/cache";
 import { prisma } from "./prisma";
 import { publicTeamWhere } from "./dummy";
-import { formatScheduleWhen, scheduleUtcOffsetHours } from "./schedule";
+import { formatScheduleWhen, scheduleUtcOffsetHours, asDate } from "./schedule";
 import { currentSeasonFilter } from "./seasons";
 import { PUBLIC_PAGE_TAG, PUBLIC_REVALIDATE_SECONDS } from "./cache-tags";
 import {
@@ -37,9 +37,9 @@ const GROUP_B_MATCHES = [
   ["Team Grand_Master", "Team Saif"],
 ] as const;
 
-function matchNightYmd(date: Date) {
+function matchNightYmd(date: Date | string) {
   const offsetH = scheduleUtcOffsetHours();
-  const shifted = new Date(date.getTime() + offsetH * 3_600_000);
+  const shifted = new Date(asDate(date).getTime() + offsetH * 3_600_000);
   let year = shifted.getUTCFullYear();
   let month = shifted.getUTCMonth();
   let day = shifted.getUTCDate();

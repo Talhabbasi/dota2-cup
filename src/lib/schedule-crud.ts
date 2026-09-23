@@ -6,6 +6,7 @@ import { publicFixtureWhere } from "./dummy";
 import { currentSeasonId, currentSeasonFilter } from "./seasons";
 import { PUBLIC_PAGE_TAG, PUBLIC_REVALIDATE_SECONDS } from "./cache-tags";
 import {
+  asDate,
   formatScheduleWhen,
   localParts,
   localToUtc,
@@ -186,9 +187,9 @@ export function isGroupNightHour(hour: number) {
 }
 
 /** Saturday/Sunday 10:00 AM–11:59 PM, plus Sunday/Monday 12:00–3:00 AM. */
-export function isAllowedPlayoffKickoff(scheduledAt: Date) {
+export function isAllowedPlayoffKickoff(scheduledAt: Date | string) {
   const offsetH = scheduleUtcOffsetHours();
-  const shifted = new Date(scheduledAt.getTime() + offsetH * 3_600_000);
+  const shifted = new Date(asDate(scheduledAt).getTime() + offsetH * 3_600_000);
   const hour = shifted.getUTCHours();
   const dow = shifted.getUTCDay();
   if (hour >= 10 && hour <= 23) return dow === 6 || dow === 0;
@@ -263,9 +264,9 @@ function fridayOfMatchNight(night: { year: number; month: number; day: number; d
   );
 }
 
-function matchNightFromKickoff(scheduledAt: Date) {
+function matchNightFromKickoff(scheduledAt: Date | string) {
   const offsetH = scheduleUtcOffsetHours();
-  const shifted = new Date(scheduledAt.getTime() + offsetH * 3_600_000);
+  const shifted = new Date(asDate(scheduledAt).getTime() + offsetH * 3_600_000);
   let year = shifted.getUTCFullYear();
   let month = shifted.getUTCMonth();
   let day = shifted.getUTCDate();
@@ -322,12 +323,12 @@ export function formatFixtureLine(fixture: {
 }
 
 export function formatFixtureChoiceLabel(fixture: {
-  scheduledAt: Date;
+  scheduledAt: Date | string;
   radiantTeam: { name: string };
   direTeam: { name: string };
 }) {
   const offsetH = scheduleUtcOffsetHours();
-  const shifted = new Date(fixture.scheduledAt.getTime() + offsetH * 3_600_000);
+  const shifted = new Date(asDate(fixture.scheduledAt).getTime() + offsetH * 3_600_000);
   const dow = SHORT_DAYS[shifted.getUTCDay()];
   const month = MONTH_NAMES[shifted.getUTCMonth()];
   const day = shifted.getUTCDate();
@@ -403,8 +404,15 @@ const listPublicCupScheduleCached = unstable_cache(
 );
 
 export async function listCupSchedule(opts?: { publicOnly?: boolean }) {
-  if (opts?.publicOnly) return listPublicCupScheduleCached();
-  return listCupScheduleImpl(opts);
+  const rows = opts?.publicOnly
+    ? await listPublicCupScheduleCached()
+    : await listCupScheduleImpl(opts);
+  // unstable_cache JSON-serializes Dates; restore them for callers.
+  return rows.map((row) => ({
+    ...row,
+    scheduledAt: asDate(row.scheduledAt),
+    createdAt: asDate(row.createdAt),
+  }));
 }
 
 async function requireFixture(id: string) {
