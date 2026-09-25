@@ -220,7 +220,7 @@ export default async function PlayerPage({
                     alt={hero.name}
                     width={32}
                     height={32}
-                    sizes="32px"
+                    unoptimized
                     className="rounded"
                   />
                   <span className="text-sm text-foreground">
@@ -273,6 +273,7 @@ export default async function PlayerPage({
                         src={heroPortraitUrl(game.heroInfo.slug)}
                         alt={game.heroInfo.name}
                         fill
+                        unoptimized
                         sizes="112px"
                         className="object-cover"
                       />

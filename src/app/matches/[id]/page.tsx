@@ -142,7 +142,7 @@ function SideScoreboard({
                         alt=""
                         width={28}
                         height={28}
-                        sizes="28px"
+                        unoptimized
                         className="size-7 rounded-sm ring-1 ring-white/10"
                       />
                       <span>{hero.name}</span>
@@ -198,7 +198,7 @@ function HeroLineup({
               alt={hero.name}
               width={40}
               height={40}
-              sizes="40px"
+              unoptimized
               className={cn(
                 "size-10 rounded-md ring-1",
                 side === "radiant" ? "ring-emerald-500/40" : "ring-red-500/40",

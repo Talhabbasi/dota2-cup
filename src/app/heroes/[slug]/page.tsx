@@ -1,4 +1,3 @@
-import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
@@ -44,14 +43,14 @@ export default async function HeroDetailPage({
       </Link>
 
       <section className="hero-detail-banner">
-        <Image
+        <img
           src={heroPortraitUrl(hero.slug)}
           alt={hero.name}
           width={512}
           height={288}
-          sizes="(max-width: 768px) 100vw, 360px"
           className="hero-detail-art"
-          priority
+          decoding="async"
+          fetchPriority="high"
         />
         <div className="hero-detail-copy">
           <p className="eyebrow">Hero</p>

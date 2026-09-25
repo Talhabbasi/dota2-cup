@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import {
@@ -73,13 +72,14 @@ function HeroTile({ hero }: { hero: HeroTournamentStat }) {
       )}
     >
       <div className="relative aspect-[16/9] overflow-hidden bg-[#0a0d14]">
-        <Image
+        <img
           src={hero.portrait}
           alt={hero.name}
           width={180}
           height={101}
-          sizes="(max-width: 720px) 45vw, 180px"
           className="size-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+          decoding="async"
+          loading="lazy"
         />
         {played ? (
           <Badge className="absolute top-2 right-2 bg-amber-500 font-mono text-black hover:bg-amber-500">
@@ -165,13 +165,14 @@ export function HeroesGrid({ heroes }: { heroes: HeroTournamentStat[] }) {
                 <span className="font-mono text-[0.62rem] tracking-[0.14em] text-amber-400 uppercase">
                   #{i + 1}
                 </span>
-                <Image
+                <img
                   src={hero.icon}
                   alt=""
                   width={48}
                   height={48}
-                  sizes="48px"
                   className="rounded-md"
+                  decoding="async"
+                  loading="lazy"
                 />
                 <span className="line-clamp-2 text-xs font-medium text-foreground">
                   {hero.name}
@@ -311,13 +312,14 @@ export function HeroesGrid({ heroes }: { heroes: HeroTournamentStat[] }) {
                         href={`/heroes/${hero.slug}`}
                         className="flex items-center gap-3 text-foreground!"
                       >
-                        <Image
+                        <img
                           src={hero.icon}
                           alt=""
                           width={32}
                           height={32}
-                          sizes="32px"
                           className="rounded"
+                          decoding="async"
+                          loading="lazy"
                         />
                         <span className="font-medium">{hero.name}</span>
                       </Link>
