@@ -72,7 +72,7 @@ Subs do **not** pay. Each team must be exactly **5000 PKR** (5 starters).
 \`/playoff post\` — post/refresh the bracket graph in **#matches**
 \`/playoff status\` — same data as the website Playoffs page
 \`/playoff clear\` — pending playoff fixtures only (keeps the group-stage grid)
-Website: **Schedule** + **Playoffs** (tournament graph) + **Predictions**. Group-stage picks (10 pts) lock Friday **10:00 PM PKT**. **The International** tab (fill the upper / lower tree, Grand Final 50 pts) unlocks after every group match. One combined points board (name → points). After groups: 4th out; each 3rd waits for a crossover loser (A3 vs A1–B2 loser, B3 vs B1–A2 loser); then double-elim. Grand Final **Bo3**.
+Website: **Schedule** + **Playoffs** (tournament graph) + **Predictions**. Group-stage picks (10 pts) and **The International** tree lock Friday **10:00 PM PKT**. Grand Final 50 pts. One combined points board (name → points). After groups: 4th out; each 3rd waits for a crossover loser (A3 vs A1–B2 loser, B3 vs B1–A2 loser); then double-elim. Grand Final **Bo3**.
 
 **Admin — results**
 In **#results**, post the Dota 2 **SCOREBOARD** screenshot (heroes, items, LH/DN, GPM). The bot fills the website from that picture. You can also \`!result\` with the image, or \`!result 8123456789\` if you have a Match ID.

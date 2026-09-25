@@ -57,6 +57,27 @@ export function predictionPointsFor(kind: string, slotKey?: string | null) {
     : PREDICTION_POINTS;
 }
 
+/** Friday 10:00 PM PKT on the weekend of `reference` (PKT calendar). */
+export function fridayPredictionLockAt(
+  reference: Date | string | null | undefined,
+) {
+  if (reference == null) return null;
+  const offsetH = scheduleUtcOffsetHours();
+  const { year, month, day, dow } = localParts(reference, offsetH);
+  // Fri=0 days back, Sat=1, Sun=2, …
+  const daysBackToFriday = (dow + 2) % 7;
+  return new Date(
+    Date.UTC(
+      year,
+      month,
+      day - daysBackToFriday,
+      GROUP_STAGE_LOCK_HOUR_PKT,
+      GROUP_STAGE_LOCK_MINUTE_PKT,
+    ) -
+      offsetH * 3_600_000,
+  );
+}
+
 export function groupStageLockAt(
   fixtures: { kind: string; scheduledAt: Date | string }[],
 ) {
@@ -69,20 +90,7 @@ export function groupStageLockAt(
     const best = asDate(soonest).getTime();
     return at < best ? row.scheduledAt : soonest;
   }, group[0].scheduledAt);
-  const offsetH = scheduleUtcOffsetHours();
-  const { year, month, day, dow } = localParts(earliest, offsetH);
-  // Lock on the Friday of that weekend (Fri=0 days back, Sat=1, Sun=2).
-  const daysBackToFriday = (dow + 2) % 7;
-  return new Date(
-    Date.UTC(
-      year,
-      month,
-      day - daysBackToFriday,
-      GROUP_STAGE_LOCK_HOUR_PKT,
-      GROUP_STAGE_LOCK_MINUTE_PKT,
-    ) -
-      offsetH * 3_600_000,
-  );
+  return fridayPredictionLockAt(earliest);
 }
 
 export function isGroupStageLocked(lockAt: Date | null, now = new Date()) {
@@ -296,8 +304,11 @@ export async function saveBracketPicks(
     if (!soonest || row.scheduledAt < soonest) return row.scheduledAt;
     return soonest;
   }, null);
-  if (firstKickoff && now >= firstKickoff) {
-    throw new Error("The International bracket is locked.");
+  const treeLockAt = fridayPredictionLockAt(firstKickoff);
+  if (treeLockAt && now >= treeLockAt) {
+    throw new Error(
+      "The International bracket locked at Friday 10:00 PM PKT.",
+    );
   }
 
   const actual: Partial<Record<BracketSlot, SlotResult>> = {};
@@ -398,10 +409,13 @@ export async function getInternationalPickem(
     },
   });
   const firstKickoff = fixtures.reduce<Date | null>((soonest, row) => {
-    if (!soonest || row.scheduledAt < soonest) return row.scheduledAt;
+    if (!soonest || asDate(row.scheduledAt) < asDate(soonest)) {
+      return row.scheduledAt;
+    }
     return soonest;
   }, null);
-  const treeLocked = Boolean(firstKickoff && now >= firstKickoff);
+  const treeLockAt = fridayPredictionLockAt(firstKickoff);
+  const treeLocked = Boolean(treeLockAt && now >= treeLockAt);
 
   const actual: Partial<Record<BracketSlot, SlotResult>> = {};
   const lockedSlots = new Set<BracketSlot>();
@@ -411,7 +425,7 @@ export async function getInternationalPickem(
       const outcome = seriesWinnerLoser(fixture);
       if (outcome) actual[fixture.slotKey] = outcome;
       lockedSlots.add(fixture.slotKey);
-    } else if (now >= fixture.scheduledAt) {
+    } else if (treeLocked || now >= asDate(fixture.scheduledAt)) {
       lockedSlots.add(fixture.slotKey);
     }
   }
@@ -433,10 +447,10 @@ export async function getInternationalPickem(
     unlocked: true,
     treeLocked,
     lockLabel: treeLocked
-      ? "Locked when the first playoff match started"
-      : firstKickoff
-        ? `Locks ${formatScheduleWhen(firstKickoff)}`
-        : "Fill the tree. Locks at the first playoff match.",
+      ? "Locked Friday at 10:00 PM PKT"
+      : treeLockAt
+        ? `Locks ${formatScheduleWhen(treeLockAt)}`
+        : "Fill the tree. Locks Friday at 10:00 PM PKT.",
     seeds,
     actual,
     lockedSlots: [...lockedSlots],
