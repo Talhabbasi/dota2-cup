@@ -10,6 +10,7 @@ import { adminRoleName } from "./constants";
 import { registeredRoleName } from "./payments-channel-access";
 import { PLAY_WINDOW_ROLE_NAMES } from "./play-window";
 import { prisma } from "./prisma";
+import { CUP_NAME } from "@/lib/brand";
 
 const DUMMY_PREFIX = "test-dummy-";
 const DUMMY_TEAM_PREFIX = "test-dummy-team-";
@@ -141,7 +142,7 @@ async function ensureTeamChatCategory(guild: Guild): Promise<CategoryChannel> {
       : await guild.channels.create({
           name,
           type: ChannelType.GuildCategory,
-          reason: "MM Dota Cup private team chats",
+          reason: `${CUP_NAME} private team chats`,
         });
   await lockCategoryFromEveryone(category, guild);
   return category;
@@ -246,7 +247,7 @@ async function ensureTeamRole(guild: Guild, teamName: string): Promise<Role> {
       hoist: true,
       mentionable: true,
       colors: { primaryColor: teamColor(teamName) },
-      reason: `MM Dota Cup roster role for ${teamName}`,
+      reason: `${CUP_NAME} roster role for ${teamName}`,
     });
   } catch {
     throw new Error(
@@ -382,7 +383,7 @@ async function provisionTeamChat(
       type: ChannelType.GuildText,
       parent: category.id,
       topic: `Private chat for ${team.name}. Only this roster can see it.`,
-      reason: `MM Dota Cup chat for ${team.name}`,
+      reason: `${CUP_NAME} chat for ${team.name}`,
     });
   }
   await applyChatAccess(channel, guild, role, team.players);

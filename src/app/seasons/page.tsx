@@ -3,12 +3,13 @@ import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/common";
 import { pageMeta } from "@/lib/seo";
 import { getSeasonHistory } from "@/lib/seasons";
+import { CUP_NAME } from "@/lib/brand";
 
 export const revalidate = 30;
 
 export const metadata = pageMeta(
   "Season Archive",
-  "Past MM Dota Cup seasons and champions from this indoor Dota 2 tournament in Pakistan.",
+  `Past ${CUP_NAME} seasons and champions from this indoor Dota 2 tournament in Pakistan.`,
 );
 
 function statusLabel(status: string, live: boolean) {

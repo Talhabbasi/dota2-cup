@@ -120,7 +120,7 @@ export async function getPlayer(id: string) {
       include: {
         match: {
           include: {
-            season: { select: { number: true, name: true } },
+            season: { select: { id: true, number: true, name: true } },
             radiantTeam: teamRefSelect,
             direTeam: teamRefSelect,
             winnerTeam: teamRefSelect,
@@ -141,6 +141,10 @@ export async function getPlayer(id: string) {
     }),
     getCurrentSeasonSafe(),
   ]);
+
+  const seasonTeamBySeason = new Map(
+    seasonRows.map((row) => [row.seasonId, row.teamId] as const),
+  );
 
   const liveMembership = currentSeason
     ? seasonRows.find((row) => row.seasonId === currentSeason.id)
@@ -171,7 +175,12 @@ export async function getPlayer(id: string) {
     teamId: currentTeamId,
     isCaptain: currentCaptain,
     rosterRole: currentRosterRole,
-    matchPlayers,
+    matchPlayers: matchPlayers.map((row) => ({
+      ...row,
+      seasonTeamId: row.match.seasonId
+        ? (seasonTeamBySeason.get(row.match.seasonId) ?? null)
+        : null,
+    })),
     seasonHistory: seasonRows.map((row) => ({
       seasonId: row.season.id,
       number: row.season.number,
@@ -310,7 +319,34 @@ export async function getMatch(id: string) {
       },
     },
   });
-  return match;
+  if (!match) return null;
+
+  const playerIds = match.players
+    .map((row) => row.playerId)
+    .filter((value): value is string => Boolean(value));
+  const seasonRoster =
+    match.seasonId && playerIds.length > 0
+      ? await prisma.seasonPlayer.findMany({
+          where: {
+            seasonId: match.seasonId,
+            playerId: { in: playerIds },
+          },
+          select: { playerId: true, teamId: true },
+        })
+      : [];
+  const teamByPlayer = new Map(
+    seasonRoster.map((row) => [row.playerId, row.teamId] as const),
+  );
+
+  return {
+    ...match,
+    players: match.players.map((row) => ({
+      ...row,
+      seasonTeamId: row.playerId
+        ? (teamByPlayer.get(row.playerId) ?? row.player?.teamId ?? null)
+        : null,
+    })),
+  };
 }
 
 async function loadStandings() {

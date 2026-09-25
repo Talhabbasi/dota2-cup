@@ -1,4 +1,5 @@
 import "../bot/load-env";
+import { CUP_NAME } from "../src/lib/brand";
 
 import {
   ChannelType,
@@ -72,7 +73,7 @@ async function main() {
         await guild.channels.create({
           name,
           type: ChannelType.GuildText,
-          reason: "MM Dota Cup channel",
+          reason: `${CUP_NAME} channel`,
         });
         console.log(`created #${name}`);
       } catch (error) {

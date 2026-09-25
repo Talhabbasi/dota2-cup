@@ -1,5 +1,6 @@
 import { prisma } from "./prisma";
 import { syncSeasonPlayer, syncSeasonPlayers } from "./seasons";
+import { medalBlockedByMaxRank } from "./cup-features";
 import { parseMedal } from "./constants";
 import { parsePlayWindow } from "./play-window";
 import { parseRegistrationRole, stringifyRoles } from "./roles";
@@ -27,6 +28,9 @@ export async function registerPlayer(input: {
   const medal = parseMedal(input.medal);
   const roles = parseRegistrationRole(input.role);
   const playWindow = parsePlayWindow(input.playWindow);
+
+  const blocked = await medalBlockedByMaxRank(medal);
+  if (blocked) throw new Error(blocked);
 
   const profile = await resolveSteamProfile(input.steam);
   const openDotaLinked = await hasOpenDotaProfile(profile.steam32);
@@ -64,7 +68,7 @@ export async function registerPlayer(input: {
       data: {
         discordId: input.discordId,
         discordName: input.discordName,
-        steamName: profile.steamName,
+        steamName: locked ? current.steamName : profile.steamName,
         medal: locked ? current.medal : medal,
         rolesJson: locked ? current.rolesJson : stringifyRoles(roles),
         playWindow,

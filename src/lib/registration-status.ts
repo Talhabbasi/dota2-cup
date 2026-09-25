@@ -1,6 +1,7 @@
 import { cache } from "react";
 import { getCupSettings } from "./cup-settings-cache";
 import { prisma } from "./prisma";
+import { CUP_NAME } from "@/lib/brand";
 
 function envRegistrationOpen() {
   const value = process.env.REGISTRATION_OPEN?.trim().toLowerCase();
@@ -76,7 +77,7 @@ export function paymentIban() {
 export function registrationClosedPublicMessage() {
   const channel = paymentsChannelName();
   return [
-    "Registration for **MM Dota Cup** is **closed**.",
+    `Registration for **${CUP_NAME}** is **closed**.`,
     "This is an **indoor tournament** for players who have played with **MM**. Outdoor / outside members are not allowed.",
     `Pay **${formatEntryFee()} per person**, then send your screenshot in **#${channel}**. An Admin clicks ✅ to confirm — you are not paid until then.`,
     "Already registered? You are in. Need a late add or a player removed? Ask an admin.",

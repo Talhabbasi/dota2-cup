@@ -1,4 +1,5 @@
 import { prisma } from "./prisma";
+import { getCupFeatureSettings } from "./cup-features";
 import { publicFixtureWhere, publicPlayerWhere } from "./dummy";
 import { isPlayoffKind, playoffRoundLabel } from "./playoff";
 import {
@@ -172,6 +173,10 @@ export async function saveMatchPredictions(
   playerId: string,
   picks: PredictionPickInput[],
 ) {
+  const { predictionsEnabled } = await getCupFeatureSettings();
+  if (!predictionsEnabled) {
+    throw new Error("Predictions are locked by an organizer.");
+  }
   const unique = new Map<string, string>();
   for (const pick of picks) {
     const fixtureId = pick.fixtureId?.trim();
@@ -281,6 +286,10 @@ export async function saveBracketPicks(
   playerId: string,
   picks: { slotKey: string; teamId: string }[],
 ) {
+  const { predictionsEnabled } = await getCupFeatureSettings();
+  if (!predictionsEnabled) {
+    throw new Error("Predictions are locked by an organizer.");
+  }
   const { complete, seeds } = await loadPlayoffSeeds();
   if (!complete || !seeds) {
     throw new Error(
@@ -631,7 +640,10 @@ const emptyLeaderboard: PredictionLeaderboardView = {
   youRank: null,
 };
 
-export async function getPredictionLeaderboard(youPlayerId?: string | null) {
+export async function getPredictionLeaderboard(
+  youPlayerId?: string | null,
+  options?: { forAdmin?: boolean },
+) {
   const season = await getCurrentSeasonSafe();
   if (!season) return emptyLeaderboard;
 
@@ -640,7 +652,8 @@ export async function getPredictionLeaderboard(youPlayerId?: string | null) {
     where: { ...publicFixtureWhere, ...seasonFilter },
     select: { kind: true, status: true },
   });
-  const revealed = groupStageIsComplete(fixtures);
+  const revealed =
+    options?.forAdmin === true || groupStageIsComplete(fixtures);
 
   if (!revealed) {
     try {

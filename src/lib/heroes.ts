@@ -119,7 +119,27 @@ export async function getHeroMatchAppearances(heroId: number, heroName: string) 
     orderBy: { match: { createdAt: "desc" } },
   });
 
-  return players;
+  const playerIds = players
+    .map((row) => row.playerId)
+    .filter((value): value is string => Boolean(value));
+  const seasonId = season.seasonId;
+  const seasonRoster =
+    seasonId && playerIds.length > 0
+      ? await prisma.seasonPlayer.findMany({
+          where: { seasonId, playerId: { in: playerIds } },
+          select: { playerId: true, teamId: true },
+        })
+      : [];
+  const teamByPlayer = new Map(
+    seasonRoster.map((row) => [row.playerId, row.teamId] as const),
+  );
+
+  return players.map((row) => ({
+    ...row,
+    seasonTeamId: row.playerId
+      ? (teamByPlayer.get(row.playerId) ?? row.player?.teamId ?? null)
+      : null,
+  }));
 }
 
 export async function backfillHeroIds() {

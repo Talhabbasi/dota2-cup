@@ -1,7 +1,9 @@
 import { EsportsCard, PageHeader, StatTile } from "@/components/common";
+import Link from "next/link";
 import { currentPlayer } from "@/lib/auth";
 import { PredictionLeaderboard } from "@/components/prediction-leaderboard";
 import { PredictionStageTabs } from "@/components/prediction-stage-tabs";
+import { getCupFeatureSettings } from "@/lib/cup-features";
 import {
   FINAL_PREDICTION_POINTS,
   PREDICTION_POINTS,
@@ -11,25 +13,29 @@ import {
 } from "@/lib/predictions";
 import { getCurrentSeasonSafe } from "@/lib/seasons";
 import { pageMeta } from "@/lib/seo";
+import { CUP_NAME } from "@/lib/brand";
 
 export const dynamic = "force-dynamic";
 
 export const metadata = pageMeta(
   "Match Predictions",
-  "Pick MM Dota Cup winners. Group stage and The International lock Friday at 10:00 PM PKT. One combined points board.",
+  `Pick ${CUP_NAME} winners. Group stage and The International lock Friday at 10:00 PM PKT. One combined points board.`,
 );
 
 export default async function PredictionsPage() {
-  const [{ player }, season] = await Promise.all([
+  const [{ session, player }, season, features] = await Promise.all([
     currentPlayer(),
     getCurrentSeasonSafe(),
+    getCupFeatureSettings(),
   ]);
   const [stages, board, pickem] = await Promise.all([
     getPredictionBoard(player?.id),
     getPredictionLeaderboard(player?.id),
     getInternationalPickem(player?.id),
   ]);
-  const canPick = Boolean(player);
+  const picksUnlocked = features.predictionsEnabled;
+  const canPick = Boolean(player) && picksUnlocked;
+  const signedIn = Boolean(session?.user?.discordId);
   const you = board.rows.find((row) => row.isYou) ?? null;
   const accuracy =
     you && you.picks > 0
@@ -44,6 +50,10 @@ export default async function PredictionsPage() {
         subtitle={`Group stage and The International lock Friday at 10:00 PM PKT. Group picks are ${PREDICTION_POINTS} points each. The International is a Dota 2 Pick’em tree — tap a winner to send them forward. Grand Final is ${FINAL_PREDICTION_POINTS} points.`}
         pills={[
           ...(season ? [{ label: `Season ${season.number}` }] : []),
+          {
+            value: picksUnlocked ? "Open" : "Locked",
+            label: "organizer",
+          },
           {
             value: stages.group.stageLocked
               ? "Locked"
@@ -65,6 +75,17 @@ export default async function PredictionsPage() {
         ]}
       />
 
+      {!picksUnlocked ? (
+        <EsportsCard interactive={false} className="mb-6 border-amber-500/30 p-5">
+          <p className="m-0 text-[0.68rem] font-semibold tracking-[0.16em] text-amber-300 uppercase">
+            Picks locked
+          </p>
+          <p className="mt-2 mb-0 text-sm text-muted-foreground">
+            An organizer locked predictions. You can still view the board; new
+            picks and edits are blocked until they unlock again.
+          </p>
+        </EsportsCard>
+      ) : null}
       {you ? (
         <EsportsCard interactive={false} className="mb-6 p-5">
           <p className="m-0 text-[0.68rem] font-semibold tracking-[0.16em] text-primary uppercase">
@@ -96,6 +117,16 @@ export default async function PredictionsPage() {
           <p className="mt-2 mb-0 text-sm text-muted-foreground">
             Points and accuracy unlock here when every group-stage match is
             scored. Keep picking — your votes are saved.
+          </p>
+        </EsportsCard>
+      ) : player ? null : signedIn ? (
+        <EsportsCard interactive={false} className="mb-6 p-5">
+          <p className="m-0 text-sm text-muted-foreground">
+            You are signed in, but not registered for this cup yet.{" "}
+            <Link href="/register" className="text-link">
+              Register
+            </Link>{" "}
+            to lock in winners and climb the points board.
           </p>
         </EsportsCard>
       ) : (

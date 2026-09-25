@@ -1,4 +1,5 @@
 import Image from "next/image";
+import { CUP_ICON_PATH, CUP_NAME } from "@/lib/brand";
 
 export function PageLoader() {
   return (
@@ -8,7 +9,7 @@ export function PageLoader() {
         <span className="page-loader-ring" />
         <span className="page-loader-gem">
           <Image
-            src="/mm-dota-cup-icon.png"
+            src={CUP_ICON_PATH}
             alt=""
             width={40}
             height={40}
@@ -17,7 +18,7 @@ export function PageLoader() {
           />
         </span>
       </div>
-      <p className="eyebrow">MM Dota Cup</p>
+      <p className="eyebrow">{CUP_NAME}</p>
       <p className="page-loader-text">Loading</p>
     </div>
   );

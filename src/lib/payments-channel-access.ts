@@ -8,6 +8,7 @@ import {
 import { adminRoleName } from "./constants";
 import { prisma } from "./prisma";
 import { paymentsChannelName } from "./registration-status";
+import { CUP_NAME } from "@/lib/brand";
 
 const DUMMY_PREFIX = "test-dummy-";
 const DUMMY_TEAM_PREFIX = "test-dummy-team-";
@@ -116,7 +117,7 @@ export async function ensureRegisteredRole(guild: Guild): Promise<Role> {
       hoist: false,
       mentionable: false,
       colors: { primaryColor: 0xb07d1f },
-      reason: "MM Dota Cup — registered player channels",
+      reason: `${CUP_NAME} — registered player channels`,
     });
   } catch {
     throw new Error(

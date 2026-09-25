@@ -8,12 +8,13 @@ import { PLAY_WINDOW_SHORT, playWindowOrBoth } from "@/lib/play-window";
 import { isRosterSub } from "@/lib/roles";
 import { getCurrentSeasonSafe } from "@/lib/seasons";
 import { pageMeta } from "@/lib/seo";
+import { CUP_NAME } from "@/lib/brand";
 
 export const revalidate = 30;
 
 export const metadata = pageMeta(
   "Players",
-  "Registered MM Dota Cup players, medals, roles, and team assignments for the indoor Dota 2 tournament.",
+  `Registered ${CUP_NAME} players, medals, roles, and team assignments for the indoor Dota 2 tournament.`,
 );
 
 function medalRank(medal: string) {

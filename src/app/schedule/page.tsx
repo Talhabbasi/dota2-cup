@@ -4,12 +4,13 @@ import { GroupStandingsTable } from "@/components/group-standings";
 import { getGroupStandings } from "@/lib/group-stage-schedule";
 import { listCupSchedule } from "@/lib/schedule-crud";
 import { pageMeta } from "@/lib/seo";
+import { CUP_NAME } from "@/lib/brand";
 
 export const revalidate = 30;
 
 export const metadata = pageMeta(
   "Match Schedule",
-  "Weekend MM Dota Cup fixtures in Pakistan time — group stage, playoffs, and upcoming Dota 2 kickoffs.",
+  `Weekend ${CUP_NAME} fixtures in Pakistan time — group stage, playoffs, and upcoming Dota 2 kickoffs.`,
 );
 
 export default async function SchedulePage() {
@@ -29,8 +30,7 @@ export default async function SchedulePage() {
           <>
             Group A Saturday, Group B Sunday, then weekend playoffs. Group
             kickoffs 10:00 PM–4:00 AM PKT. Playoffs Saturday/Sunday 10:00 AM–3:00
-            AM PKT. Admins: <strong>/schedule groups</strong>,{" "}
-            <strong>/schedule edit</strong>, <strong>/playoff open</strong>.
+            AM PKT.
           </>
         }
         pills={

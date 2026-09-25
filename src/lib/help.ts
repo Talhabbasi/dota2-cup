@@ -1,4 +1,5 @@
-export const HELP_PIN_PREFIX = "**MM Dota Cup — pinned command sheet**";
+import { CUP_NAME } from "@/lib/brand";
+export const HELP_PIN_PREFIX = `**${CUP_NAME} — pinned command sheet**`;
 
 export const HELP_COMMANDS = `${HELP_PIN_PREFIX}
 Pinned in **#admin** for every Admin. Re-post anytime with \`/admin help\`.
@@ -25,7 +26,7 @@ Pinned in **#admin** for every Admin. Re-post anytime with \`/admin help\`.
 **Admin — setup**
 \`/admin setup\` — #payments, team chats, team voice, and this sheet in **#admin**
 \`/admin help\` — post & pin this sheet in **#admin** again
-\`/season current\` — which season the bot is writing to (right now Season 1)
+\`/season current\` — which season the bot is writing to
 \`/season list\` — every season
 \`/season create name:<optional>\` — add the next season (does **not** switch live data)
 \`/season start number:<n>\` — archive the live season and make season n live
@@ -34,6 +35,11 @@ Pinned in **#admin** for every Admin. Re-post anytime with \`/admin help\`.
 \`/registration close\` — close website + Discord sign-ups
 \`/registration open\` — re-open public registration
 \`/registration status\`
+\`/cup status\` — auction, predictions, max rank, complete-team switches
+\`/cup auction mode:on|off\`
+\`/cup predictions mode:unlocked|locked\` — lock picks (page stays visible)
+\`/cup maxrank medal:<medal|none>\`
+\`/cup completeteam mode:on|off\`
 \`/rules post\` — post & pin full cup rules in #general
 \`/rules channels\` — pin a short guide in every cup channel
 \`/rules closed\` — #payments + closed / indoor / payment messages
@@ -52,6 +58,8 @@ Pinned in **#admin** for every Admin. Re-post anytime with \`/admin help\`.
 \`/player delete user:@x\` — remove from the cup (or \`discord_id:<id>\` if they left Discord)
 \`/player edit user:@x rank: role: when:\` — or \`discord_id:<id>\`
 \`/player resync user:@x\` — fix roster slot from registration
+\`/player alias user:@x name:<board name>\` — scoreboard OCR alias
+\`/player unalias user:@x name:<alias>\` — remove that alias
 
 **Admin — payments**
 Screenshot in **#payments**, then an Admin clicks **✅**.

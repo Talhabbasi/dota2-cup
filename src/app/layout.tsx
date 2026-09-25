@@ -1,11 +1,13 @@
 import type { Metadata, Viewport } from "next";
 import { Bebas_Neue, Oxanium, Sora } from "next/font/google";
-import { Nav } from "@/components/nav";
 import { ClosedBanner } from "@/components/closed-banner";
 import { NavigationLoader } from "@/components/navigation-loader";
 import { Providers } from "@/components/providers";
-import { SiteFooter } from "@/components/site-footer";
+import { SiteChrome } from "@/components/site-chrome";
+import { CUP_ICON_PATH, CUP_TITLE_SUFFIX } from "@/lib/brand";
 import { SITE_DESCRIPTION, SITE_NAME, SITE_URL } from "@/lib/seo";
+import { getCurrentSeasonSafe, liveSeasonLabel } from "@/lib/seasons";
+import { currentPlayer } from "@/lib/auth";
 import "./globals.css";
 
 const oxanium = Oxanium({
@@ -33,25 +35,25 @@ const bebas = Bebas_Neue({
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: `${SITE_NAME} | Indoor Dota 2 Tournament in Pakistan`,
+    default: `${SITE_NAME} | ${CUP_TITLE_SUFFIX}`,
     template: `%s | ${SITE_NAME}`,
   },
   description: SITE_DESCRIPTION,
   icons: {
-    icon: "/mm-dota-cup-icon.png",
-    apple: "/mm-dota-cup-icon.png",
+    icon: CUP_ICON_PATH,
+    apple: CUP_ICON_PATH,
   },
   openGraph: {
     type: "website",
     locale: "en_PK",
     siteName: SITE_NAME,
     description: SITE_DESCRIPTION,
-    images: ["/mm-dota-cup-icon.png"],
+    images: [CUP_ICON_PATH],
   },
   twitter: {
     card: "summary",
     description: SITE_DESCRIPTION,
-    images: ["/mm-dota-cup-icon.png"],
+    images: [CUP_ICON_PATH],
   },
 };
 
@@ -61,7 +63,12 @@ export const viewport: Viewport = {
   viewportFit: "cover",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default async function RootLayout({ children }: LayoutProps<"/">) {
+  const [season, { player }] = await Promise.all([
+    getCurrentSeasonSafe(),
+    currentPlayer(),
+  ]);
+  const seasonLabel = liveSeasonLabel(season);
   return (
     <html
       lang="en"
@@ -70,10 +77,13 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className="min-h-full flex flex-col">
         <Providers>
           <NavigationLoader />
-          <ClosedBanner />
-          <Nav />
-          <main className="flex-1">{children}</main>
-          <SiteFooter />
+          <SiteChrome
+            seasonLabel={seasonLabel}
+            showRegister={!player}
+            banner={<ClosedBanner />}
+          >
+            {children}
+          </SiteChrome>
         </Providers>
         <div className="film-grain" aria-hidden />
       </body>

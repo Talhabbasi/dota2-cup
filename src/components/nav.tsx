@@ -6,9 +6,9 @@ import Link from "next/link";
 import Image from "next/image";
 import { LogIn } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
-import { useSession } from "next-auth/react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { CUP_ICON_PATH, CUP_NAME } from "@/lib/brand";
 import { cn } from "@/lib/utils";
 
 function subscribeNoop() {
@@ -49,18 +49,25 @@ const LINKS = [
   ["/playoffs", "Playoffs"],
   ["/matches", "Matches"],
   ["/table", "Table"],
-  ["/players", "Players"],
-  ["/auction", "Auction"],
+  ["/player-insight", "Player Insight"],
   ["/predictions", "Predictions"],
   ["/heroes", "Heroes"],
   ["/seasons", "Seasons"],
   ["/register", "Register"],
 ] as const;
 
-export function Nav({ showSeasons = false }: { showSeasons?: boolean }) {
+export function Nav({
+  showSeasons = false,
+  seasonLabel,
+  showRegister = true,
+}: {
+  showSeasons?: boolean;
+  seasonLabel: string;
+  /** Keep Register until this Discord account has a player row. */
+  showRegister?: boolean;
+}) {
   const pathname = usePathname();
   const router = useRouter();
-  const { status } = useSession();
   const ready = useSyncExternalStore(
     subscribeNoop,
     clientReadySnapshot,
@@ -72,7 +79,6 @@ export function Nav({ showSeasons = false }: { showSeasons?: boolean }) {
     setMenuPathname(pathname);
     setMenuOpen(false);
   }
-  const showRegister = status === "unauthenticated";
   const links = LINKS.filter(([href]) => {
     if (!showSeasons && href === "/seasons") return false;
     if (!showRegister && href === "/register") return false;
@@ -81,9 +87,11 @@ export function Nav({ showSeasons = false }: { showSeasons?: boolean }) {
 
   useEffect(() => {
     for (const [href] of LINKS) {
+      if (!showSeasons && href === "/seasons") continue;
+      if (!showRegister && href === "/register") continue;
       router.prefetch(href);
     }
-  }, [router]);
+  }, [router, showSeasons, showRegister]);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -107,7 +115,7 @@ export function Nav({ showSeasons = false }: { showSeasons?: boolean }) {
           onClick={() => setMenuOpen(false)}
         >
           <Image
-            src="/mm-dota-cup-icon.png"
+            src={CUP_ICON_PATH}
             alt=""
             width={32}
             height={32}
@@ -116,13 +124,13 @@ export function Nav({ showSeasons = false }: { showSeasons?: boolean }) {
             priority
           />
           <span className="truncate font-display text-[0.82rem] font-bold tracking-[0.12em] text-white uppercase">
-            MM Dota Cup
+            {CUP_NAME}
           </span>
           <Badge
             variant="outline"
             className="hidden h-5 border-primary/40 bg-primary/10 px-1.5 text-[0.62rem] font-semibold tracking-[0.12em] text-primary uppercase sm:inline-flex"
           >
-            Season 1
+            {seasonLabel}
           </Badge>
         </Link>
 

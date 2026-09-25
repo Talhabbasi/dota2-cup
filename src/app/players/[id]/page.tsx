@@ -18,6 +18,7 @@ import {
 } from "@/lib/opendota";
 import type { Metadata } from "next";
 import { isMatchStandIn } from "@/lib/stand-in";
+import { CUP_NAME } from "@/lib/brand";
 
 export const revalidate = 30;
 
@@ -32,7 +33,7 @@ export async function generateMetadata({
   const teamBit = player.teamName ? ` · ${player.teamName}` : "";
   return {
     title: player.name,
-    description: `${player.name}${teamBit} in MM Dota Cup — player profile, heroes, and match history.`,
+    description: `${player.name}${teamBit} in ${CUP_NAME} — player profile, heroes, and match history.`,
   };
 }
 
@@ -257,7 +258,9 @@ export default async function PlayerPage({
           {games.map((game) => {
             const standIn = isMatchStandIn({
               side: game.side,
-              playerTeamId: player.teamId,
+              unknown: game.unknown,
+              playerId: player.id,
+              playerTeamId: game.seasonTeamId ?? null,
               radiantTeamId: game.match.radiantTeam?.id ?? null,
               direTeamId: game.match.direTeam?.id ?? null,
             });

@@ -1,4 +1,9 @@
 import "./load-env";
+import {
+  getCupFeatureSettings,
+  updateCupFeatureSettings,
+} from "../src/lib/cup-features";
+import { CUP_NAME, cupPublicUrl } from "../src/lib/brand";
 
 import {
   ActionRowBuilder,
@@ -123,8 +128,14 @@ import {
   ingestScoreboardScreenshot,
 } from "../src/lib/scoreboard-shot";
 import {
+  addPlayerAlias,
+  removePlayerAlias,
+  seedDefaultPlayerAliases,
+} from "../src/lib/player-aliases";
+import {
   backfillSeason1,
   createSeason,
+  currentSeasonFilter,
   formatSeasonLabel,
   getCurrentSeason,
   listSeasons,
@@ -461,6 +472,34 @@ const commands = [
     )
     .addSubcommand((s) =>
       s
+        .setName("alias")
+        .setDescription("Admin: add a scoreboard name alias for a player")
+        .addUserOption((o) =>
+          o.setName("user").setDescription("Player").setRequired(true),
+        )
+        .addStringOption((o) =>
+          o
+            .setName("name")
+            .setDescription("Name as it appears on the scoreboard")
+            .setRequired(true),
+        ),
+    )
+    .addSubcommand((s) =>
+      s
+        .setName("unalias")
+        .setDescription("Admin: remove a scoreboard name alias")
+        .addUserOption((o) =>
+          o.setName("user").setDescription("Player").setRequired(true),
+        )
+        .addStringOption((o) =>
+          o
+            .setName("name")
+            .setDescription("Alias to remove")
+            .setRequired(true),
+        ),
+    )
+    .addSubcommand((s) =>
+      s
         .setName("edit")
         .setDescription("Admin: change a player's rank, role, and/or weekend window")
         .addUserOption((o) =>
@@ -582,6 +621,72 @@ const commands = [
     )
     .addSubcommand((s) =>
       s.setName("status").setDescription("Show whether registration is open or closed"),
+    ),
+  new SlashCommandBuilder()
+    .setName("cup")
+    .setDescription("Admin: auction, predictions, max rank, and complete-team switches")
+    .addSubcommand((s) =>
+      s.setName("status").setDescription("Show this cup's option switches"),
+    )
+    .addSubcommand((s) =>
+      s
+        .setName("auction")
+        .setDescription("Turn the auction on or off")
+        .addStringOption((o) =>
+          o
+            .setName("mode")
+            .setDescription("on or off")
+            .setRequired(true)
+            .addChoices(
+              { name: "on", value: "on" },
+              { name: "off", value: "off" },
+            ),
+        ),
+    )
+    .addSubcommand((s) =>
+      s
+        .setName("predictions")
+        .setDescription("Lock or unlock match predictions (page stays visible)")
+        .addStringOption((o) =>
+          o
+            .setName("mode")
+            .setDescription("unlocked or locked")
+            .setRequired(true)
+            .addChoices(
+              { name: "unlocked", value: "on" },
+              { name: "locked", value: "off" },
+            ),
+        ),
+    )
+    .addSubcommand((s) =>
+      s
+        .setName("maxrank")
+        .setDescription("Highest medal that may register (or clear)")
+        .addStringOption((o) =>
+          o
+            .setName("medal")
+            .setDescription("Max medal, or none for no limit")
+            .setRequired(true)
+            .addChoices(
+              { name: "none (no limit)", value: "none" },
+              ...medalChoices,
+            ),
+        ),
+    )
+    .addSubcommand((s) =>
+      s
+        .setName("completeteam")
+        .setDescription("Require 5 starters before scheduling")
+        .addStringOption((o) =>
+          o
+            .setName("mode")
+            .setDescription("on or off")
+            .setRequired(true)
+            .addChoices(
+              { name: "on", value: "on" },
+              { name: "off", value: "off" },
+            ),
+        ),
     ),
   new SlashCommandBuilder()
     .setName("season")
@@ -1245,10 +1350,7 @@ function roleSelectRow() {
 }
 
 function siteUrl() {
-  return (process.env.NEXTAUTH_URL || "https://dota2-cup.vercel.app").replace(
-    /\/+$/,
-    "",
-  );
+  return cupPublicUrl();
 }
 
 function playerPageUrl(playerId: string) {
@@ -1302,7 +1404,7 @@ function playerCardEmbed(
       { name: "Slot", value: playerSlotLabel(player), inline: true },
       { name: "Weekends", value: window, inline: true },
     )
-    .setFooter({ text: "MM Dota Cup" });
+    .setFooter({ text: `${CUP_NAME}` });
 }
 
 async function poolEmbeds() {
@@ -1317,7 +1419,7 @@ async function poolEmbeds() {
         .setColor(CARD_GOLD)
         .setTitle("Player pool")
         .setDescription("No players in the pool yet (captains are hidden).")
-        .setFooter({ text: "MM Dota Cup" }),
+        .setFooter({ text: `${CUP_NAME}` }),
     ];
   }
 
@@ -1336,7 +1438,7 @@ async function poolEmbeds() {
     .setColor(CARD_GOLD)
     .setTitle(`Player pool · ${players.length}`)
     .setDescription("Registered players except captains — medal and role.")
-    .setFooter({ text: "MM Dota Cup" });
+    .setFooter({ text: `${CUP_NAME}` });
   let fields = 0;
 
   for (const [role, lines] of [...groups.entries()].sort((a, b) =>
@@ -1349,7 +1451,7 @@ async function poolEmbeds() {
         current = new EmbedBuilder()
           .setColor(CARD_GOLD)
           .setTitle("Player pool")
-          .setFooter({ text: "MM Dota Cup" });
+          .setFooter({ text: `${CUP_NAME}` });
         fields = 0;
       }
       current.addFields({ name: role, value: chunk, inline: false });
@@ -1785,7 +1887,7 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
               ? (await isRegistrationOpen())
                 ? "You are not registered. Use `/register`."
                 : "You are not registered. Public sign-ups are closed — ask an admin to `/player register` you."
-              : `${target} is not registered in MM Dota Cup.`,
+              : `${target} is not registered in ${CUP_NAME}.`,
         });
         return;
       }
@@ -2009,6 +2111,77 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
       await interaction.editReply(
         `Public registration is **closed** on the website and Discord.${extra}\n\nAdd someone: \`/player register\`\nRemove someone: \`/player delete @user\` (also takes them off a team). Captains: \`/captain remove\` first.`,
       );
+      return;
+    }
+
+    if (name === "cup") {
+      if (!isOrganizer(member, discordId)) {
+        await interaction.reply({
+          content: `Only **${adminRoleName()}** can change cup options.`,
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+      const sub = interaction.options.getSubcommand();
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      try {
+        if (sub === "auction") {
+          const on = interaction.options.getString("mode", true) === "on";
+          await updateCupFeatureSettings({ auctionEnabled: on });
+          await interaction.editReply(
+            on
+              ? "Auction is **on**. Captains can bid when you `/auction start`."
+              : "Auction is **off**. Assign players with `/player add` — `/auction start` is blocked.",
+          );
+          return;
+        }
+        if (sub === "predictions") {
+          const on = interaction.options.getString("mode", true) === "on";
+          await updateCupFeatureSettings({ predictionsEnabled: on });
+          await interaction.editReply(
+            on
+              ? "Predictions are **unlocked**. Players can submit and edit picks on the site."
+              : "Predictions are **locked**. The page stays up, but new picks and edits are blocked.",
+          );
+          return;
+        }
+        if (sub === "maxrank") {
+          const raw = interaction.options.getString("medal", true);
+          const maxMedalToApply =
+            raw === "none" ? null : (raw as Medal);
+          await updateCupFeatureSettings({ maxMedalToApply });
+          await interaction.editReply(
+            maxMedalToApply
+              ? `Max rank to apply is **${medalLabel(maxMedalToApply)}** and below.`
+              : "Max rank cleared — any medal may register.",
+          );
+          return;
+        }
+        if (sub === "completeteam") {
+          const on = interaction.options.getString("mode", true) === "on";
+          await updateCupFeatureSettings({ completeTeamRequired: on });
+          await interaction.editReply(
+            on
+              ? "Complete team is **on**. Schedule stays locked until every team has 5 starters."
+              : "Complete team is **off**. Fixtures can be booked with the players already on each team.",
+          );
+          return;
+        }
+        const settings = await getCupFeatureSettings();
+        await interaction.editReply(
+          [
+            `**${CUP_NAME} options**`,
+            `• Auction: **${settings.auctionEnabled ? "on" : "off"}**`,
+            `• Predictions: **${settings.predictionsEnabled ? "unlocked" : "locked"}**`,
+            `• Max rank: **${settings.maxMedalToApply ? medalLabel(settings.maxMedalToApply) : "none"}**`,
+            `• Complete team (5 starters): **${settings.completeTeamRequired ? "on" : "off"}**`,
+          ].join("\n"),
+        );
+      } catch (error) {
+        await interaction.editReply(
+          error instanceof Error ? error.message : "Could not update cup options.",
+        );
+      }
       return;
     }
 
@@ -2293,6 +2466,32 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
         );
         return;
       }
+      if (sub === "alias") {
+        const user = interaction.options.getUser("user", true);
+        const nameOpt = interaction.options.getString("name", true);
+        const result = await addPlayerAlias({
+          discordId: user.id,
+          alias: nameOpt,
+        });
+        await interaction.editReply(
+          result.created
+            ? `Saved alias **${nameOpt.trim()}** for **${result.player.steamName}**. Scoreboards can match that name to them.`
+            : `Alias **${nameOpt.trim()}** was already on **${result.player.steamName}**.`,
+        );
+        return;
+      }
+      if (sub === "unalias") {
+        const user = interaction.options.getUser("user", true);
+        const nameOpt = interaction.options.getString("name", true);
+        const result = await removePlayerAlias({
+          discordId: user.id,
+          alias: nameOpt,
+        });
+        await interaction.editReply(
+          `Removed alias **${nameOpt.trim()}** from **${result.player.steamName}**.`,
+        );
+        return;
+      }
       if (sub === "edit") {
         const targetId = playerDiscordIdFromOptions(interaction);
         const result = await adminUpdatePlayerProfile({
@@ -2505,7 +2704,10 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
       const q = interaction.options.getString("team");
       const team = q
         ? await prisma.team.findFirst({
-            where: { name: { equals: q } },
+            where: {
+              name: { equals: q, mode: "insensitive" },
+              ...(await currentSeasonFilter()),
+            },
             include: { players: true },
           })
         : (await getTeamByCaptainDiscord(discordId)).team;
@@ -3638,6 +3840,17 @@ client.once(Events.ClientReady, async () => {
       error instanceof Error ? error.message : error,
     );
   }
+  try {
+    const aliases = await seedDefaultPlayerAliases();
+    if (aliases > 0) {
+      console.log(`Seeded ${aliases} scoreboard name aliases`);
+    }
+  } catch (error) {
+    console.warn(
+      "alias seed",
+      error instanceof Error ? error.message : error,
+    );
+  }
   await hydrateAuctionClock().catch(() => undefined);
   try {
     const repair = await repairAuctionScores();
@@ -3675,7 +3888,7 @@ client.once(Events.ClientReady, async () => {
     }
     try {
       await syncGuildIcon(guild);
-      console.log(`Set MM Dota Cup server icon for ${guild.name}`);
+      console.log(`Set ${CUP_NAME} server icon for ${guild.name}`);
     } catch (error) {
       console.warn(
         `Could not set server icon for ${guild.name} (need Manage Server):`,

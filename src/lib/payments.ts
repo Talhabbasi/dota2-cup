@@ -7,6 +7,7 @@ import {
   formatTeamFee,
   teamFeePkr,
 } from "./registration-status";
+import { CUP_NAME } from "@/lib/brand";
 
 export function playerMustPay(rosterRole: string | null) {
   return !isRosterSub(rosterRole);
@@ -30,7 +31,7 @@ export async function recordPlayerPayment(input: {
   const player = await findPlayerByDiscord(input.discordId);
   if (!player) {
     throw new Error(
-      "You are not registered in MM Dota Cup. Ask an admin to add you with `/player register`.",
+      `You are not registered in ${CUP_NAME}. Ask an admin to add you with /player register.`,
     );
   }
   if (!playerMustPay(player.rosterRole)) {
@@ -72,6 +73,79 @@ export async function adminMarkPaid(discordId: string, verifiedBy = "slash") {
     discordId,
     discordName: "admin-mark",
     verifiedBy,
+  });
+}
+
+export async function adminClearPaid(discordId: string) {
+  const player = await findPlayerByDiscord(discordId);
+  if (!player) throw new Error("Player not found.");
+  if (!player.paidAt) {
+    return { player, cleared: false as const };
+  }
+  const updated = await prisma.player.update({
+    where: { id: player.id },
+    data: { paidAt: null, paymentAmount: 0 },
+    include: { team: { select: { id: true, name: true } } },
+  });
+  await syncSeasonPlayer(updated.id);
+  return { player: updated, cleared: true as const };
+}
+
+export type AdminPaymentPlayerRow = {
+  id: string;
+  discordId: string;
+  steamName: string;
+  teamName: string | null;
+  rosterRole: string | null;
+  isCaptain: boolean;
+  mustPay: boolean;
+  paid: boolean;
+  amount: number;
+  paidAtLabel: string | null;
+};
+
+export async function adminListPaymentPlayers(): Promise<AdminPaymentPlayerRow[]> {
+  const fee = entryFeePkr();
+  const players = await prisma.player.findMany({
+    where: {
+      AND: [
+        { discordId: { not: { startsWith: DUMMY_PREFIX } } },
+        { discordId: { not: { startsWith: DUMMY_TEAM_PREFIX } } },
+      ],
+    },
+    select: {
+      id: true,
+      steamName: true,
+      discordId: true,
+      rosterRole: true,
+      isCaptain: true,
+      paidAt: true,
+      paymentAmount: true,
+      team: { select: { name: true } },
+    },
+    orderBy: [{ team: { name: "asc" } }, { steamName: "asc" }],
+  });
+
+  return players.map((p) => {
+    const mustPay = playerMustPay(p.rosterRole);
+    const paid = Boolean(p.paidAt);
+    return {
+      id: p.id,
+      discordId: p.discordId,
+      steamName: p.steamName,
+      teamName: p.team?.name ?? null,
+      rosterRole: p.rosterRole,
+      isCaptain: p.isCaptain,
+      mustPay,
+      paid,
+      amount: paid ? p.paymentAmount || fee : mustPay ? fee : 0,
+      paidAtLabel: p.paidAt
+        ? p.paidAt.toLocaleDateString("en-PK", {
+            day: "numeric",
+            month: "short",
+          })
+        : null,
+    };
   });
 }
 

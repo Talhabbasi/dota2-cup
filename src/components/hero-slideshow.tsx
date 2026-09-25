@@ -2,41 +2,42 @@
 
 import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { CUP_NAME } from "@/lib/brand";
 
 const SLIDES = [
   {
     src: "/hero-slides/dota-2-windranger-radiant.jpg",
-    alt: "Windranger on the Radiant offlane in Dota 2, official MM Dota Cup background",
+    alt: `Windranger on the Radiant offlane in Dota 2, official ${CUP_NAME} background`,
     position: "center 32%",
   },
   {
     src: "/hero-slides/dota-2-juggernaut-ancient.jpg",
-    alt: "Juggernaut and Radiant heroes at the Ancient in Dota 2, official MM Dota Cup background",
+    alt: `Juggernaut and Radiant heroes at the Ancient in Dota 2, official ${CUP_NAME} background`,
     position: "center 38%",
   },
   {
     src: "/hero-slides/dota-2-faceless-void-chronosphere.jpg",
-    alt: "Faceless Void Chronosphere teamfight in Dota 2, official MM Dota Cup background",
+    alt: `Faceless Void Chronosphere teamfight in Dota 2, official ${CUP_NAME} background`,
     position: "center 30%",
   },
   {
     src: "/hero-slides/dota-2-roshan-pit.jpg",
-    alt: "Roshan pit in Dota 2, official MM Dota Cup background",
+    alt: `Roshan pit in Dota 2, official ${CUP_NAME} background`,
     position: "center 28%",
   },
   {
     src: "/hero-slides/dota-2-luna-teamfight.jpg",
-    alt: "Luna teamfight on the Dota 2 map, official MM Dota Cup background",
+    alt: `Luna teamfight on the Dota 2 map, official ${CUP_NAME} background`,
     position: "center 34%",
   },
   {
     src: "/hero-slides/dota-2-pudge-hook.jpg",
-    alt: "Pudge hook on the Dire offlane in Dota 2, official MM Dota Cup background",
+    alt: `Pudge hook on the Dire offlane in Dota 2, official ${CUP_NAME} background`,
     position: "center 36%",
   },
   {
     src: "/hero-slides/dota-2-tidehunter-ravage.jpg",
-    alt: "Tidehunter Ravage in a Dota 2 teamfight, official MM Dota Cup background",
+    alt: `Tidehunter Ravage in a Dota 2 teamfight, official ${CUP_NAME} background`,
     position: "center 32%",
   },
 ] as const;

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { authSession } from "@/lib/auth";
-import { isAdminDiscordId } from "@/lib/constants";
+import { isSiteAdmin } from "@/lib/site-admin";
 import { publicErrorMessage } from "@/lib/public-error";
 import { revalidatePublicPages } from "@/lib/page-cache";
 import { ingestMatch } from "@/lib/results";
@@ -8,7 +8,10 @@ import { ingestMatch } from "@/lib/results";
 export async function POST(request: Request) {
   const session = await authSession();
   const discordId = session?.user?.discordId;
-  if (!discordId || !isAdminDiscordId(discordId)) {
+  const allowed =
+    session?.user?.isAdmin === true ||
+    (discordId ? await isSiteAdmin(discordId) : false);
+  if (!allowed) {
     return NextResponse.json({ error: "Admin only." }, { status: 403 });
   }
 

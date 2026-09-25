@@ -90,22 +90,40 @@ model Player {
   seasons     SeasonPlayer[]
   predictions MatchPrediction[]
   bracketPicks BracketPick[]
+  aliases     PlayerAlias[]
+}
+
+/// Admin-managed OCR / scoreboard name aliases for one player.
+model PlayerAlias {
+  id        String   @id @default(cuid())
+  playerId  String
+  player    Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  alias     String
+  createdAt DateTime @default(now())
+
+  @@unique([alias])
+  @@index([playerId])
 }
 
 model CupSettings {
-  id                String   @id @default("singleton")
-  registrationOpen  Boolean  @default(false)
-  currentSeasonId   String?
-  currentSeason     Season?  @relation(fields: [currentSeasonId], references: [id], onDelete: SetNull)
-  updatedAt         DateTime @updatedAt
+  id                   String   @id @default("singleton")
+  registrationOpen     Boolean  @default(false)
+  currentSeasonId      String?
+  currentSeason        Season?  @relation(fields: [currentSeasonId], references: [id], onDelete: SetNull)
+  auctionEnabled       Boolean  @default(true)
+  /// Highest medal allowed to register. Null = no max. Same keys as MEDALS.
+  maxMedalToApply      String?
+  completeTeamRequired Boolean  @default(true)
+  predictionsEnabled   Boolean  @default(true)
+  updatedAt            DateTime @updatedAt
 }
 
 model Team {
   id        String   @id @default(cuid())
   seasonId  String?
   season    Season?  @relation(fields: [seasonId], references: [id], onDelete: Restrict)
-  name      String   @unique
-  captainId String   @unique
+  name      String
+  captainId String
   purse     Int
   groupKey  String?
   createdAt DateTime @default(now())
@@ -122,6 +140,8 @@ model Team {
   predictedWins   MatchPrediction[] @relation("PredictedTeam")
   bracketPicks    BracketPick[] @relation("BracketPredictedTeam")
 
+  @@unique([seasonId, name])
+  @@unique([seasonId, captainId])
   @@index([seasonId])
 }
 
@@ -284,6 +304,8 @@ model MatchPlayer {
   xpm      Int
   itemsJson String
   unknown  Boolean @default(false)
+  /// Admin marked this seat as a guest stand-in (not an OCR miss).
+  asStandIn Boolean @default(false)
   boardName String  @default("")
 
   @@index([heroId])

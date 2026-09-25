@@ -32,6 +32,7 @@ import {
   type PlayWindow,
 } from "./play-window";
 import { prisma } from "./prisma";
+import { BOT_NAME, CUP_NAME } from "@/lib/brand";
 
 export function captainRoleName() {
   return process.env.CAPTAIN_ROLE_NAME?.trim() || "Captain";
@@ -64,12 +65,12 @@ export async function ensureCaptainRole(guild: Guild): Promise<Role> {
       hoist: true,
       mentionable: true,
       colors: { primaryColor: 0xb07d1f },
-      reason: "MM Dota Cup captain role",
+      reason: `${CUP_NAME} captain role`,
     });
   } catch {
     throw new Error(
       `The bot cannot create the **${name}** Discord role (needs **Manage Roles**). ` +
-        `Server Settings → Roles → enable **Manage Roles** on **dota2-cup**, ` +
+        `Server Settings → Roles → enable **Manage Roles** on **${BOT_NAME}**, ` +
         `and drag the bot role **above** ${name}. Or create a role named **${name}** yourself.`,
     );
   }
@@ -219,7 +220,7 @@ export async function ensurePlayWindowRole(
     hoist: false,
     mentionable: true,
     colors: { primaryColor: window === "evening" ? 0xc9a227 : 0x4a6fa5 },
-    reason: "MM Dota Cup weekend play window",
+    reason: `${CUP_NAME} weekend play window`,
   });
 }
 

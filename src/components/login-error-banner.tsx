@@ -8,8 +8,7 @@ export function LoginErrorBanner() {
 
   return (
     <p className="lede" role="alert">
-      Discord login failed. Check the OAuth2 Client Secret and redirect URL,
-      then try Sign in again.
+      Discord login failed. Try Sign in again. If it keeps failing, ask an admin.
     </p>
   );
 }

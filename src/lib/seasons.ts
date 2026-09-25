@@ -2,6 +2,7 @@ import { cache } from "react";
 import { getCupSettings } from "./cup-settings-cache";
 import { prisma } from "./prisma";
 import { publicFixtureWhere, publicPlayerWhere } from "./dummy";
+import { SEASON_LABEL } from "./brand";
 import { isRosterSub, sortTeamRoster } from "./roles";
 
 export const SEASON_STATUS = {
@@ -13,13 +14,21 @@ export const SEASON_STATUS = {
 export type SeasonStatus = (typeof SEASON_STATUS)[keyof typeof SEASON_STATUS];
 
 const DEFAULT_SEASON_NUMBER = 1;
-const DEFAULT_SEASON_NAME = "Season 1";
+const DEFAULT_SEASON_NAME = SEASON_LABEL;
 
 type Db = typeof prisma;
 
 function seasonName(number: number, name?: string | null) {
   const trimmed = name?.trim();
   return trimmed && trimmed.length > 0 ? trimmed : `Season ${number}`;
+}
+
+/** Badge text for the season the cup is writing to. Falls back only when none exists yet. */
+export function liveSeasonLabel(
+  season: { number: number; name: string } | null | undefined,
+) {
+  if (!season) return SEASON_LABEL;
+  return seasonName(season.number, season.name);
 }
 
 export async function listSeasons() {
@@ -64,7 +73,7 @@ export async function getCurrentSeasonSafe() {
 export async function requireCurrentSeason(db: Db = prisma) {
   const season = await getCurrentSeason(db);
   if (!season) {
-    throw new Error("No season is set. Create Season 1 first.");
+    throw new Error(`No season is set. Create ${SEASON_LABEL} first.`);
   }
   return season;
 }

@@ -3,6 +3,7 @@ import path from "node:path";
 import { prisma } from "./prisma";
 import { currentSeasonId } from "./seasons";
 import { loadHeroCatalog, loadItemCatalog } from "./opendota";
+import { normalizeAlias } from "./player-aliases";
 
 export type ScoreboardItem = { key: string; name: string };
 
@@ -38,26 +39,18 @@ const MATCH_INCLUDE = {
   winnerTeam: true,
 } as const;
 
-function norm(value: string) {
-  return value.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]+/g, "");
-}
-
-const PLAYER_ALIASES: Record<string, string[]> = {
-  lordtheepa: [
-    "loradtheeka",
-    "lordtheeka",
-    "theekralord",
-    "theekra",
-    "lordtheekra",
-    "lordtheeka",
-  ],
-  theekralord: ["loradtheeka", "lordtheepa", "theekra", "lordtheekra"],
-  ashh: ["ash", "mohsin", "ashhmm"],
-  chessman: ["spoderman"],
-  fearless: ["lundplayer"],
-  hades7: ["barwa", "hades"],
-  stoicswapcmds: ["stoic"],
+type RosterPlayer = {
+  id: string;
+  steamName: string;
+  steam32: number;
+  discordName?: string | null;
+  teamId: string | null;
+  labels: string[];
 };
+
+function norm(value: string) {
+  return normalizeAlias(value);
+}
 
 function parseDuration(value: string | null | undefined) {
   if (!value) return null;
@@ -426,45 +419,76 @@ function resolveItem(
 function playerLabels(player: {
   steamName: string;
   discordName?: string | null;
+  aliases?: string[];
 }) {
   const base = [player.steamName, player.discordName ?? ""]
     .map(norm)
     .filter(Boolean);
-  const extra = base.flatMap((label) => PLAYER_ALIASES[label] ?? []);
+  const extra = (player.aliases ?? []).map(norm).filter(Boolean);
   return [...new Set([...base, ...extra])];
 }
 
-function resolvePlayer(
+/** Classic Levenshtein distance on normalized strings. */
+export function levenshtein(a: string, b: string): number {
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+  const rows = a.length + 1;
+  const cols = b.length + 1;
+  const prev = new Array<number>(cols);
+  const cur = new Array<number>(cols);
+  for (let j = 0; j < cols; j++) prev[j] = j;
+  for (let i = 1; i < rows; i++) {
+    cur[0] = i;
+    const ca = a.charCodeAt(i - 1);
+    for (let j = 1; j < cols; j++) {
+      const cost = ca === b.charCodeAt(j - 1) ? 0 : 1;
+      cur[j] = Math.min(cur[j - 1] + 1, prev[j] + 1, prev[j - 1] + cost);
+    }
+    for (let j = 0; j < cols; j++) prev[j] = cur[j]!;
+  }
+  return prev[b.length]!;
+}
+
+/**
+ * Match a board name only inside that side's current-season roster.
+ * Exact / alias first; then one clear Levenshtein winner (distance ≤ 2,
+ * strictly better than the runner-up). Never attaches another team's player.
+ * Already-mapped players in `usedIds` are skipped so one seat cannot win twice.
+ */
+export function resolvePlayer(
   name: string,
-  players: {
-    id: string;
-    steamName: string;
-    steam32: number;
-    discordName?: string | null;
-    teamId?: string | null;
-  }[],
-  teamId?: string | null,
-) {
+  roster: RosterPlayer[],
+  teamId: string | null | undefined,
+  usedIds?: Set<string>,
+): RosterPlayer | null {
   const want = norm(name);
-  if (!want) return null;
-  const teamPool = teamId
-    ? players.filter((p) => p.teamId === teamId)
-    : players;
+  if (!want || !teamId) return null;
 
-  const exact = (list: typeof players) =>
-    list.find((p) => playerLabels(p).includes(want));
-  const fuzzy = (list: typeof players) =>
-    list.find((p) =>
-      playerLabels(p).some((have) => {
-        if (want.length < 5 || have.length < 5) return false;
-        const shorter = want.length <= have.length ? want : have;
-        const longer = want.length <= have.length ? have : want;
-        if (shorter.length / longer.length < 0.7) return false;
-        return longer.includes(shorter);
-      }),
-    );
+  const pool = roster.filter(
+    (p) => p.teamId === teamId && !(usedIds?.has(p.id) ?? false),
+  );
+  if (pool.length === 0) return null;
 
-  return exact(teamPool) ?? fuzzy(teamPool) ?? exact(players) ?? null;
+  const exact = pool.find((p) => p.labels.includes(want));
+  if (exact) return exact;
+
+  const scored = pool
+    .map((p) => {
+      const distance = Math.min(
+        ...p.labels.map((have) => levenshtein(want, have)),
+        Number.POSITIVE_INFINITY,
+      );
+      return { player: p, distance };
+    })
+    .filter((row) => Number.isFinite(row.distance) && row.distance <= 2)
+    .sort((a, b) => a.distance - b.distance);
+
+  if (scored.length === 0) return null;
+  const best = scored[0]!;
+  const runner = scored[1];
+  if (runner && runner.distance === best.distance) return null;
+  return best.player;
 }
 
 function resolveTeam(
@@ -503,21 +527,52 @@ export async function applyParsedScoreboard(
     throw new Error("That screenshot does not look like a 10-player scoreboard.");
   }
 
-  const [heroes, itemCatalog, registered, teams] = await Promise.all([
-    loadHeroCatalog(),
-    loadItemCatalog(),
-    prisma.player.findMany({
-      select: {
-        id: true,
-        steamName: true,
-        discordName: true,
-        steam32: true,
-        teamId: true,
-      },
-    }),
-    prisma.team.findMany({ select: { id: true, name: true } }),
-  ]);
+  const seasonId = await currentSeasonId();
+  const [heroes, itemCatalog, seasonPlayers, aliasRows, teams] =
+    await Promise.all([
+      loadHeroCatalog(),
+      loadItemCatalog(),
+      prisma.seasonPlayer.findMany({
+        where: { seasonId },
+        select: {
+          teamId: true,
+          player: {
+            select: {
+              id: true,
+              steamName: true,
+              discordName: true,
+              steam32: true,
+            },
+          },
+        },
+      }),
+      prisma.playerAlias.findMany({ select: { playerId: true, alias: true } }),
+      prisma.team.findMany({
+        where: { seasonId },
+        select: { id: true, name: true },
+      }),
+    ]);
   const itemList = Object.values(itemCatalog);
+
+  const aliasesByPlayer = new Map<string, string[]>();
+  for (const row of aliasRows) {
+    const list = aliasesByPlayer.get(row.playerId) ?? [];
+    list.push(row.alias);
+    aliasesByPlayer.set(row.playerId, list);
+  }
+
+  const roster: RosterPlayer[] = seasonPlayers.map((row) => ({
+    id: row.player.id,
+    steamName: row.player.steamName,
+    steam32: row.player.steam32,
+    discordName: row.player.discordName,
+    teamId: row.teamId,
+    labels: playerLabels({
+      steamName: row.player.steamName,
+      discordName: row.player.discordName,
+      aliases: aliasesByPlayer.get(row.player.id),
+    }),
+  }));
 
   const radiantTeam = resolveTeam(parsed.radiantTeam, teams);
   const direTeam = resolveTeam(parsed.direTeam, teams);
@@ -555,13 +610,13 @@ export async function applyParsedScoreboard(
       ? "dire"
       : "radiant");
 
+  const usedIds = new Set<string>();
   const rows = parsed.players.map((row) => {
     const hero = resolveHero(row.hero, heroes);
-    const mapped = resolvePlayer(
-      row.name,
-      registered,
-      row.side === "dire" ? direTeam?.id : radiantTeam?.id,
-    );
+    const sideTeamId =
+      row.side === "dire" ? direTeam?.id ?? null : radiantTeam?.id ?? null;
+    const mapped = resolvePlayer(row.name, roster, sideTeamId, usedIds);
+    if (mapped) usedIds.add(mapped.id);
     const items = row.items
       .map((label) => resolveItem(label, itemList))
       .filter((item): item is ScoreboardItem => Boolean(item));
@@ -615,7 +670,7 @@ export async function applyParsedScoreboard(
       })
     : await prisma.match.create({
         data: {
-          seasonId: await currentSeasonId(),
+          seasonId,
           ...data,
           players: { create: rows },
         },

@@ -1,8 +1,7 @@
+import { cupPublicUrl } from "./brand";
+
 export async function notifySiteRefresh() {
-  const base = (process.env.NEXTAUTH_URL || "https://dota2-cup.vercel.app").replace(
-    /\/+$/,
-    "",
-  );
+  const base = cupPublicUrl();
   const secret = process.env.NEXTAUTH_SECRET;
   if (!secret) return;
 

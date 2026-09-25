@@ -9,6 +9,7 @@ import { adminRoleName, MIN_ROSTER } from "./constants";
 import { registeredRoleName } from "./payments-channel-access";
 import { PLAY_WINDOW_ROLE_NAMES } from "./play-window";
 import { prisma } from "./prisma";
+import { CUP_NAME } from "@/lib/brand";
 
 const DUMMY_PREFIX = "test-dummy-";
 const DUMMY_TEAM_PREFIX = "test-dummy-team-";
@@ -90,7 +91,7 @@ async function ensureTeamVoiceCategory(guild: Guild): Promise<CategoryChannel> {
       : await guild.channels.create({
           name,
           type: ChannelType.GuildCategory,
-          reason: "MM Dota Cup team voice rooms",
+          reason: `${CUP_NAME} team voice rooms`,
         });
   await lockCategoryFromEveryone(category, guild);
   return category;
@@ -125,7 +126,7 @@ async function provisionTeamVoice(
       type: ChannelType.GuildVoice,
       parent: category.id,
       userLimit: MIN_ROSTER,
-      reason: `MM Dota Cup voice for ${team.name}`,
+      reason: `${CUP_NAME} voice for ${team.name}`,
     });
   }
   await applyVoiceAccess(channel, guild, team.players);

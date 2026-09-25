@@ -12,6 +12,7 @@ import { MatchCountdown } from "@/components/match-countdown";
 import type { FixturePreview } from "@/lib/data";
 import { toIso } from "@/lib/format";
 import { BRACKET_META, isBracketSlot } from "@/lib/playoff-tree";
+import { CUP_ICON_PATH, CUP_KICKER, cupNameLines } from "@/lib/brand";
 import { cn } from "@/lib/utils";
 
 function roundName(kind?: string, slotKey?: string | null) {
@@ -56,6 +57,7 @@ export function HomeHero({
   matchCount: number;
   seasonLabel?: string | null;
 }) {
+  const [titleLead, titleTail] = cupNameLines();
   return (
     <section className="hero-stage">
       <HeroSlideshow />
@@ -78,11 +80,11 @@ export function HomeHero({
       <div className="hero-stage-inner">
         <p className="hero-kicker animate-rise">
           <span className="hero-kicker-dot" />
-          Indoor MM · Pakistan · Eight franchises
+          {CUP_KICKER}
         </p>
         <h1 className="hero-title animate-rise delay-1">
           <Image
-            src="/mm-dota-cup-icon.png"
+            src={CUP_ICON_PATH}
             alt=""
             width={92}
             height={92}
@@ -90,8 +92,11 @@ export function HomeHero({
             className="hero-title-icon"
           />
           <span className="hero-title-text">
-            <span>MM Dota</span>
-            <span>Cup{seasonLabel ? ` ${seasonLabel}` : ""}</span>
+            <span>{titleLead}</span>
+            <span>
+              {titleTail}
+              {seasonLabel ? ` ${seasonLabel}` : ""}
+            </span>
           </span>
         </h1>
         <p className="hero-tagline animate-rise delay-2">

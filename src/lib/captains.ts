@@ -28,11 +28,18 @@ export async function adminAddCaptain(input: {
   teamName: string;
 }) {
   const player = await requirePlayer(input.discordId);
-  if (player.teamId || player.isCaptain) {
-    throw new Error(`${player.discordName} is already on a team.`);
+  const seasonId = await currentSeasonId();
+
+  if (player.teamId) {
+    const currentTeam = await prisma.team.findUnique({
+      where: { id: player.teamId },
+      select: { id: true, name: true, seasonId: true },
+    });
+    if (currentTeam?.seasonId === seasonId) {
+      throw new Error(`${player.discordName} is already on a team this season.`);
+    }
   }
 
-  const seasonId = await currentSeasonId();
   const teamCount = await prisma.team.count({
     where: { seasonId },
   });
@@ -41,13 +48,22 @@ export async function adminAddCaptain(input: {
   }
 
   const name = input.teamName.trim();
-  const taken = await prisma.team.findUnique({
-    where: { name },
+  const taken = await prisma.team.findFirst({
+    where: {
+      seasonId,
+      name: { equals: name, mode: "insensitive" },
+    },
   });
-  if (taken && taken.seasonId && taken.seasonId !== seasonId) {
-    throw new Error(`Team "${name}" exists in another season.`);
+  if (taken) throw new Error(`Team "${name}" already exists this season.`);
+
+  const captainTaken = await prisma.team.findFirst({
+    where: { seasonId, captainId: player.id },
+  });
+  if (captainTaken) {
+    throw new Error(
+      `${player.discordName} already captains **${captainTaken.name}** this season.`,
+    );
   }
-  if (taken) throw new Error(`Team "${name}" already exists.`);
 
   const team = await prisma.team.create({
     data: {
@@ -264,11 +280,12 @@ export async function adminRenameTeam(input: {
 
   const taken = await prisma.team.findFirst({
     where: {
+      seasonId: team.seasonId,
       name: { equals: newName, mode: "insensitive" },
       NOT: { id: team.id },
     },
   });
-  if (taken) throw new Error(`Team **${taken.name}** already exists.`);
+  if (taken) throw new Error(`Team **${taken.name}** already exists this season.`);
 
   await prisma.team.update({
     where: { id: team.id },

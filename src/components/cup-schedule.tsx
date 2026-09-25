@@ -217,9 +217,8 @@ export function CupScheduleBoard({
     return (
       <div className="empty-panel teams-list-empty">
         <p className="muted" style={{ margin: 0 }}>
-          No matches booked yet. Admins use{" "}
-          <strong>/schedule add</strong> in Discord (Saturday or Sunday).
-          Group stage: 10:00 PM–6:00 AM PKT. Playoffs: 10:00 AM–3:00 AM PKT.
+          No matches booked yet. Waiting on rosters and the first fixture.
+          When teams are ready, the weekend schedule appears here.
         </p>
       </div>
     );

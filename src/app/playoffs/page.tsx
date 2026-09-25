@@ -8,12 +8,13 @@ import { getGroupStandings } from "@/lib/group-stage-schedule";
 import { getPlayoffView } from "@/lib/playoff";
 import { listCupSchedule } from "@/lib/schedule-crud";
 import { pageMeta } from "@/lib/seo";
+import { CUP_NAME } from "@/lib/brand";
 
 export const revalidate = 30;
 
 export const metadata = pageMeta(
   "Playoff Bracket",
-  "Follow the MM Dota Cup playoff graph: group standings, upper and lower brackets, and the Grand Final.",
+  `Follow the ${CUP_NAME} playoff graph: group standings, upper and lower brackets, and the Grand Final.`,
 );
 
 export default async function PlayoffsPage() {
@@ -36,6 +37,8 @@ export default async function PlayoffsPage() {
       winnerName: fixture.match?.winnerTeam?.name ?? null,
     }));
 
+  const noGroups = view.groupA.length === 0 && view.groupB.length === 0;
+
   return (
     <div className="page playoffs-page">
       <PageHeader
@@ -50,39 +53,54 @@ export default async function PlayoffsPage() {
             cards. See the <Link href="/schedule">schedule</Link>.
           </>
         }
-        pills={[
-          {
-            label: (
-              <>
-                <strong>Group A</strong> {view.groupA.length} teams
-              </>
-            ),
-          },
-          {
-            label: (
-              <>
-                <strong>Group B</strong> {view.groupB.length} teams
-              </>
-            ),
-          },
-        ]}
+        pills={
+          noGroups
+            ? undefined
+            : [
+                {
+                  label: (
+                    <>
+                      <strong>Group A</strong> {view.groupA.length} teams
+                    </>
+                  ),
+                },
+                {
+                  label: (
+                    <>
+                      <strong>Group B</strong> {view.groupB.length} teams
+                    </>
+                  ),
+                },
+              ]
+        }
       />
 
-      <div className="group-standings-row-wrap">
-        <GroupStandingsTable
-          title="Group A"
-          rows={groupA}
-          markLastEliminated={view.groupStageComplete}
-        />
-        <GroupStandingsTable
-          title="Group B"
-          rows={groupB}
-          markLastEliminated={view.groupStageComplete}
-        />
-      </div>
+      {noGroups ? (
+        <div className="empty-panel teams-list-empty">
+          <p className="muted" style={{ margin: 0 }}>
+            Playoffs open after groups are set and the group stage finishes.
+            Follow the <Link href="/schedule">schedule</Link> until then.
+          </p>
+        </div>
+      ) : (
+        <>
+          <div className="group-standings-row-wrap">
+            <GroupStandingsTable
+              title="Group A"
+              rows={groupA}
+              markLastEliminated={view.groupStageComplete}
+            />
+            <GroupStandingsTable
+              title="Group B"
+              rows={groupB}
+              markLastEliminated={view.groupStageComplete}
+            />
+          </div>
 
-      <PlayoffGraphLazy view={view} groupMatches={groupMatches} />
-      <PlayoffBracket view={view} />
+          <PlayoffGraphLazy view={view} groupMatches={groupMatches} />
+          <PlayoffBracket view={view} />
+        </>
+      )}
     </div>
   );
 }

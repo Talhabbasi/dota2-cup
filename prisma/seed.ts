@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import { SEASON_LABEL } from "../src/lib/brand";
 import { STARTING_PURSE } from "../src/lib/constants";
 
 const prisma = new PrismaClient();
@@ -17,7 +18,7 @@ async function main() {
     where: { number: 1 },
     create: {
       number: 1,
-      name: "Season 1",
+      name: SEASON_LABEL,
       status: "live",
       startedAt: new Date(),
     },

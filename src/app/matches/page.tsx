@@ -3,12 +3,13 @@ import { MatchesGrid, type MatchListView } from "@/components/matches-grid";
 import { getMatches } from "@/lib/data";
 import { matchKillTotals } from "@/lib/match-score";
 import { pageMeta } from "@/lib/seo";
+import { CUP_NAME } from "@/lib/brand";
 
 export const revalidate = 30;
 
 export const metadata = pageMeta(
   "Match Results",
-  "MM Dota Cup match results, scores, and Dota 2 series history for the live indoor season.",
+  `${CUP_NAME} match results, scores, and Dota 2 series history for the live indoor season.`,
 );
 
 export default async function MatchesPage() {

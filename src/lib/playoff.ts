@@ -28,6 +28,7 @@ import {
 } from "./playoff-bracket";
 import { isLiveCupTeam, publicFixtureWhere } from "./dummy";
 import type { GroupStandingRow } from "./group-stage-schedule";
+import { CUP_NAME } from "@/lib/brand";
 
 export { isLiveCupTeam };
 
@@ -784,7 +785,7 @@ export function playoffMatchesReady(view: PlayoffView) {
 
 export function formatPlayoffGroups(view: PlayoffView) {
   const lines = [
-    "**MM Dota Cup — Group stage**",
+    `**${CUP_NAME} — Group stage**`,
     "8 teams, 2 groups of 4. Single round-robin, Bo1.",
     "",
     "**Group A**",

@@ -21,7 +21,7 @@ import {
   starterCountOnTeam,
   stringifyRoles,
 } from "./roles";
-import { currentSeasonId, syncSeasonPlayer, syncSeasonPlayers } from "./seasons";
+import { currentSeasonId, currentSeasonFilter, syncSeasonPlayer, syncSeasonPlayers } from "./seasons";
 
 const DUMMY_PREFIX = "test-dummy-";
 const DUMMY_TEAM_PREFIX = "test-dummy-team-";
@@ -111,8 +111,11 @@ export async function adminAddPlayerToTeam(input: {
     throw new Error(`${player.discordName} is already on a team.`);
   }
 
-  const team = await prisma.team.findUnique({
-    where: { name: input.teamName.trim() },
+  const team = await prisma.team.findFirst({
+    where: {
+      name: { equals: input.teamName.trim(), mode: "insensitive" },
+      ...(await currentSeasonFilter()),
+    },
     include: { players: true },
   });
   if (!team) {
@@ -411,15 +414,19 @@ export async function adminClearDummyPlayers() {
 
 export async function adminUpdatePlayerProfile(input: {
   discordId: string;
+  steamName?: string | null;
   medal?: string | null;
   role?: string | null;
   playWindow?: string | null;
 }) {
+  const nameInput = input.steamName?.trim() || undefined;
   const medalInput = input.medal?.trim() || undefined;
   const roleInput = input.role?.trim() || undefined;
   const windowInput = input.playWindow?.trim() || undefined;
-  if (!medalInput && !roleInput && !windowInput) {
-    throw new Error("Provide **rank**, **role**, and/or **when** to change.");
+  if (!nameInput && !medalInput && !roleInput && !windowInput) {
+    throw new Error(
+      "Provide **name**, **rank**, **role**, and/or **when** to change.",
+    );
   }
 
   const player = await requirePlayer(input.discordId);
@@ -430,6 +437,7 @@ export async function adminUpdatePlayerProfile(input: {
   const updated = await prisma.player.update({
     where: { id: player.id },
     data: {
+      ...(nameInput ? { steamName: nameInput } : {}),
       ...(medal ? { medal } : {}),
       ...(roles ? { rolesJson: stringifyRoles(roles) } : {}),
       ...(playWindow ? { playWindow } : {}),
@@ -444,6 +452,27 @@ export async function adminUpdatePlayerProfile(input: {
     previousPlayWindow: player.playWindow,
     teamName: player.team?.name ?? null,
   };
+}
+
+/** Force starter or sub without waiting for auto rebalance. */
+export async function adminSetRosterSlot(input: {
+  discordId: string;
+  slot: "starter" | "sub";
+}) {
+  const player = await requirePlayer(input.discordId);
+  if (!player.teamId) {
+    throw new Error(`${player.discordName} is not on a team.`);
+  }
+  if (player.isCaptain && input.slot === "sub") {
+    throw new Error("Captains stay on the starting five.");
+  }
+
+  const updated = await prisma.player.update({
+    where: { id: player.id },
+    data: { rosterRole: input.slot === "sub" ? "sub" : null },
+  });
+  await syncSeasonPlayer(updated.id);
+  return { name: updated.steamName, rosterRole: updated.rosterRole };
 }
 
 export async function adminResyncRosterRole(discordId: string) {

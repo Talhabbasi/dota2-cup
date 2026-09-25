@@ -4,12 +4,13 @@ import { StandingsBoard } from "@/components/standings-board";
 import { getGroupStandings } from "@/lib/group-stage-schedule";
 import { getStandings } from "@/lib/data";
 import { pageMeta } from "@/lib/seo";
+import { CUP_NAME } from "@/lib/brand";
 
 export const revalidate = 30;
 
 export const metadata = pageMeta(
   "League Standings",
-  "Live MM Dota Cup standings: wins, losses, and points for every franchise this season.",
+  `Live ${CUP_NAME} standings: wins, losses, and points for every franchise this season.`,
 );
 
 export default async function TablePage() {

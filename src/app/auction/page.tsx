@@ -5,18 +5,39 @@ import {
 } from "@/components/auction-board";
 import { getAuctionResultsBySeason } from "@/lib/auction-results";
 import { STARTING_PURSE, formatPoints } from "@/lib/constants";
+import { getCupFeatureSettings } from "@/lib/cup-features";
 import { getTeams } from "@/lib/data";
 import { isRosterSub } from "@/lib/roles";
 import { pageMeta } from "@/lib/seo";
+import { CUP_NAME } from "@/lib/brand";
 
 export const revalidate = 30;
 
 export const metadata = pageMeta(
   "Player Auction",
-  "See which MM Dota Cup players sold to which team and for how many points in the season auction.",
+  `See which ${CUP_NAME} players sold to which team and for how many points in the season auction.`,
 );
 
 export default async function AuctionPage() {
+  const { auctionEnabled } = await getCupFeatureSettings();
+  if (!auctionEnabled) {
+    return (
+      <div className="page">
+        <PageHeader
+          eyebrow="Auction"
+          title="Auction"
+          subtitle="This cup assigns players without an auction."
+        />
+        <div className="empty-panel teams-list-empty">
+          <p className="muted" style={{ margin: 0 }}>
+            Auction is off. Admins add players to teams directly. Turn it on with{" "}
+            <code>/cup auction mode:on</code>.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   const [seasons, teams] = await Promise.all([
     getAuctionResultsBySeason(),
     getTeams(),

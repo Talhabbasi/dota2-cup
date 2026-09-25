@@ -16,6 +16,7 @@
     "seed": "tsx prisma/seed.ts",
     "seed:heroes": "tsx prisma/seed-heroes.ts",
     "clean:users": "tsx scripts/clean-users.ts",
+    "admin:hash-password": "tsx scripts/hash-admin-password.ts",
     "postinstall": "prisma generate"
   },
   "prisma": {

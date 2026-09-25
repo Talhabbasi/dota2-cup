@@ -1,4 +1,5 @@
 import { MIN_ROSTER } from "./constants";
+import { getCupFeatureSettings } from "./cup-features";
 import { weekendSlotLabel } from "./match-times";
 import {
   deriveTeamPlayWindow,
@@ -399,14 +400,17 @@ export async function validateTeamsForSchedule() {
     throw new Error("Need at least 2 teams before generating a schedule.");
   }
 
-  const under = teams.filter((t) => t.players.length < MIN_ROSTER);
-  if (under.length > 0) {
-    const names = under
-      .map((t) => `**${t.name}** (${t.players.length}/${MIN_ROSTER})`)
-      .join(", ");
-    throw new Error(
-      `These teams need at least ${MIN_ROSTER} players: ${names}. Finish rosters first.`,
-    );
+  const { completeTeamRequired } = await getCupFeatureSettings();
+  if (completeTeamRequired) {
+    const under = teams.filter((t) => t.players.length < MIN_ROSTER);
+    if (under.length > 0) {
+      const names = under
+        .map((t) => `**${t.name}** (${t.players.length}/${MIN_ROSTER})`)
+        .join(", ");
+      throw new Error(
+        `These teams need at least ${MIN_ROSTER} players: ${names}. Finish rosters first.`,
+      );
+    }
   }
 
   return teams;

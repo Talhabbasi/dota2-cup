@@ -7,12 +7,13 @@ import {
 import { getStandings, getTeams } from "@/lib/data";
 import { isRosterSub } from "@/lib/roles";
 import { pageMeta } from "@/lib/seo";
+import { CUP_NAME } from "@/lib/brand";
 
 export const revalidate = 30;
 
 export const metadata = pageMeta(
   "Teams & Rosters",
-  "Meet the eight MM Dota Cup franchises, captains, and rosters for this indoor Dota 2 season in Pakistan.",
+  `Meet the eight ${CUP_NAME} franchises, captains, and rosters for this indoor Dota 2 season in Pakistan.`,
 );
 
 /** Approximate recent form from W/L totals when match history isn't on the list. */

@@ -18,9 +18,10 @@ import {
 import { formatDuration, getMatch, getMatchMeta } from "@/lib/data";
 import { formatKillScore, matchKillTotals } from "@/lib/match-score";
 import { loadHeroCatalog, heroIconUrl } from "@/lib/opendota";
-import { isMatchStandIn, unregisteredStandInLabel } from "@/lib/stand-in";
+import { isMatchStandIn, unmatchedLabel, standInLabel } from "@/lib/stand-in";
 import { cn } from "@/lib/utils";
 import type { Metadata } from "next";
+import { CUP_NAME } from "@/lib/brand";
 
 export const revalidate = 30;
 
@@ -34,7 +35,7 @@ export async function generateMetadata({
   if (!match) return { title: "Match" };
   return {
     title: match.title,
-    description: `${match.title} — MM Dota Cup match result${
+    description: `${match.title} — ${CUP_NAME} match result${
       match.openDotaId ? ` · Match ${match.openDotaId}` : ""
     }.`,
   };
@@ -55,8 +56,10 @@ type MatchPlayerRow = {
   deaths: number;
   assists: number;
   unknown: boolean;
+  asStandIn?: boolean;
   boardName: string;
   steam32: number;
+  seasonTeamId?: string | null;
   player: { id: string; steamName: string; teamId: string | null } | null;
 };
 
@@ -108,15 +111,22 @@ function SideScoreboard({
             const standIn = isMatchStandIn({
               side: p.side,
               unknown: p.unknown,
-              playerTeamId: p.player?.teamId ?? null,
+              asStandIn: p.asStandIn,
+              playerId: p.player?.id ?? null,
+              playerTeamId: p.seasonTeamId ?? p.player?.teamId ?? null,
               radiantTeamId: match.radiantTeam?.id ?? null,
               direTeamId: match.direTeam?.id ?? null,
             });
+            const board = p.boardName.trim();
             return (
               <EsportsTableRow key={p.id}>
                 <EsportsTableCell>
                   {p.player && !p.unknown ? (
                     <>
+                      {board ? (
+                        <span className="text-muted-foreground">{board}</span>
+                      ) : null}
+                      {board ? " · " : null}
                       <Link
                         href={`/players/${p.player.id}`}
                         className="text-foreground!"
@@ -127,8 +137,10 @@ function SideScoreboard({
                         <span className="text-muted-foreground"> (stand-in)</span>
                       ) : null}
                     </>
+                  ) : p.asStandIn || standIn ? (
+                    standInLabel(p.boardName, p.steam32)
                   ) : (
-                    unregisteredStandInLabel(p.boardName, p.steam32)
+                    unmatchedLabel(p.boardName, p.steam32)
                   )}
                 </EsportsTableCell>
                 <EsportsTableCell>

@@ -6,14 +6,14 @@ import { Card, CardContent } from "@/components/ui/card";
 import { KICKOFF_SHORT } from "@/lib/play-window";
 import { weekendSlotLabel } from "@/lib/match-times";
 import { isPlayoffKind, playoffRoundLabel } from "@/lib/playoff";
-import { formatScheduleWhen, scheduleUtcOffsetHours } from "@/lib/schedule";
+import { formatScheduleWhen, scheduleUtcOffsetHours, asDate } from "@/lib/schedule";
 import { cn } from "@/lib/utils";
 
 type Fixture = {
   id: string;
   slotIndex: number;
   status: string;
-  scheduledAt: Date;
+  scheduledAt: Date | string;
   kind?: string;
   slotKey?: string | null;
   bestOf?: number;
@@ -24,9 +24,9 @@ type Fixture = {
   match?: { winnerTeam?: { id: string; name: string } | null } | null;
 };
 
-function nightWindowLabel(date: Date): string | null {
+function nightWindowLabel(date: Date | string): string | null {
   const offsetH = scheduleUtcOffsetHours();
-  const shifted = new Date(date.getTime() + offsetH * 3_600_000);
+  const shifted = new Date(asDate(date).getTime() + offsetH * 3_600_000);
   const hour = shifted.getUTCHours();
   // Group-stage late slot is after midnight; evening is 8pm–midnight.
   // Daytime playoff kickoffs skip this badge — PKT time is already on the card.

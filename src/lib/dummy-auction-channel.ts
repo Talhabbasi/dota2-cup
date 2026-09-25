@@ -7,6 +7,7 @@ import {
 } from "discord.js";
 import { adminRoleName } from "./constants";
 import { registeredRoleName } from "./payments-channel-access";
+import { CUP_NAME } from "@/lib/brand";
 
 const GOLD = 0xb07d1f;
 
@@ -242,7 +243,7 @@ export async function ensureDummyAuctionChannel(
     topic:
       "TEST auction only — fake bids. Does not change live cup data or #auction.",
     permissionOverwrites: overwrites,
-    reason: "MM Dota Cup admin-only auction practice channel",
+    reason: `${CUP_NAME} admin-only auction practice channel`,
   });
   try {
     await pinHowTo(channel, options?.botUserId);

@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
+import { CUP_ICON_PATH, CUP_NAME, CUP_TAGLINE } from "@/lib/brand";
 import { cn } from "@/lib/utils";
 
 const COLUMNS = [
@@ -9,7 +10,7 @@ const COLUMNS = [
     links: [
       ["/", "Home"],
       ["/teams", "Teams"],
-      ["/players", "Players"],
+      ["/player-insight", "Player Insight"],
       ["/heroes", "Heroes"],
     ],
   },
@@ -25,14 +26,14 @@ const COLUMNS = [
   {
     title: "More",
     links: [
-      ["/auction", "Auction"],
       ["/predictions", "Predictions"],
       ["/register", "Register"],
+      ["/seasons", "Seasons"],
     ],
   },
 ] as const;
 
-export function SiteFooter() {
+export function SiteFooter({ seasonLabel }: { seasonLabel: string }) {
   const year = new Date().getFullYear();
 
   return (
@@ -41,7 +42,7 @@ export function SiteFooter() {
         <div className="min-w-0">
           <Link href="/" className="inline-flex items-center gap-3 text-inherit!">
             <Image
-              src="/mm-dota-cup-icon.png"
+              src={CUP_ICON_PATH}
               alt=""
               width={36}
               height={36}
@@ -50,22 +51,21 @@ export function SiteFooter() {
             />
             <span className="grid gap-1">
               <span className="font-display text-sm font-bold tracking-[0.14em] text-white uppercase">
-                MM Dota Cup
+                {CUP_NAME}
               </span>
               <Badge
                 variant="outline"
                 className="h-5 w-fit border-amber-500/40 bg-amber-500/10 px-2 text-[0.62rem] tracking-[0.14em] text-amber-300 uppercase"
               >
-                Season 1
+                {seasonLabel}
               </Badge>
             </span>
           </Link>
           <p className="mt-4 mb-0 max-w-sm text-sm leading-relaxed text-muted-foreground">
-            Indoor Dota 2 cup in Pakistan. Captains, brackets, and kickoffs in
-            one place.
+            {CUP_TAGLINE}
           </p>
           <p className="mt-3 mb-0 text-xs text-slate-500">
-            © {year} MM Dota Cup. All rights reserved.
+            © {year} {CUP_NAME}. All rights reserved.
           </p>
         </div>
 
@@ -100,7 +100,7 @@ export function SiteFooter() {
 
       <div className="border-t border-white/10">
         <p className="mx-auto my-0 w-[min(1180px,calc(100%-2rem))] py-4 text-center text-[0.72rem] tracking-[0.08em] text-slate-500 uppercase sm:text-left">
-          Official MM Dota Cup Platform · Season 1
+          Official {CUP_NAME} Platform · {seasonLabel}
         </p>
       </div>
     </footer>

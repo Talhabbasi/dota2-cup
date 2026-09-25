@@ -6,8 +6,9 @@ import {
 } from "@/lib/heroes";
 import { formatDuration } from "@/lib/data";
 import { heroPortraitUrl } from "@/lib/opendota";
-import { isMatchStandIn, unregisteredStandInLabel } from "@/lib/stand-in";
+import { isMatchStandIn, unmatchedLabel } from "@/lib/stand-in";
 import type { Metadata } from "next";
+import { CUP_NAME } from "@/lib/brand";
 
 export const revalidate = 30;
 
@@ -21,7 +22,7 @@ export async function generateMetadata({
   if (!hero) return { title: "Hero" };
   return {
     title: hero.name,
-    description: `${hero.name} in MM Dota Cup — Dota 2 hero picks, players, and tournament match history.`,
+    description: `${hero.name} in ${CUP_NAME} — Dota 2 hero picks, players, and tournament match history.`,
   };
 }
 
@@ -82,7 +83,12 @@ export default async function HeroDetailPage({
             const standIn = isMatchStandIn({
               side: row.side,
               unknown: row.unknown,
-              playerTeamId: row.player?.teamId ?? row.player?.team?.id ?? null,
+              playerId: row.player?.id ?? null,
+              playerTeamId:
+                row.seasonTeamId ??
+                row.player?.teamId ??
+                row.player?.team?.id ??
+                null,
               radiantTeamId: row.match.radiantTeam?.id ?? null,
               direTeamId: row.match.direTeam?.id ?? null,
             });
@@ -100,6 +106,7 @@ export default async function HeroDetailPage({
                       {row.player && !row.unknown ? (
                         <>
                           {" · "}
+                          {row.boardName.trim() ? `${row.boardName.trim()} · ` : ""}
                           <Link href={`/players/${row.player.id}`}>
                             {row.player.steamName}
                           </Link>
@@ -111,7 +118,7 @@ export default async function HeroDetailPage({
                       ) : (
                         <>
                           {" · "}
-                          {unregisteredStandInLabel(row.boardName, row.steam32)}
+                          {unmatchedLabel(row.boardName, row.steam32)}
                         </>
                       )}{" "}
                       · Winner {winner} · {formatDuration(row.match.duration)}

@@ -2,6 +2,7 @@ import { EmbedBuilder } from "discord.js";
 import { MAX_ROSTER, MIN_ROSTER, STARTING_PURSE } from "./constants";
 import { cupSiteUrl } from "./channel-moderation";
 import { FINAL_BEST_OF, REGULAR_BEST_OF } from "./schedule";
+import { COMMUNITY_NAME, CUP_NAME } from "@/lib/brand";
 
 export const CHANNEL_GUIDE_NAMES = [
   "register",
@@ -16,7 +17,7 @@ export const CHANNEL_GUIDE_NAMES = [
 export type ChannelGuideName = (typeof CHANNEL_GUIDE_NAMES)[number];
 
 export const CUP_RULES = {
-  title: "MM Dota Cup — Official Rules",
+  title: `${CUP_NAME} — Official Rules`,
   sections: [
     {
       name: "Registration",
@@ -49,8 +50,8 @@ export const CUP_RULES = {
     {
       name: "Eligibility",
       body: [
-        "This is an **indoor tournament** for the MM Discord.",
-        "Only players who have **played with MM** (regularly or from time to time) may take part.",
+        `This is an **indoor tournament** for the ${COMMUNITY_NAME} Discord.`,
+        `Only players who have **played with ${COMMUNITY_NAME}** (regularly or from time to time) may take part.`,
         "**Outdoor / outside members are not allowed.** A separate outdoor tournament will follow later.",
       ],
     },
@@ -152,7 +153,7 @@ function guideEmbed(title: string, description: string, lines: string[]) {
       name: "What to do",
       value: lines.map((l) => `• ${l}`).join("\n"),
     })
-    .setFooter({ text: "MM Dota Cup · /help for commands" });
+    .setFooter({ text: `${CUP_NAME} · /help for commands` });
 }
 
 export function buildRulesEmbed(): EmbedBuilder {
@@ -160,7 +161,7 @@ export function buildRulesEmbed(): EmbedBuilder {
     .setColor(0xb07d1f)
     .setTitle(CUP_RULES.title)
     .setDescription(
-      "Pinned rules for MM Dota Cup. Read before you register or queue.",
+      `Pinned rules for ${CUP_NAME}. Read before you register or queue.`,
     );
 
   for (const section of CUP_RULES.sections) {

@@ -1,12 +1,10 @@
 import type { Metadata } from "next";
+import { CUP_DESCRIPTION, CUP_NAME, cupPublicUrl } from "./brand";
 
-export const SITE_NAME = "MM Dota Cup";
-export const SITE_URL = (
-  process.env.NEXTAUTH_URL || "https://dota2-cup.vercel.app"
-).replace(/\/+$/, "");
+export const SITE_NAME = CUP_NAME;
+export const SITE_URL = cupPublicUrl();
 
-export const SITE_DESCRIPTION =
-  "MM Dota Cup is an indoor Dota 2 tournament in Pakistan. Follow teams, weekend schedules, playoffs, auction results, predictions, and match scores.";
+export const SITE_DESCRIPTION = CUP_DESCRIPTION;
 
 export function pageMeta(title: string, description: string): Metadata {
   return { title, description };

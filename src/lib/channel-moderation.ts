@@ -1,4 +1,5 @@
 import { ChannelType, type GuildMember, type Message } from "discord.js";
+import { cupPublicUrl } from "./brand";
 import { adminRoleName, isAdminDiscordId } from "./constants";
 import {
   formatEntryFee,
@@ -20,10 +21,7 @@ function registerChannelName() {
 }
 
 export function cupSiteUrl(): string {
-  return (process.env.NEXTAUTH_URL || "https://dota2-cup.vercel.app").replace(
-    /\/+$/,
-    "",
-  );
+  return cupPublicUrl();
 }
 
 export function isCommandOnlyChannel(

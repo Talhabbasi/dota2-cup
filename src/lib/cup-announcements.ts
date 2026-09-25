@@ -27,6 +27,7 @@ import {
   paymentIban,
   paymentsChannelName,
 } from "./registration-status";
+import { BOT_NAME, COMMUNITY_NAME, CUP_COMMUNITY_LINE, CUP_NAME } from "@/lib/brand";
 
 const GOLD = 0xb07d1f;
 
@@ -84,7 +85,7 @@ export function registrationClosedEmbed() {
     .setTitle("Registration is closed")
     .setDescription(
       [
-        "Public registration for **MM Dota Cup** is now **closed**.",
+        `Public registration for **${CUP_NAME}** is now **closed**.`,
         "If you have already registered, you are in the pool.",
         "",
         `The entry fee is **${formatEntryFee()} per person**.`,
@@ -94,7 +95,7 @@ export function registrationClosedEmbed() {
         "Need a late add or a removal? Ping an **Admin**.",
       ].join("\n"),
     )
-    .setFooter({ text: "MM Dota Cup · Admins: /player register · /player delete" });
+    .setFooter({ text: `${CUP_NAME} · Admins: /player register · /player delete` });
 }
 
 export function paymentsChannelEmbed() {
@@ -192,17 +193,17 @@ export async function refreshPinnedPaymentAnnouncement(
 export function indoorLeagueEmbed() {
   return new EmbedBuilder()
     .setColor(GOLD)
-    .setTitle("Indoor tournament — MM players only")
+    .setTitle(`Indoor tournament — ${COMMUNITY_NAME} players only`)
     .setDescription(
       [
-        "This is an **indoor tournament** for the **MM Discord**.",
-        "Only players who have **played with MM** — regularly or from time to time — may take part.",
+        `This is an **indoor tournament** for the **${COMMUNITY_NAME} Discord**.`,
+        `Only players who have **played with ${COMMUNITY_NAME}** — regularly or from time to time — may take part.`,
         "",
         "**Outdoor / outside members are not allowed.**",
         "After this league ends, we will arrange a separate outdoor tournament.",
       ].join("\n"),
     )
-    .setFooter({ text: "MM Dota Cup · MM community only" });
+    .setFooter({ text: `${CUP_NAME} · ${CUP_COMMUNITY_LINE}` });
 }
 
 function isCupAnnouncementMessage(message: Message, botUserId: string) {
@@ -319,14 +320,14 @@ export async function ensurePaymentsChannel(guild: Guild): Promise<TextChannel> 
   const created = await guild.channels.create({
     name,
     type: ChannelType.GuildText,
-    topic: `MM Dota Cup — screenshot of ${formatEntryFee()}; Admin clicks ✅ to confirm`,
+    topic: `${CUP_NAME} — screenshot of ${formatEntryFee()}; Admin clicks ✅ to confirm`,
     permissionOverwrites: [
       {
         id: guild.roles.everyone.id,
         deny: [PermissionFlagsBits.ViewChannel],
       },
     ],
-    reason: "MM Dota Cup payment proof channel",
+    reason: `${CUP_NAME} payment proof channel`,
   });
   try {
     await lockPaymentsChannel(created, guild);
@@ -350,14 +351,14 @@ export async function ensureMatchesChannel(guild: Guild): Promise<TextChannel> {
   return guild.channels.create({
     name,
     type: ChannelType.GuildText,
-    topic: "MM Dota Cup — group-stage fixtures. Registered players only.",
+    topic: `${CUP_NAME} — group-stage fixtures. Registered players only.`,
     permissionOverwrites: [
       {
         id: guild.roles.everyone.id,
         deny: [PermissionFlagsBits.ViewChannel],
       },
     ],
-    reason: "MM Dota Cup registered-only match schedule",
+    reason: `${CUP_NAME} registered-only match schedule`,
   });
 }
 
@@ -375,7 +376,7 @@ export function describeDiscordChannelError(
   if (code === 50001 || /missing access/i.test(raw)) {
     return (
       `**#${channelName}** is private — the bot is not allowed in it. ` +
-      `Open **#${channelName}** → Edit Channel → Permissions → Add **dota2-cup** ` +
+      `Open **#${channelName}** → Edit Channel → Permissions → Add **${BOT_NAME}** ` +
       `(or the bot's role) → enable **View Channel**, **Send Messages**, and **Read Message History**. ` +
       `Then run \`/admin setup\` again.`
     );
@@ -477,9 +478,9 @@ export async function ensureAdminChannel(guild: Guild): Promise<TextChannel> {
   return guild.channels.create({
     name,
     type: ChannelType.GuildText,
-    topic: "MM Dota Cup — admin commands and help",
+    topic: `${CUP_NAME} — admin commands and help`,
     permissionOverwrites: overwrites,
-    reason: "MM Dota Cup admin channel",
+    reason: `${CUP_NAME} admin channel`,
   });
 }
 
@@ -487,7 +488,7 @@ function isPinnedHelpContent(content: string) {
   return (
     content.startsWith(HELP_PIN_PREFIX) ||
     content.startsWith("**Anyone**") ||
-    content.startsWith("**MM Dota Cup — Group stage**")
+    content.startsWith(`**${CUP_NAME} — Group stage**`)
   );
 }
 

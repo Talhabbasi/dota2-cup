@@ -13,7 +13,8 @@ import {
 } from "./constants";
 import { prisma } from "./prisma";
 import { stringifyRoles } from "./roles";
-import { currentSeasonId, syncSeasonPlayer } from "./seasons";
+import { currentSeasonId, currentSeasonFilter, syncSeasonPlayer } from "./seasons";
+import { getCupFeatureSettings } from "./cup-features";
 import { rebalanceTeamRoster } from "./players-admin";
 import { notifySiteRefresh } from "./notify-site";
 
@@ -617,7 +618,10 @@ export async function restoreSoldAuctionPlayers(
     }
 
     const team = await prisma.team.findFirst({
-      where: { name: { equals: row.teamName.trim(), mode: "insensitive" } },
+      where: {
+        name: { equals: row.teamName.trim(), mode: "insensitive" },
+        ...(await currentSeasonFilter()),
+      },
       include: { players: true },
     });
     if (!team) {
@@ -692,6 +696,14 @@ export async function restoreSoldAuctionPlayers(
 
 export async function startAuction(rankInput: string, options?: AuctionOpts) {
   const sandbox = Boolean(options?.sandbox);
+  if (!sandbox) {
+    const { auctionEnabled } = await getCupFeatureSettings();
+    if (!auctionEnabled) {
+      throw new Error(
+        "Auction is turned off for this cup. Assign players with `/player add`, or turn auction on with `/cup auction on`.",
+      );
+    }
+  }
   const current = session(sandbox);
   if (current && (current.status === "running" || current.status === "paused")) {
     const label = current.medal ? MEDAL_LABELS[current.medal] : "this rank";

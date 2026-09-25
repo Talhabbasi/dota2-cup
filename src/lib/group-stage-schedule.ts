@@ -1,4 +1,5 @@
 import { unstable_cache } from "next/cache";
+import { cupPublicUrl } from "./brand";
 import { prisma } from "./prisma";
 import { publicTeamWhere } from "./dummy";
 import { formatScheduleWhen, scheduleUtcOffsetHours, asDate } from "./schedule";
@@ -8,13 +9,6 @@ import {
   createScheduledMatch,
   upcomingWeekendDates,
 } from "./schedule-crud";
-
-function cupSiteUrl() {
-  return (process.env.NEXTAUTH_URL || "https://dota2-cup.vercel.app").replace(
-    /\/+$/,
-    "",
-  );
-}
 
 const GROUP_A_HOURS = ["22", "23", "0", "2", "3", "4"] as const;
 const GROUP_B_HOURS = ["22", "23", "0", "1", "2", "3"] as const;
@@ -229,7 +223,7 @@ export function formatGroupStageDiscord(result: {
 }) {
   const groupA = result.fixtures.filter((row) => row.group === "A");
   const groupB = result.fixtures.filter((row) => row.group === "B");
-  const site = cupSiteUrl();
+  const site = cupPublicUrl();
   return [
     formatDayBlock(`**DAY 1 — SATURDAY ${result.saturday} — GROUP A**`, groupA),
     "",

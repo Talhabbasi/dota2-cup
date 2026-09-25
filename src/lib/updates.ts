@@ -13,6 +13,7 @@ import {
   type ReleaseNote,
   type UpdateKind,
 } from "./releases";
+import { CUP_NAME } from "@/lib/brand";
 
 const GOLD = 0xb07d1f;
 
@@ -135,9 +136,9 @@ export async function ensureUpdatesChannel(guild: Guild): Promise<TextChannel> {
   const created = await guild.channels.create({
     name,
     type: ChannelType.GuildText,
-    topic: "MM Dota Cup — admin-only release notes (Added / Fixed / Removed)",
+    topic: `${CUP_NAME} — admin-only release notes (Added / Fixed / Removed)`,
     permissionOverwrites: overwrites,
-    reason: "MM Dota Cup admin updates channel",
+    reason: `${CUP_NAME} admin updates channel`,
   });
   return created;
 }
