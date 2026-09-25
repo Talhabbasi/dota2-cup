@@ -8,6 +8,9 @@ const nextConfig: NextConfig = {
     },
   },
   images: {
+    // Hobby image-optimization quota is exhausted (402 on /_next/image).
+    // Serve originals from /public and the Steam CDN instead.
+    unoptimized: true,
     remotePatterns: [
       {
         protocol: "https",
