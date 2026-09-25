@@ -1,0 +1,25 @@
+---
+description: Verify lint/build before push; avoid regressions that break existing routes (especially predictions and cached data).
+alwaysApply: true
+---
+
+# No-breakage checks before ship
+
+## Required before push when app code changed
+
+1. Run `npm run lint` — fix **errors** (warnings in bot/legacy OK unless newly introduced in touched files).
+2. Run `npm run build` with network so Prisma/Neon prerender can succeed. TypeScript must pass.
+3. Spot-check high-risk routes if touched: `/predictions`, `/schedule`, `/playoffs`, home countdown.
+
+## Known breakage patterns in this repo
+
+- **Cached Date strings**: `date.getTime is not a function` on predictions/schedule → use `asDate` / rehydrate after `unstable_cache`.
+- **React purity lint**: no bare `Date.now()` during render; no `setState` synchronously in `useEffect` for reset-on-prop patterns (adjust state during render or `useSyncExternalStore`).
+- **Import paths**: client components must not pull server-only Prisma modules transitively.
+- **Copy/lock drift**: prediction lock copy must match `groupStageLockAt` / `GROUP_STAGE_LOCK_*` constants.
+
+## Do not
+
+- Push “UI only” refactors without lint + build when shared libs (`src/lib/*`) changed.
+- Leave broken production digests (`This page couldn’t load` / RSC `digest`) unfixed after a push.
+- Invent stats or schedule data to make pages look filled.

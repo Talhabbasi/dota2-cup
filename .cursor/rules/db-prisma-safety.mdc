@@ -1,0 +1,28 @@
+---
+description: Prisma/DB setup before diagnosing DB failures; never blame app code for missing client or unreachable DB during install/build.
+alwaysApply: true
+---
+
+# Database & Prisma safety
+
+## Before treating a DB error as an app bug
+
+1. Confirm dependencies are installed (`node_modules` present; run `npm install` if needed).
+2. Confirm Prisma Client is generated (`npx prisma generate` / `postinstall`). Many “Can't find `@prisma/client`” or stale-client errors are install/generate issues, not logic bugs.
+3. Sandbox/CI builds that hit Neon need network (`full_network` / unrestricted). `Can't reach database server at …neon.tech` during `next build` is often environment/network, not a code regression.
+4. Do not “fix” DB connectivity by inventing mocks that hide real query failures in production paths.
+
+## Safe patterns
+
+- Prefer `safeScheduleQuery` / existing season helpers for optional tables.
+- Pages that must hit the DB at request time stay `force-dynamic` (e.g. predictions, register).
+- After schema changes: `prisma generate` before typecheck/build; push/migrate only when the user asks.
+
+## Do not
+
+- Delete or weaken `postinstall: prisma generate` without a replacement.
+- Assume a local `tsx` script can call `unstable_cache` outside a Next request (expect `incrementalCache missing`).
+
+## Cached Dates
+
+`unstable_cache` JSON-serializes `Date` to strings. Call sites that use `.getTime()` / date math on cached fixtures must use `asDate()` (see `src/lib/schedule.ts`) or rehydrate at the cache boundary (see `listCupSchedule`).
