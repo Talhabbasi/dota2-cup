@@ -44,24 +44,26 @@ function safeKeyHint(hint: string): string {
   return (cleaned || "file").slice(0, 64);
 }
 
-const MAX_UPLOAD_WIDTH = 1920;
-const JPEG_QUALITY = 78;
+const MAX_UPLOAD_WIDTH = 1600;
+const JPEG_QUALITY = 72;
 
 /**
- * Shrink + JPEG-compress for S3. Falls back to the original buffer if sharp fails.
- * Returned `ocrBuffer` stays close to the source for scoreboard parsing.
+ * Shrink + JPEG-compress for S3 and OCR. Same buffer is fine for scoreboard
+ * vision — smaller payload is much faster to upload and parse.
  */
 export async function compressImageForS3(input: {
   buffer: Buffer;
   mime?: string | null;
 }): Promise<{ uploadBuffer: Buffer; uploadMime: string; ocrBuffer: Buffer; ocrMime: string }> {
-  const ocrMime = input.mime?.trim() || "image/jpeg";
+  const fallbackMime = input.mime?.trim() || "image/jpeg";
   try {
     let pipeline = sharp(input.buffer, { failOn: "none" }).rotate();
     const meta = await pipeline.metadata();
-    if ((meta.width ?? 0) > MAX_UPLOAD_WIDTH) {
+    if ((meta.width ?? 0) > MAX_UPLOAD_WIDTH || (meta.height ?? 0) > MAX_UPLOAD_WIDTH) {
       pipeline = pipeline.resize({
         width: MAX_UPLOAD_WIDTH,
+        height: MAX_UPLOAD_WIDTH,
+        fit: "inside",
         withoutEnlargement: true,
       });
     }
@@ -71,15 +73,15 @@ export async function compressImageForS3(input: {
     return {
       uploadBuffer,
       uploadMime: "image/jpeg",
-      ocrBuffer: input.buffer,
-      ocrMime,
+      ocrBuffer: uploadBuffer,
+      ocrMime: "image/jpeg",
     };
   } catch {
     return {
       uploadBuffer: input.buffer,
-      uploadMime: ocrMime,
+      uploadMime: fallbackMime,
       ocrBuffer: input.buffer,
-      ocrMime,
+      ocrMime: fallbackMime,
     };
   }
 }

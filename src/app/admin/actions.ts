@@ -33,7 +33,7 @@ import { addPlayerAlias } from "@/lib/player-aliases";
 import { revalidatePublicPages } from "@/lib/page-cache";
 import { adminClearPaid, adminMarkPaid } from "@/lib/payments";
 import { uploadMatchScreenshot, isObjectStorageConfigured } from "@/lib/object-storage";
-import { ingestScoreboardScreenshot } from "@/lib/scoreboard-shot";
+import { ingestScoreboardScreenshot, listScoreboardKnownNames } from "@/lib/scoreboard-shot";
 import { recordManualSeriesWinner } from "@/lib/results";
 import { prisma } from "@/lib/prisma";
 import type { Medal } from "@/lib/constants";
@@ -337,12 +337,19 @@ export async function actionIngestScoreboardScreenshot(
 
     const buffer = Buffer.from(await file.arrayBuffer());
     let uploaded: Awaited<ReturnType<typeof uploadMatchScreenshot>>;
+    let knownNames: string[] = [];
     try {
-      uploaded = await uploadMatchScreenshot({
-        buffer,
-        mime,
-        keyHint: `admin-${Date.now()}`,
-      });
+      // S3 + roster names in parallel so OCR can start sooner.
+      const [uploadResult, names] = await Promise.all([
+        uploadMatchScreenshot({
+          buffer,
+          mime,
+          keyHint: `admin-${Date.now()}`,
+        }),
+        listScoreboardKnownNames().catch(() => [] as string[]),
+      ]);
+      uploaded = uploadResult;
+      knownNames = names;
     } catch (error) {
       console.error("Scoreboard S3 upload failed:", error);
       return {
@@ -361,6 +368,7 @@ export async function actionIngestScoreboardScreenshot(
         mime: uploaded.mime,
         screenshotPath: uploaded.screenshotPath,
         sourceId: `admin-${Date.now()}`,
+        knownNames,
       });
     } catch (error) {
       console.error("Scoreboard OCR ingest failed:", error);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition, type FormEvent } from "react";
+import { useEffect, useState, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { actionAttachMatchScreenshot } from "@/app/admin/actions";
 import { useAdminToast } from "@/components/admin/admin-toast";
@@ -9,30 +9,44 @@ import {
   adminBtnPrimaryClass,
   adminControlClass,
 } from "@/components/admin/ui";
+import { compressImageFileForUpload } from "@/lib/compress-image-client";
 import { cn } from "@/lib/utils";
 
 /** Replace / attach a scoreboard image on an existing match (S3 only). */
 export function AdminMatchScreenshotUpload({ matchId }: { matchId: string }) {
   const [pending, startTransition] = useTransition();
+  const [elapsedSec, setElapsedSec] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const toast = useAdminToast();
   const router = useRouter();
 
+  useEffect(() => {
+    if (!pending) return;
+    const started = Date.now();
+    const id = window.setInterval(() => {
+      setElapsedSec(Math.floor((Date.now() - started) / 1000));
+    }, 250);
+    return () => window.clearInterval(id);
+  }, [pending]);
+
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
-    const data = new FormData(form);
-    data.set("matchId", matchId);
-    const file = data.get("screenshot");
-    if (!(file instanceof File) || file.size === 0) {
+    const raw = new FormData(form).get("screenshot");
+    if (!(raw instanceof File) || raw.size === 0) {
       const message = "Choose a screenshot to upload.";
       setError(message);
       toast.error(message);
       return;
     }
     setError(null);
+    setElapsedSec(0);
     startTransition(async () => {
       try {
+        const file = await compressImageFileForUpload(raw);
+        const data = new FormData();
+        data.set("matchId", matchId);
+        data.set("screenshot", file);
         const result = await actionAttachMatchScreenshot(data);
         if (!result.ok) {
           setError(result.error);
@@ -77,7 +91,7 @@ export function AdminMatchScreenshotUpload({ matchId }: { matchId: string }) {
           disabled={pending}
           className={cn(adminBtnClass, adminBtnPrimaryClass)}
         >
-          {pending ? "Uploading to S3…" : "Save to S3"}
+          {pending ? `Uploading… ${elapsedSec}s` : "Save to S3"}
         </button>
       </form>
       {error ? (

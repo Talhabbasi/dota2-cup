@@ -204,12 +204,9 @@ function geminiImageMime(mime: string) {
 }
 
 const GEMINI_MODELS = [
-  "gemini-3.5-flash",
-  "gemini-3.6-flash",
+  "gemini-2.5-flash",
   "gemini-flash-latest",
-  "gemini-3.5-flash-lite",
-  "gemini-flash-lite-latest",
-  "gemini-3.1-flash-lite",
+  "gemini-2.0-flash",
 ];
 
 function isBusyGemini(status: number, message: string) {
@@ -241,7 +238,7 @@ async function generateGeminiJson(
         "Content-Type": "application/json",
         "x-goog-api-key": key,
       },
-      signal: AbortSignal.timeout(40_000),
+      signal: AbortSignal.timeout(18_000),
       body: JSON.stringify({
         contents: [
           {
@@ -276,44 +273,37 @@ async function parseWithGemini(
   const imageMime = geminiImageMime(mime);
   const prompt = buildParsePrompt(knownNames);
   let lastError = "Gemini did not return a scoreboard.";
+  // One fast attempt per model — multi-retry loops made admin upload feel stuck.
   for (const model of GEMINI_MODELS) {
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      try {
-        const { res, body } = await generateGeminiJson(
-          model,
-          key,
-          imageMime,
-          buffer,
-          prompt,
-        );
-        if (!res.ok) {
-          lastError = body.error?.message || `Gemini ${model} returned ${res.status}.`;
-          if (res.status === 404) break;
-          if (isBusyGemini(res.status, lastError) && attempt === 0) {
-            await sleep(1200);
-            continue;
-          }
-          break;
-        }
-        const text = body.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (!text) {
-          lastError = `Gemini ${model} returned an empty reply.`;
-          break;
-        }
-        const parsed = parseJsonObject(text);
-        const scoreboard = parsed ? fromVisionObject(parsed) : null;
-        if (scoreboard) return scoreboard;
-        lastError = `Gemini ${model} could not map 10 players from that screenshot.`;
-        break;
-      } catch (error) {
-        lastError =
-          error instanceof Error ? error.message : `Gemini ${model} failed.`;
-        if (attempt === 0 && /timeout|abort|network|fetch/i.test(lastError)) {
-          await sleep(800);
+    try {
+      const { res, body } = await generateGeminiJson(
+        model,
+        key,
+        imageMime,
+        buffer,
+        prompt,
+      );
+      if (!res.ok) {
+        lastError = body.error?.message || `Gemini ${model} returned ${res.status}.`;
+        if (res.status === 404) continue;
+        if (isBusyGemini(res.status, lastError)) {
+          await sleep(600);
           continue;
         }
-        break;
+        continue;
       }
+      const text = body.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!text) {
+        lastError = `Gemini ${model} returned an empty reply.`;
+        continue;
+      }
+      const parsed = parseJsonObject(text);
+      const scoreboard = parsed ? fromVisionObject(parsed) : null;
+      if (scoreboard) return scoreboard;
+      lastError = `Gemini ${model} could not map 10 players from that screenshot.`;
+    } catch (error) {
+      lastError =
+        error instanceof Error ? error.message : `Gemini ${model} failed.`;
     }
   }
   throw new Error(lastError);
@@ -795,28 +785,32 @@ export async function applyParsedScoreboard(
   return { match, created: !existing };
 }
 
+export async function listScoreboardKnownNames(limit = 80): Promise<string[]> {
+  const seasonId = await currentSeasonId().catch(() => null);
+  if (!seasonId) return [];
+  const rows = await prisma.seasonPlayer.findMany({
+    where: { seasonId },
+    select: {
+      player: { select: { steamName: true, discordName: true } },
+    },
+  });
+  return rows
+    .flatMap((row) =>
+      [row.player.steamName, row.player.discordName ?? ""].filter(Boolean),
+    )
+    .filter((name, index, all) => all.indexOf(name) === index)
+    .slice(0, limit);
+}
+
 export async function ingestScoreboardScreenshot(input: {
   buffer: Buffer;
   mime?: string;
   screenshotPath?: string | null;
   sourceId?: string | null;
+  knownNames?: string[];
 }) {
-  const seasonId = await currentSeasonId().catch(() => null);
-  const knownNames = seasonId
-    ? (
-        await prisma.seasonPlayer.findMany({
-          where: { seasonId },
-          select: {
-            player: { select: { steamName: true, discordName: true } },
-          },
-        })
-      )
-        .flatMap((row) =>
-          [row.player.steamName, row.player.discordName ?? ""].filter(Boolean),
-        )
-        .filter((name, index, all) => all.indexOf(name) === index)
-        .slice(0, 80)
-    : [];
+  const knownNames =
+    input.knownNames ?? (await listScoreboardKnownNames());
   const parsed = await parseScoreboardImage(
     input.buffer,
     input.mime,

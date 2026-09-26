@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useTransition, type FormEvent } from "react";
+import { useEffect, useRef, useState, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { actionIngestScoreboardScreenshot } from "@/app/admin/actions";
 import { useAdminToast } from "@/components/admin/admin-toast";
@@ -11,34 +11,50 @@ import {
   adminBtnPrimaryClass,
   adminControlClass,
 } from "@/components/admin/ui";
+import { compressImageFileForUpload } from "@/lib/compress-image-client";
 import { cn } from "@/lib/utils";
 
-/** Admin intake: upload SCOREBOARD → storage + OCR → match editor. */
+type Phase = "idle" | "compress" | "upload" | "ocr";
+
+/** Admin intake: compress → S3 → OCR → match editor. */
 export function AdminScoreboardUpload() {
   const formRef = useRef<HTMLFormElement>(null);
   const [pending, startTransition] = useTransition();
-  const [phase, setPhase] = useState<"idle" | "upload" | "ocr">("idle");
+  const [phase, setPhase] = useState<Phase>("idle");
+  const [elapsedSec, setElapsedSec] = useState(0);
   const [fileName, setFileName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const toast = useAdminToast();
   const router = useRouter();
 
+  useEffect(() => {
+    if (!pending) return;
+    const started = Date.now();
+    const id = window.setInterval(() => {
+      setElapsedSec(Math.floor((Date.now() - started) / 1000));
+    }, 250);
+    return () => window.clearInterval(id);
+  }, [pending]);
+
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
-    const data = new FormData(form);
-    const file = data.get("screenshot");
-    if (!(file instanceof File) || file.size === 0) {
+    const raw = new FormData(form).get("screenshot");
+    if (!(raw instanceof File) || raw.size === 0) {
       const message = "Choose a SCOREBOARD screenshot to upload.";
       setError(message);
       toast.error(message);
       return;
     }
     setError(null);
-    setPhase("upload");
+    setElapsedSec(0);
+    setPhase("compress");
     startTransition(async () => {
       try {
-        setPhase("ocr");
+        const file = await compressImageFileForUpload(raw);
+        const data = new FormData();
+        data.set("screenshot", file);
+        setPhase("upload");
         const result = await actionIngestScoreboardScreenshot(data);
         if (!result.ok) {
           setError(result.error);
@@ -64,18 +80,18 @@ export function AdminScoreboardUpload() {
   }
 
   const pendingLabel =
-    phase === "upload"
-      ? "Uploading…"
-      : phase === "ocr"
-        ? "Reading…"
+    phase === "compress"
+      ? "Preparing image…"
+      : phase === "upload" || phase === "ocr"
+        ? `Uploading & reading… ${elapsedSec}s`
         : "Upload & ingest";
 
   return (
     <AdminCard tone="accent" className="mb-6">
       <AdminSection title="Upload scoreboard">
         <p className="m-0 text-sm text-muted-foreground">
-          Uploads go to S3 first, then OCR runs (same as #results). Use the
-          SCOREBOARD tab (PNG/JPEG).
+          Image is compressed in the browser, then saved to S3 and read with
+          OCR. Use the SCOREBOARD tab (PNG/JPEG).
         </p>
         <form
           ref={formRef}
@@ -108,6 +124,11 @@ export function AdminScoreboardUpload() {
             {pending ? pendingLabel : "Upload & ingest"}
           </button>
         </form>
+        {pending ? (
+          <p className="m-0 text-xs text-muted-foreground" aria-live="polite">
+            Usually finishes in under 20 seconds. Keep this tab open.
+          </p>
+        ) : null}
         {error ? (
           <p
             role="alert"
