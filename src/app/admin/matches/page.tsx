@@ -4,6 +4,7 @@ import { adminListRecentMatches } from "@/lib/match-admin";
 import { formatScheduleWhen } from "@/lib/schedule";
 import { pageMeta } from "@/lib/seo";
 import { AdminMatchesBoard } from "@/components/admin/matches-board";
+import { AdminScoreboardUpload } from "@/components/admin/scoreboard-upload";
 
 export const dynamic = "force-dynamic";
 export const metadata = pageMeta("Admin Matches", "Fix match OCR and results.");
@@ -47,6 +48,7 @@ export default async function AdminMatchesPage() {
           },
         ]}
       />
+      <AdminScoreboardUpload />
       <AdminMatchesBoard matches={matches} />
     </div>
   );

@@ -9,6 +9,7 @@ import {
 } from "@/lib/match-admin";
 import { formatScheduleWhen } from "@/lib/schedule";
 import { pageMeta } from "@/lib/seo";
+import { screenshotDisplayUrl } from "@/lib/screenshot-url";
 import {
   AdminBackLink,
   AdminCard,
@@ -29,6 +30,7 @@ import {
   actionSetMatchTeams,
 } from "@/app/admin/actions";
 import { cn } from "@/lib/utils";
+import { AdminMatchScreenshotUpload } from "@/components/admin/match-screenshot-upload";
 
 export const dynamic = "force-dynamic";
 
@@ -50,6 +52,7 @@ export default async function AdminMatchDetailPage({
 
   const radiantName = match.radiantTeam?.name ?? "Radiant?";
   const direName = match.direTeam?.name ?? "Dire?";
+  const shotUrl = screenshotDisplayUrl(match.screenshotPath);
 
   return (
     <div className="page">
@@ -64,6 +67,38 @@ export default async function AdminMatchDetailPage({
           </Link>
         }
       />
+
+      <AdminCard className="mb-6">
+        <AdminSection title="Scoreboard screenshot">
+          {shotUrl ? (
+            <a
+              href={shotUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="mb-4 block overflow-hidden rounded-lg border border-white/10"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={shotUrl}
+                alt="Match scoreboard"
+                className="h-auto w-full object-contain"
+              />
+            </a>
+          ) : match.screenshotPath ? (
+            <p className="mb-4 text-sm text-amber-200/90">
+              This match still points at an old local file (
+              <code className="text-xs">{match.screenshotPath}</code>
+              ). Upload below to store it on S3 and fix the link.
+            </p>
+          ) : (
+            <p className="mb-4 text-sm text-muted-foreground">
+              No screenshot yet. Upload a SCOREBOARD image — it is saved to S3
+              first, then linked here.
+            </p>
+          )}
+          <AdminMatchScreenshotUpload matchId={match.id} />
+        </AdminSection>
+      </AdminCard>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <AdminCard tone="accent">

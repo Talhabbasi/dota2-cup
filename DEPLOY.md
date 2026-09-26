@@ -199,12 +199,20 @@ npm run bot      # bot (second terminal)
 
 ## 6. Match screenshots
 
-`!result` saves images to `public/uploads/matches/` on the **bot** machine. Vercel does not see that disk. Screenshots on the website only work if:
+**Required.** All scoreboard images go to **S3 only** (Discord `!result` and Admin → Matches). Nothing is saved under `public/uploads`.
 
-- You host the site on the same server as the bot and sync uploads, or
-- You add object storage (S3, Vercel Blob) later.
+Set these on the **website (Vercel)** and the **bot host**:
 
-Stats and standings still sync via Postgres.
+| Variable | Notes |
+|----------|--------|
+| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | IAM user with `s3:PutObject` on the bucket |
+| `AWS_REGION` | e.g. `ap-southeast-2` |
+| `AWS_S3_BUCKET` | Bucket name |
+| `AWS_S3_PUBLIC_BASE_URL` | Optional CloudFront or custom base (no trailing slash) |
+
+Objects land under `matches/…`. Make that prefix publicly readable (bucket policy or CloudFront), or the site cannot show images.
+
+Without AWS env, uploads fail with a clear error (no local disk fallback).
 
 ---
 

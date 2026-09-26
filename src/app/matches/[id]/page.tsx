@@ -18,6 +18,7 @@ import {
 import { formatDuration, getMatch, getMatchMeta } from "@/lib/data";
 import { formatKillScore, matchKillTotals } from "@/lib/match-score";
 import { loadHeroCatalog, heroIconUrl } from "@/lib/opendota";
+import { screenshotDisplayUrl } from "@/lib/screenshot-url";
 import { isMatchStandIn, unmatchedLabel, standInLabel } from "@/lib/stand-in";
 import { cn } from "@/lib/utils";
 import type { Metadata } from "next";
@@ -260,6 +261,7 @@ export default async function MatchPage({
       Boolean(p.heroId) ||
       Boolean(byName.get(p.hero.toLowerCase())),
   );
+  const shotUrl = screenshotDisplayUrl(match.screenshotPath);
 
   return (
     <div className="page">
@@ -400,11 +402,25 @@ export default async function MatchPage({
         </EsportsCard>
       ) : null}
 
+      {shotUrl ? (
+        <EsportsCard interactive={false} className="mb-6 overflow-hidden p-0">
+          <a href={shotUrl} target="_blank" rel="noreferrer" className="block">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={shotUrl}
+              alt="Match scoreboard"
+              className="h-auto w-full object-contain"
+            />
+          </a>
+        </EsportsCard>
+      ) : null}
+
       {match.players.length === 0 ? (
         <EsportsCard interactive={false} className="px-5 py-6">
           <p className="m-0 text-sm text-muted-foreground">
             Winner is on the site. Heroes and K/D/A appear after a SCOREBOARD
-            screenshot is posted in Discord #results.
+            screenshot is posted in Discord #results or uploaded in Admin →
+            Matches.
           </p>
         </EsportsCard>
       ) : (

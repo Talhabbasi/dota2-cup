@@ -89,6 +89,7 @@ export async function adminGetMatch(matchId: string) {
       radiantScore: true,
       direScore: true,
       radiantWin: true,
+      screenshotPath: true,
       radiantTeam: { select: { id: true, name: true } },
       direTeam: { select: { id: true, name: true } },
       winnerTeam: { select: { id: true, name: true } },

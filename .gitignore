@@ -34,16 +34,13 @@ yarn-error.log*
 .env*
 !.env.example
 
-# sqlite + uploads
+# sqlite + backups (match screenshots live on S3 only — not under public/)
 /prisma/dev.db
 /prisma/dev.db-journal
 /prisma/backups/*.json
 /prisma/backups/*.sql
 /prisma/backups/*.dump
-/public/uploads/matches/*
-!/public/uploads/matches/.gitkeep
-/public/uploads/payments/*
-!/public/uploads/payments/.gitkeep
+/public/uploads/
 
 # vercel
 .vercel

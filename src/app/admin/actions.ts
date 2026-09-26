@@ -31,6 +31,9 @@ import { updateCupFeatureSettings } from "@/lib/cup-features";
 import { addPlayerAlias } from "@/lib/player-aliases";
 import { revalidatePublicPages } from "@/lib/page-cache";
 import { adminClearPaid, adminMarkPaid } from "@/lib/payments";
+import { uploadMatchScreenshot, isObjectStorageConfigured } from "@/lib/object-storage";
+import { ingestScoreboardScreenshot } from "@/lib/scoreboard-shot";
+import { prisma } from "@/lib/prisma";
 import type { Medal } from "@/lib/constants";
 
 function revalidateAdmin() {
@@ -267,5 +270,88 @@ export async function actionClearPaid(formData: FormData) {
   await requireAdmin();
   await adminClearPaid(String(formData.get("discordId") ?? ""));
   revalidateAdmin();
+}
+
+const MAX_SCOREBOARD_BYTES = 12 * 1024 * 1024;
+
+/** Upload scoreboard → S3 first → OCR ingest. Returns new match id. */
+export async function actionIngestScoreboardScreenshot(
+  formData: FormData,
+): Promise<string> {
+  await requireAdmin();
+  const file = formData.get("screenshot");
+  if (!(file instanceof File) || file.size === 0) {
+    throw new Error("Choose a SCOREBOARD screenshot to upload.");
+  }
+  if (file.size > MAX_SCOREBOARD_BYTES) {
+    throw new Error("Image is too large (max 12 MB).");
+  }
+  const mime = file.type || "image/jpeg";
+  if (!mime.startsWith("image/")) {
+    throw new Error("Upload an image file (PNG or JPEG).");
+  }
+  if (!isObjectStorageConfigured()) {
+    throw new Error(
+      "S3 is not configured. Set AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION, and AWS_S3_BUCKET.",
+    );
+  }
+
+  const buffer = Buffer.from(await file.arrayBuffer());
+  // Store on S3 first, then OCR from the same buffer.
+  const uploaded = await uploadMatchScreenshot({
+    buffer,
+    mime,
+    keyHint: `admin-${Date.now()}`,
+  });
+  const result = await ingestScoreboardScreenshot({
+    buffer: uploaded.buffer,
+    mime: uploaded.mime,
+    screenshotPath: uploaded.screenshotPath,
+    sourceId: `admin-${Date.now()}`,
+  });
+  revalidateAdmin();
+  revalidatePath(`/matches/${result.match.id}`);
+  revalidatePath(`/admin/matches/${result.match.id}`);
+  return result.match.id;
+}
+
+/** Upload image to S3 and set Match.screenshotPath (no re-OCR). */
+export async function actionAttachMatchScreenshot(formData: FormData) {
+  await requireAdmin();
+  const matchId = String(formData.get("matchId") ?? "");
+  if (!matchId) throw new Error("Missing match.");
+  const file = formData.get("screenshot");
+  if (!(file instanceof File) || file.size === 0) {
+    throw new Error("Choose a screenshot to upload.");
+  }
+  if (file.size > MAX_SCOREBOARD_BYTES) {
+    throw new Error("Image is too large (max 12 MB).");
+  }
+  const mime = file.type || "image/jpeg";
+  if (!mime.startsWith("image/")) {
+    throw new Error("Upload an image file (PNG or JPEG).");
+  }
+  if (!isObjectStorageConfigured()) {
+    throw new Error(
+      "S3 is not configured. Set AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION, and AWS_S3_BUCKET.",
+    );
+  }
+
+  const match = await prisma.match.findUnique({ where: { id: matchId } });
+  if (!match) throw new Error("Match not found.");
+
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const uploaded = await uploadMatchScreenshot({
+    buffer,
+    mime,
+    keyHint: `match-${matchId.slice(0, 8)}`,
+  });
+  await prisma.match.update({
+    where: { id: matchId },
+    data: { screenshotPath: uploaded.screenshotPath },
+  });
+  revalidateAdmin();
+  revalidatePath(`/matches/${matchId}`);
+  revalidatePath(`/admin/matches/${matchId}`);
 }
 

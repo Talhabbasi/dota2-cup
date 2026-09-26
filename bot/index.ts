@@ -32,8 +32,10 @@ import {
   type TextChannel,
   type User,
 } from "discord.js";
-import { writeFile, mkdir } from "node:fs/promises";
-import path from "node:path";
+import {
+  isObjectStorageConfigured,
+  uploadMatchScreenshot,
+} from "../src/lib/object-storage";
 import {
   adminRoleName,
   BID_INCREMENT,
@@ -3313,18 +3315,29 @@ async function saveMatchImage(message: Message, matchHint: string) {
     /\.(png|jpe?g|webp|gif)$/i.test(a.name ?? ""),
   );
   if (!image) return null;
-  const dir = path.join(process.cwd(), "public", "uploads", "matches");
-  await mkdir(dir, { recursive: true });
-  const ext = path.extname(new URL(image.url).pathname) || ".png";
-  const file = `${matchHint}${ext}`;
+  if (!isObjectStorageConfigured()) {
+    throw new Error(
+      "S3 is not configured on the bot. Set AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION, and AWS_S3_BUCKET.",
+    );
+  }
+  const ext = (() => {
+    try {
+      return new URL(image.url).pathname.match(/\.[a-z0-9]+$/i)?.[0] ?? "";
+    } catch {
+      return "";
+    }
+  })();
   const res = await fetch(image.url);
   const buf = Buffer.from(await res.arrayBuffer());
-  await writeFile(path.join(dir, file), buf);
-  return {
+  const mime =
+    image.contentType ||
+    (ext.toLowerCase() === ".png" ? "image/png" : "image/jpeg");
+  // Store on S3 first, then OCR uses the same buffer.
+  return uploadMatchScreenshot({
     buffer: buf,
-    mime: image.contentType || (ext === ".png" ? "image/png" : "image/jpeg"),
-    screenshotPath: `/uploads/matches/${file}`,
-  };
+    mime,
+    keyHint: matchHint || message.id,
+  });
 }
 
 function resultsChannelName() {
