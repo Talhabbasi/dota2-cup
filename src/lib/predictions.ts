@@ -236,7 +236,7 @@ export async function saveMatchPredictions(
           "The International unlocks after every group-stage match is done.",
         );
       }
-      if (fixture.status === "completed" || new Date() >= fixture.scheduledAt) {
+      if (fixture.status === "completed") {
         throw new Error("That series is locked.");
       }
     } else {
@@ -301,7 +301,6 @@ export async function saveBracketPicks(
   }
 
   const seasonId = await currentSeasonId();
-  const now = new Date();
   const fixtures = await prisma.scheduledFixture.findMany({
     where: {
       ...publicFixtureWhere,
@@ -321,9 +320,8 @@ export async function saveBracketPicks(
       const outcome = seriesWinnerLoser(fixture);
       if (outcome) actual[fixture.slotKey] = outcome;
       lockedSlots.add(fixture.slotKey);
-    } else if (now >= fixture.scheduledAt) {
-      lockedSlots.add(fixture.slotKey);
     }
+    // Organizer Unlocked keeps non-completed slots open even after kickoff.
   }
 
   const incoming = pickMapFrom(picks);
@@ -429,7 +427,9 @@ export async function getInternationalPickem(
       const outcome = seriesWinnerLoser(fixture);
       if (outcome) actual[fixture.slotKey] = outcome;
       lockedSlots.add(fixture.slotKey);
-    } else if (treeLocked || now >= asDate(fixture.scheduledAt)) {
+    } else if (treeLocked) {
+      // Organizer Locked closes the tree. Unlocked stays open past kickoff
+      // until the series is completed.
       lockedSlots.add(fixture.slotKey);
     }
   }
@@ -515,13 +515,10 @@ function toMatchView(
   fixture: ScheduleFixtureView,
   myPickId: string | null,
   stageLocked: boolean,
-  now: Date,
 ): PredictionMatchView {
   const matchLocked =
     stageLocked ||
-    fixture.status === "completed" ||
-    (isInternationalPredictionFixture(fixture.kind) &&
-      now >= asDate(fixture.scheduledAt));
+    fixture.status === "completed";
   return {
     id: fixture.id,
     roundLabel: roundLabel(fixture),
@@ -550,7 +547,6 @@ function nightsFor(
   fixtures: ScheduleFixtureView[],
   pickByFixture: Map<string, string>,
   stageLocked: boolean,
-  now: Date,
 ): PredictionNightView[] {
   return groupScheduleByNight(fixtures).map((night) => ({
     label: night.label,
@@ -559,7 +555,6 @@ function nightsFor(
         fixture,
         pickByFixture.get(fixture.id) ?? null,
         stageLocked,
-        now,
       ),
     ),
   }));
@@ -594,12 +589,11 @@ export async function getPredictionBoard(playerId?: string | null) {
     picks.map((pick) => [pick.fixtureId, pick.predictedTeamId]),
   );
 
-  const groupNights = nightsFor(group, pickByFixture, groupLocked, now);
+  const groupNights = nightsFor(group, pickByFixture, groupLocked);
   const internationalNights = nightsFor(
     international,
     pickByFixture,
     internationalLocked,
-    now,
   );
 
   return {
