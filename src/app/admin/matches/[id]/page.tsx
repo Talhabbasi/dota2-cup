@@ -86,9 +86,10 @@ export default async function AdminMatchDetailPage({
             </a>
           ) : match.screenshotPath ? (
             <p className="mb-4 text-sm text-amber-200/90">
-              This match still points at an old local file (
-              <code className="text-xs">{match.screenshotPath}</code>
-              ). Upload below to store it on S3 and fix the link.
+              Original file for{" "}
+              <code className="text-xs">{match.screenshotPath}</code> is not on
+              this machine (only the old path is in the DB). Drop the SCOREBOARD
+              image below once — it uploads to S3 and replaces the link.
             </p>
           ) : (
             <p className="mb-4 text-sm text-muted-foreground">
