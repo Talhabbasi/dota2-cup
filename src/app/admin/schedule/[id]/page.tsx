@@ -78,8 +78,9 @@ export default async function AdminFixtureDetailPage({
     prisma.scheduledFixture.findUnique({
       where: { id },
       include: {
-        radiantTeam: { select: { name: true } },
-        direTeam: { select: { name: true } },
+        radiantTeam: { select: { id: true, name: true } },
+        direTeam: { select: { id: true, name: true } },
+        match: { select: { id: true, winnerTeamId: true, openDotaId: true } },
       },
     }),
     adminListTeamsForPicker(),
@@ -90,6 +91,17 @@ export default async function AdminFixtureDetailPage({
   const isPending = fixture.status === "scheduled";
   const teamA = fixture.radiantTeam.name;
   const teamB = fixture.direTeam.name;
+  const winnerName =
+    fixture.match?.winnerTeamId === fixture.radiantTeamId
+      ? teamA
+      : fixture.match?.winnerTeamId === fixture.direTeamId
+        ? teamB
+        : fixture.radiantWins > fixture.direWins
+          ? teamA
+          : fixture.direWins > fixture.radiantWins
+            ? teamB
+            : null;
+  const wasWalkover = Boolean(fixture.match?.openDotaId?.startsWith("walkover-"));
 
   return (
     <div className="page">
@@ -108,50 +120,72 @@ export default async function AdminFixtureDetailPage({
 
       {isPending ? (
         <AdminCard tone="accent" className="mb-6">
-          <AdminSection title="Result / walkover">
+          <AdminSection title="Who won?">
             <p className="m-0 mb-3 text-sm text-muted-foreground">
-              Upcoming match — record who won after they played, or give the win
-              as a walkover when the other team / player is not coming.
+              Tap the team that gets the win. Use walkover when the other side is
+              not coming (no-show).
             </p>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <AdminConfirmForm
-                action={actionRecordFixtureWinner}
-                message={`Record ${teamA} win vs ${teamB}? Use Walkover if the other side no-showed.`}
-                successMessage={`${teamA} recorded as winner`}
-                className="grid gap-2 rounded-lg border border-emerald-500/25 bg-emerald-500/5 p-3"
-              >
-                <input type="hidden" name="fixtureId" value={fixture.id} />
-                <input type="hidden" name="winnerName" value={teamA} />
-                <p className="m-0 text-sm font-semibold text-foreground">
-                  {teamA} wins
-                </p>
-                <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <input type="checkbox" name="walkover" value="1" />
-                  Walkover (other side not coming)
-                </label>
-                <AdminSubmitButton pendingLabel="Saving…">
-                  {teamA} win
-                </AdminSubmitButton>
-              </AdminConfirmForm>
-              <AdminConfirmForm
-                action={actionRecordFixtureWinner}
-                message={`Record ${teamB} win vs ${teamA}? Use Walkover if the other side no-showed.`}
-                successMessage={`${teamB} recorded as winner`}
-                className="grid gap-2 rounded-lg border border-sky-500/25 bg-sky-500/5 p-3"
-              >
-                <input type="hidden" name="fixtureId" value={fixture.id} />
-                <input type="hidden" name="winnerName" value={teamB} />
-                <p className="m-0 text-sm font-semibold text-foreground">
-                  {teamB} wins
-                </p>
-                <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <input type="checkbox" name="walkover" value="1" />
-                  Walkover (other side not coming)
-                </label>
-                <AdminSubmitButton pendingLabel="Saving…">
-                  {teamB} win
-                </AdminSubmitButton>
-              </AdminConfirmForm>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-2 rounded-lg border border-emerald-500/25 bg-emerald-500/5 p-3">
+                <p className="m-0 text-sm font-semibold text-foreground">{teamA}</p>
+                <AdminConfirmForm
+                  action={actionRecordFixtureWinner}
+                  message={`Record ${teamA} beat ${teamB} (played)?`}
+                  successMessage={`${teamA} wins`}
+                >
+                  <input type="hidden" name="fixtureId" value={fixture.id} />
+                  <input type="hidden" name="winnerName" value={teamA} />
+                  <AdminSubmitButton pendingLabel="Saving…">
+                    {teamA} wins
+                  </AdminSubmitButton>
+                </AdminConfirmForm>
+                <AdminConfirmForm
+                  action={actionRecordFixtureWinner}
+                  message={`Walkover: ${teamA} wins because ${teamB} is not coming?`}
+                  successMessage={`Walkover — ${teamA} wins`}
+                >
+                  <input type="hidden" name="fixtureId" value={fixture.id} />
+                  <input type="hidden" name="winnerName" value={teamA} />
+                  <input type="hidden" name="walkover" value="1" />
+                  <AdminSubmitButton
+                    variant="secondary"
+                    className="text-xs"
+                    pendingLabel="Saving…"
+                  >
+                    Walkover · {teamA} wins ({teamB} no-show)
+                  </AdminSubmitButton>
+                </AdminConfirmForm>
+              </div>
+              <div className="grid gap-2 rounded-lg border border-sky-500/25 bg-sky-500/5 p-3">
+                <p className="m-0 text-sm font-semibold text-foreground">{teamB}</p>
+                <AdminConfirmForm
+                  action={actionRecordFixtureWinner}
+                  message={`Record ${teamB} beat ${teamA} (played)?`}
+                  successMessage={`${teamB} wins`}
+                >
+                  <input type="hidden" name="fixtureId" value={fixture.id} />
+                  <input type="hidden" name="winnerName" value={teamB} />
+                  <AdminSubmitButton pendingLabel="Saving…">
+                    {teamB} wins
+                  </AdminSubmitButton>
+                </AdminConfirmForm>
+                <AdminConfirmForm
+                  action={actionRecordFixtureWinner}
+                  message={`Walkover: ${teamB} wins because ${teamA} is not coming?`}
+                  successMessage={`Walkover — ${teamB} wins`}
+                >
+                  <input type="hidden" name="fixtureId" value={fixture.id} />
+                  <input type="hidden" name="winnerName" value={teamB} />
+                  <input type="hidden" name="walkover" value="1" />
+                  <AdminSubmitButton
+                    variant="secondary"
+                    className="text-xs"
+                    pendingLabel="Saving…"
+                  >
+                    Walkover · {teamB} wins ({teamA} no-show)
+                  </AdminSubmitButton>
+                </AdminConfirmForm>
+              </div>
             </div>
           </AdminSection>
         </AdminCard>
@@ -160,6 +194,11 @@ export default async function AdminFixtureDetailPage({
           <AdminSection title="Result">
             <div className="flex flex-wrap items-center gap-2">
               <AdminStatus tone="ok">completed</AdminStatus>
+              {winnerName ? (
+                <AdminStatus tone="gold">
+                  {wasWalkover ? `Walkover · ${winnerName} wins` : `${winnerName} wins`}
+                </AdminStatus>
+              ) : null}
               <span className="text-sm text-muted-foreground">
                 Series {fixture.radiantWins}–{fixture.direWins}
                 {fixture.matchId ? " · match linked" : ""}
