@@ -33,7 +33,7 @@ import { cn } from "@/lib/utils";
 import { AdminMatchScreenshotUpload } from "@/components/admin/match-screenshot-upload";
 
 export const dynamic = "force-dynamic";
-
+export const maxDuration = 60;
 export const metadata = pageMeta("Admin Match", "Edit match result and OCR.");
 
 export default async function AdminMatchDetailPage({

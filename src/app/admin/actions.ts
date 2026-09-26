@@ -274,84 +274,162 @@ export async function actionClearPaid(formData: FormData) {
 
 const MAX_SCOREBOARD_BYTES = 12 * 1024 * 1024;
 
+export type ScoreboardUploadResult =
+  | { ok: true; matchId: string }
+  | { ok: false; error: string };
+
+export type MatchScreenshotUploadResult =
+  | { ok: true }
+  | { ok: false; error: string };
+
+function actionErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message.trim()) return error.message;
+  if (typeof error === "string" && error.trim()) return error;
+  return fallback;
+}
+
 /** Upload scoreboard → S3 first → OCR ingest. Returns new match id. */
 export async function actionIngestScoreboardScreenshot(
   formData: FormData,
-): Promise<string> {
-  await requireAdmin();
-  const file = formData.get("screenshot");
-  if (!(file instanceof File) || file.size === 0) {
-    throw new Error("Choose a SCOREBOARD screenshot to upload.");
-  }
-  if (file.size > MAX_SCOREBOARD_BYTES) {
-    throw new Error("Image is too large (max 12 MB).");
-  }
-  const mime = file.type || "image/jpeg";
-  if (!mime.startsWith("image/")) {
-    throw new Error("Upload an image file (PNG or JPEG).");
-  }
-  if (!isObjectStorageConfigured()) {
-    throw new Error(
-      "S3 is not configured. Set AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION, and AWS_S3_BUCKET.",
-    );
-  }
+): Promise<ScoreboardUploadResult> {
+  try {
+    await requireAdmin();
+    const file = formData.get("screenshot");
+    if (!(file instanceof File) || file.size === 0) {
+      return { ok: false, error: "Choose a SCOREBOARD screenshot to upload." };
+    }
+    if (file.size > MAX_SCOREBOARD_BYTES) {
+      return { ok: false, error: "Image is too large (max 12 MB)." };
+    }
+    const mime = file.type || "image/jpeg";
+    if (!mime.startsWith("image/")) {
+      return { ok: false, error: "Upload an image file (PNG or JPEG)." };
+    }
+    if (!isObjectStorageConfigured()) {
+      return {
+        ok: false,
+        error:
+          "S3 is not configured. Set AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION, and AWS_S3_BUCKET.",
+      };
+    }
 
-  const buffer = Buffer.from(await file.arrayBuffer());
-  // Store on S3 first, then OCR from the same buffer.
-  const uploaded = await uploadMatchScreenshot({
-    buffer,
-    mime,
-    keyHint: `admin-${Date.now()}`,
-  });
-  const result = await ingestScoreboardScreenshot({
-    buffer: uploaded.buffer,
-    mime: uploaded.mime,
-    screenshotPath: uploaded.screenshotPath,
-    sourceId: `admin-${Date.now()}`,
-  });
-  revalidateAdmin();
-  revalidatePath(`/matches/${result.match.id}`);
-  revalidatePath(`/admin/matches/${result.match.id}`);
-  return result.match.id;
+    const buffer = Buffer.from(await file.arrayBuffer());
+    let uploaded: Awaited<ReturnType<typeof uploadMatchScreenshot>>;
+    try {
+      uploaded = await uploadMatchScreenshot({
+        buffer,
+        mime,
+        keyHint: `admin-${Date.now()}`,
+      });
+    } catch (error) {
+      console.error("Scoreboard S3 upload failed:", error);
+      return {
+        ok: false,
+        error: actionErrorMessage(
+          error,
+          "Could not upload the screenshot to S3. Check AWS credentials and bucket permissions.",
+        ),
+      };
+    }
+
+    let result: Awaited<ReturnType<typeof ingestScoreboardScreenshot>>;
+    try {
+      result = await ingestScoreboardScreenshot({
+        buffer: uploaded.buffer,
+        mime: uploaded.mime,
+        screenshotPath: uploaded.screenshotPath,
+        sourceId: `admin-${Date.now()}`,
+      });
+    } catch (error) {
+      console.error("Scoreboard OCR ingest failed:", error);
+      return {
+        ok: false,
+        error: actionErrorMessage(
+          error,
+          "Could not read that scoreboard screenshot. Use the SCOREBOARD tab (heroes, K/D/A, LH/DN, GPM).",
+        ),
+      };
+    }
+
+    revalidateAdmin();
+    revalidatePath(`/matches/${result.match.id}`);
+    revalidatePath(`/admin/matches/${result.match.id}`);
+    return { ok: true, matchId: result.match.id };
+  } catch (error) {
+    console.error("Scoreboard ingest action failed:", error);
+    return {
+      ok: false,
+      error: actionErrorMessage(
+        error,
+        "Upload failed. Try again in a moment.",
+      ),
+    };
+  }
 }
 
 /** Upload image to S3 and set Match.screenshotPath (no re-OCR). */
-export async function actionAttachMatchScreenshot(formData: FormData) {
-  await requireAdmin();
-  const matchId = String(formData.get("matchId") ?? "");
-  if (!matchId) throw new Error("Missing match.");
-  const file = formData.get("screenshot");
-  if (!(file instanceof File) || file.size === 0) {
-    throw new Error("Choose a screenshot to upload.");
-  }
-  if (file.size > MAX_SCOREBOARD_BYTES) {
-    throw new Error("Image is too large (max 12 MB).");
-  }
-  const mime = file.type || "image/jpeg";
-  if (!mime.startsWith("image/")) {
-    throw new Error("Upload an image file (PNG or JPEG).");
-  }
-  if (!isObjectStorageConfigured()) {
-    throw new Error(
-      "S3 is not configured. Set AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION, and AWS_S3_BUCKET.",
-    );
-  }
+export async function actionAttachMatchScreenshot(
+  formData: FormData,
+): Promise<MatchScreenshotUploadResult> {
+  try {
+    await requireAdmin();
+    const matchId = String(formData.get("matchId") ?? "");
+    if (!matchId) return { ok: false, error: "Missing match." };
+    const file = formData.get("screenshot");
+    if (!(file instanceof File) || file.size === 0) {
+      return { ok: false, error: "Choose a screenshot to upload." };
+    }
+    if (file.size > MAX_SCOREBOARD_BYTES) {
+      return { ok: false, error: "Image is too large (max 12 MB)." };
+    }
+    const mime = file.type || "image/jpeg";
+    if (!mime.startsWith("image/")) {
+      return { ok: false, error: "Upload an image file (PNG or JPEG)." };
+    }
+    if (!isObjectStorageConfigured()) {
+      return {
+        ok: false,
+        error:
+          "S3 is not configured. Set AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION, and AWS_S3_BUCKET.",
+      };
+    }
 
-  const match = await prisma.match.findUnique({ where: { id: matchId } });
-  if (!match) throw new Error("Match not found.");
+    const match = await prisma.match.findUnique({ where: { id: matchId } });
+    if (!match) return { ok: false, error: "Match not found." };
 
-  const buffer = Buffer.from(await file.arrayBuffer());
-  const uploaded = await uploadMatchScreenshot({
-    buffer,
-    mime,
-    keyHint: `match-${matchId.slice(0, 8)}`,
-  });
-  await prisma.match.update({
-    where: { id: matchId },
-    data: { screenshotPath: uploaded.screenshotPath },
-  });
-  revalidateAdmin();
-  revalidatePath(`/matches/${matchId}`);
-  revalidatePath(`/admin/matches/${matchId}`);
+    const buffer = Buffer.from(await file.arrayBuffer());
+    let uploaded: Awaited<ReturnType<typeof uploadMatchScreenshot>>;
+    try {
+      uploaded = await uploadMatchScreenshot({
+        buffer,
+        mime,
+        keyHint: `match-${matchId.slice(0, 8)}`,
+      });
+    } catch (error) {
+      console.error("Match screenshot S3 upload failed:", error);
+      return {
+        ok: false,
+        error: actionErrorMessage(
+          error,
+          "Could not upload the screenshot to S3. Check AWS credentials and bucket permissions.",
+        ),
+      };
+    }
+
+    await prisma.match.update({
+      where: { id: matchId },
+      data: { screenshotPath: uploaded.screenshotPath },
+    });
+    revalidateAdmin();
+    revalidatePath(`/matches/${matchId}`);
+    revalidatePath(`/admin/matches/${matchId}`);
+    return { ok: true };
+  } catch (error) {
+    console.error("Match screenshot attach failed:", error);
+    return {
+      ok: false,
+      error: actionErrorMessage(error, "Upload failed. Try again."),
+    };
+  }
 }
 

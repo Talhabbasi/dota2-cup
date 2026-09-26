@@ -376,8 +376,16 @@ export async function parseScoreboardImage(
     const parsed = await parseWithOpenAi(buffer, mime, openai);
     if (parsed) return parsed;
   }
-  const ocr = await parseWithOcr(buffer).catch(() => null);
-  if (ocr) return ocr;
+  // Tesseract is too slow/unreliable on Vercel serverless — skip it there.
+  if (!process.env.VERCEL) {
+    const ocr = await parseWithOcr(buffer).catch(() => null);
+    if (ocr) return ocr;
+  }
+  if (!gemini && !openai) {
+    throw new Error(
+      "Scoreboard OCR is not configured. Set GEMINI_API_KEY (or OPENAI_API_KEY) on the server.",
+    );
+  }
   if (/high demand|overloaded|unavailable|try again later/i.test(lastError)) {
     throw new Error(
       "Gemini is busy right now. Post the **SCOREBOARD** screenshot again in a minute.",

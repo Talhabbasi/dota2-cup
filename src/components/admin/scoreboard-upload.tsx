@@ -17,7 +17,9 @@ import { cn } from "@/lib/utils";
 export function AdminScoreboardUpload() {
   const formRef = useRef<HTMLFormElement>(null);
   const [pending, startTransition] = useTransition();
+  const [phase, setPhase] = useState<"idle" | "upload" | "ocr">("idle");
   const [fileName, setFileName] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const toast = useAdminToast();
   const router = useRouter();
 
@@ -25,22 +27,48 @@ export function AdminScoreboardUpload() {
     event.preventDefault();
     const form = event.currentTarget;
     const data = new FormData(form);
+    const file = data.get("screenshot");
+    if (!(file instanceof File) || file.size === 0) {
+      const message = "Choose a SCOREBOARD screenshot to upload.";
+      setError(message);
+      toast.error(message);
+      return;
+    }
+    setError(null);
+    setPhase("upload");
     startTransition(async () => {
       try {
-        const matchId = await actionIngestScoreboardScreenshot(data);
+        setPhase("ocr");
+        const result = await actionIngestScoreboardScreenshot(data);
+        if (!result.ok) {
+          setError(result.error);
+          toast.error(result.error);
+          return;
+        }
         toast.success("Scoreboard ingested");
         formRef.current?.reset();
         setFileName(null);
-        router.push(`/admin/matches/${matchId}`);
-      } catch (error) {
-        toast.error(
-          error instanceof Error
-            ? error.message
-            : "Could not read that screenshot.",
-        );
+        setError(null);
+        router.push(`/admin/matches/${result.matchId}`);
+      } catch (err) {
+        const message =
+          err instanceof Error && err.message.trim()
+            ? err.message
+            : "Could not read that screenshot. Try again.";
+        setError(message);
+        toast.error(message);
+      } finally {
+        setPhase("idle");
       }
     });
   }
+
+  const pendingLabel =
+    phase === "upload"
+      ? "Uploading…"
+      : phase === "ocr"
+        ? "Reading…"
+        : "Upload & ingest";
 
   return (
     <AdminCard tone="accent" className="mb-6">
@@ -63,9 +91,10 @@ export function AdminScoreboardUpload() {
               required
               disabled={pending}
               className={adminControlClass}
-              onChange={(event) =>
-                setFileName(event.target.files?.[0]?.name ?? null)
-              }
+              onChange={(event) => {
+                setFileName(event.target.files?.[0]?.name ?? null);
+                setError(null);
+              }}
             />
             {fileName ? (
               <span className="text-xs text-muted-foreground">{fileName}</span>
@@ -76,9 +105,17 @@ export function AdminScoreboardUpload() {
             disabled={pending}
             className={cn(adminBtnClass, adminBtnPrimaryClass)}
           >
-            {pending ? "Reading…" : "Upload & ingest"}
+            {pending ? pendingLabel : "Upload & ingest"}
           </button>
         </form>
+        {error ? (
+          <p
+            role="alert"
+            className="m-0 rounded-md border border-rose-500/35 bg-rose-500/10 px-3 py-2 text-sm text-rose-100"
+          >
+            {error}
+          </p>
+        ) : null}
       </AdminSection>
     </AdminCard>
   );

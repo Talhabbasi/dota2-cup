@@ -7,6 +7,8 @@ import { AdminMatchesBoard } from "@/components/admin/matches-board";
 import { AdminScoreboardUpload } from "@/components/admin/scoreboard-upload";
 
 export const dynamic = "force-dynamic";
+/** OCR + S3 upload can take longer than the default serverless limit. */
+export const maxDuration = 60;
 export const metadata = pageMeta("Admin Matches", "Fix match OCR and results.");
 
 export default async function AdminMatchesPage() {
