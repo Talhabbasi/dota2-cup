@@ -209,6 +209,9 @@ const GEMINI_MODELS = [
   "gemini-3.5-flash",
 ];
 
+/** Per-request wait. 3.8 Flash default thinking is medium and often exceeds ~20s. */
+const GEMINI_TIMEOUT_MS = 45_000;
+
 function isBusyGemini(status: number, message: string) {
   return (
     status === 429 ||
@@ -216,6 +219,15 @@ function isBusyGemini(status: number, message: string) {
     /high demand|overloaded|unavailable|resource.?exhausted|try again later/i.test(
       message,
     )
+  );
+}
+
+function isAbortTimeout(error: unknown) {
+  if (!(error instanceof Error)) return false;
+  return (
+    error.name === "TimeoutError" ||
+    error.name === "AbortError" ||
+    /aborted due to timeout|timed? out/i.test(error.message)
   );
 }
 
@@ -238,7 +250,7 @@ async function generateGeminiJson(
         "Content-Type": "application/json",
         "x-goog-api-key": key,
       },
-      signal: AbortSignal.timeout(18_000),
+      signal: AbortSignal.timeout(GEMINI_TIMEOUT_MS),
       body: JSON.stringify({
         contents: [
           {
@@ -253,7 +265,11 @@ async function generateGeminiJson(
             ],
           },
         ],
-        generationConfig: { temperature: 0, responseMimeType: "application/json" },
+        generationConfig: {
+          // Gemini 3.x defaults to medium thinking — too slow for scoreboard OCR.
+          thinkingConfig: { thinkingLevel: "low" },
+          responseMimeType: "application/json",
+        },
       }),
     },
   );
@@ -273,7 +289,7 @@ async function parseWithGemini(
   const imageMime = geminiImageMime(mime);
   const prompt = buildParsePrompt(knownNames);
   let lastError = "Gemini did not return a scoreboard.";
-  // One fast attempt per model — multi-retry loops made admin upload feel stuck.
+  // One attempt per model — keep total wall time under the Vercel maxDuration.
   for (const model of GEMINI_MODELS) {
     try {
       const { res, body } = await generateGeminiJson(
@@ -292,7 +308,10 @@ async function parseWithGemini(
         }
         continue;
       }
-      const text = body.candidates?.[0]?.content?.parts?.[0]?.text;
+      const text = body.candidates?.[0]?.content?.parts
+        ?.map((p) => p.text)
+        .filter(Boolean)
+        .join("\n");
       if (!text) {
         lastError = `Gemini ${model} returned an empty reply.`;
         continue;
@@ -302,6 +321,10 @@ async function parseWithGemini(
       if (scoreboard) return scoreboard;
       lastError = `Gemini ${model} could not map 10 players from that screenshot.`;
     } catch (error) {
+      if (isAbortTimeout(error)) {
+        lastError = `Gemini ${model} timed out. Try a clearer SCOREBOARD crop, or retry.`;
+        continue;
+      }
       lastError =
         error instanceof Error ? error.message : `Gemini ${model} failed.`;
     }
@@ -439,6 +462,11 @@ export async function parseScoreboardImage(
   if (/high demand|overloaded|unavailable|try again later/i.test(lastError)) {
     throw new Error(
       "Gemini is busy right now. Post the **SCOREBOARD** screenshot again in a minute.",
+    );
+  }
+  if (/timed out|aborted due to timeout/i.test(lastError)) {
+    throw new Error(
+      "Scoreboard OCR timed out. Compress/crop to the SCOREBOARD tab and try once more.",
     );
   }
   throw new Error(

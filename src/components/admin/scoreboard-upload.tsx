@@ -64,10 +64,14 @@ export function AdminScoreboardUpload() {
         setError(null);
         router.push(`/admin/matches/${result.matchId}`);
       } catch (err) {
+        const raw =
+          err instanceof Error && err.message.trim() ? err.message : "";
         const message =
-          err instanceof Error && err.message.trim()
-            ? err.message
-            : "Could not read that screenshot. Try again.";
+          /aborted due to timeout|timed? out|TimeoutError|AbortError/i.test(
+            raw,
+          )
+            ? "Upload timed out while reading the scoreboard. Try again with a clearer crop."
+            : raw || "Could not read that screenshot. Try again.";
         setError(message);
         toast.error(message);
         setPhase("idle");

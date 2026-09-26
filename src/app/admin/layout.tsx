@@ -3,6 +3,8 @@ import { isSiteAdmin } from "@/lib/site-admin";
 import { AdminShell } from "@/components/admin/admin-shell";
 
 export const dynamic = "force-dynamic";
+/** Scoreboard OCR (Gemini) needs headroom beyond the default serverless limit. */
+export const maxDuration = 60;
 
 export default async function AdminLayout({
   children,
