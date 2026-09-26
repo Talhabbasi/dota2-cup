@@ -3,6 +3,7 @@ import {
   CalendarDays,
   ChartColumn,
   Gavel,
+  ScrollText,
   Swords,
   Target,
   Users,
@@ -95,6 +96,13 @@ const SECTIONS = [
     note: "Kills, assists, bids, roles",
     icon: ChartColumn,
     tone: "violet",
+  },
+  {
+    href: "/admin/logs",
+    label: "Logs",
+    note: "Who changed what",
+    icon: ScrollText,
+    tone: "cyan",
   },
 ] as const;
 

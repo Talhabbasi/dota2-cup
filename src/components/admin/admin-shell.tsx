@@ -11,6 +11,7 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  ScrollText,
   Swords,
   Target,
   Users,
@@ -45,6 +46,7 @@ const NAV = [
         exact: true,
       },
       { href: "/admin/insights", label: "Insights", icon: ChartColumn },
+      { href: "/admin/logs", label: "Logs", icon: ScrollText },
     ],
   },
   {

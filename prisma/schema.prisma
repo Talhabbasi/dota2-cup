@@ -352,3 +352,18 @@ model Payment {
   @@index([discordId])
   @@index([seasonId])
 }
+
+/// Short audit trail of organizer actions from the admin panel (and optional bot).
+model AdminActivityLog {
+  id             String   @id @default(cuid())
+  actorDiscordId String
+  actorName      String
+  action         String
+  summary        String
+  metaJson       String?
+  createdAt      DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([actorDiscordId])
+  @@index([action])
+}
