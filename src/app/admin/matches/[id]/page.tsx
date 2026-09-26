@@ -27,6 +27,7 @@ import {
 import {
   actionLinkMatchPlayer,
   actionMarkStandIn,
+  actionClearStandIn,
   actionSetMatchTeams,
 } from "@/app/admin/actions";
 import { cn } from "@/lib/utils";
@@ -150,13 +151,25 @@ export default async function AdminMatchDetailPage({
                   }
                   className={adminControlClass}
                 >
-                  <option value="">—</option>
-                  <option value="radiant">Radiant</option>
-                  <option value="dire">Dire</option>
+                  <option value="">— pick winner —</option>
+                  <option value="radiant">
+                    {match.radiantTeam?.name
+                      ? `Radiant · ${match.radiantTeam.name}`
+                      : "Radiant"}
+                  </option>
+                  <option value="dire">
+                    {match.direTeam?.name
+                      ? `Dire · ${match.direTeam.name}`
+                      : "Dire"}
+                  </option>
                 </select>
               </AdminField>
+              <p className="m-0 text-xs text-muted-foreground">
+                Set both teams, then pick who won. This updates the public
+                match page and standings.
+              </p>
               <AdminSubmitButton>
-                Save result
+                Save teams &amp; winner
               </AdminSubmitButton>
             </AdminConfirmForm>
           </AdminSection>
@@ -238,23 +251,45 @@ export default async function AdminMatchDetailPage({
                           Link
                         </AdminSubmitButton>
                       </AdminConfirmForm>
-                      <AdminConfirmForm
-                        action={actionMarkStandIn}
-                        message={`Mark "${seat.boardName || seat.player?.steamName || "this seat"}" as a stand-in? Same board name on other matches will be marked too.`}
-                        successMessage="Stand-in applied across matches"
-                      >
-                        <input
-                          type="hidden"
-                          name="matchPlayerId"
-                          value={seat.id}
-                        />
-                        <AdminSubmitButton
-                          variant="secondary" className="text-xs"
-                          pendingLabel="Saving…"
+                      {seat.asStandIn ? (
+                        <AdminConfirmForm
+                          action={actionClearStandIn}
+                          message={`Remove stand-in from "${seat.boardName || "this seat"}"? Same board name on other matches is cleared too — you can link a real player after.`}
+                          successMessage="Stand-in removed"
                         >
-                          Stand-in
-                        </AdminSubmitButton>
-                      </AdminConfirmForm>
+                          <input
+                            type="hidden"
+                            name="matchPlayerId"
+                            value={seat.id}
+                          />
+                          <AdminSubmitButton
+                            variant="secondary"
+                            className="text-xs"
+                            pendingLabel="Clearing…"
+                          >
+                            Stand out
+                          </AdminSubmitButton>
+                        </AdminConfirmForm>
+                      ) : (
+                        <AdminConfirmForm
+                          action={actionMarkStandIn}
+                          message={`Mark "${seat.boardName || seat.player?.steamName || "this seat"}" as a stand-in? Same board name on other matches will be marked too.`}
+                          successMessage="Stand-in applied across matches"
+                        >
+                          <input
+                            type="hidden"
+                            name="matchPlayerId"
+                            value={seat.id}
+                          />
+                          <AdminSubmitButton
+                            variant="secondary"
+                            className="text-xs"
+                            pendingLabel="Saving…"
+                          >
+                            Stand-in
+                          </AdminSubmitButton>
+                        </AdminConfirmForm>
+                      )}
                     </div>
                   </li>
                 );

@@ -5,6 +5,7 @@ import { STARTING_PURSE } from "./constants";
 import { addPlayerAlias } from "./player-aliases";
 import {
   rememberStandInBoardName,
+  forgetStandInBoardName,
   listMatchSeatsByBoardName,
 } from "./scoreboard-names";
 
@@ -100,6 +101,54 @@ export async function adminMarkMatchStandIn(matchPlayerId: string) {
           playerId: null,
           unknown: true,
           asStandIn: true,
+        },
+      });
+      alsoFixed = result.count;
+    }
+  }
+
+  return { seatId: seat.id, alsoFixed, boardName };
+}
+
+/**
+ * Clear stand-in on a seat (stand-out): forget the remembered board name and
+ * clear asStandIn on matching seats so admin can link a real player again.
+ */
+export async function adminClearMatchStandIn(matchPlayerId: string) {
+  const seat = await prisma.matchPlayer.findUnique({
+    where: { id: matchPlayerId },
+  });
+  if (!seat) throw new Error("Match seat not found.");
+  if (!seat.asStandIn) {
+    throw new Error("That seat is not marked as a stand-in.");
+  }
+
+  const boardName = seat.boardName.trim();
+  if (boardName) {
+    await forgetStandInBoardName(boardName);
+  }
+
+  await prisma.matchPlayer.update({
+    where: { id: seat.id },
+    data: {
+      asStandIn: false,
+      // Stay unmatched until admin links a registered player.
+      playerId: null,
+      unknown: true,
+    },
+  });
+
+  let alsoFixed = 0;
+  if (boardName) {
+    const others = await listMatchSeatsByBoardName(boardName, seat.id);
+    const standIns = others.filter((row) => row.asStandIn);
+    if (standIns.length > 0) {
+      const result = await prisma.matchPlayer.updateMany({
+        where: { id: { in: standIns.map((row) => row.id) } },
+        data: {
+          asStandIn: false,
+          playerId: null,
+          unknown: true,
         },
       });
       alsoFixed = result.count;

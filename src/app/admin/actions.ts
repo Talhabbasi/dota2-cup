@@ -23,6 +23,7 @@ import {
 import {
   adminLinkMatchPlayer,
   adminMarkMatchStandIn,
+  adminClearMatchStandIn,
   adminRegisterPlayerBySteam,
   adminSetAuctionSoldPrice,
   adminSetMatchTeams,
@@ -64,6 +65,13 @@ export async function actionMarkStandIn(formData: FormData) {
   await requireAdmin();
   const matchPlayerId = String(formData.get("matchPlayerId") ?? "");
   await adminMarkMatchStandIn(matchPlayerId);
+  revalidateAdmin();
+}
+
+export async function actionClearStandIn(formData: FormData) {
+  await requireAdmin();
+  const matchPlayerId = String(formData.get("matchPlayerId") ?? "");
+  await adminClearMatchStandIn(matchPlayerId);
   revalidateAdmin();
 }
 

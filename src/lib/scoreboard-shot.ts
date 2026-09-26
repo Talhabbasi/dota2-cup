@@ -10,6 +10,8 @@ export type ScoreboardItem = { key: string; name: string };
 
 export type ScoreboardPlayerRow = {
   name: string;
+  /** Name with clan tags stripped — preferred for roster matching. */
+  nameCore?: string;
   hero: string;
   side: "radiant" | "dire";
   kills: number;
@@ -53,6 +55,22 @@ function norm(value: string) {
   return normalizeAlias(value);
 }
 
+/**
+ * Strip clan tags / decorations so OCR board names match steam names better.
+ * e.g. "TigerX [GB]" → "TigerX", "¤GerM¤ [LIBOG]" → "GerM"
+ */
+export function boardNameCore(value: string) {
+  return value
+    .replace(/\[[^\]]*\]/g, " ")
+    .replace(/«[^»]*»/g, " ")
+    .replace(/‹[^›]*›/g, " ")
+    .replace(/【[^】]*】/g, " ")
+    .replace(/[¤✪★☆✦✧◆◇⚙Φφ●○■□▪▫]/g, " ")
+    .replace(/[_|]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function parseDuration(value: string | null | undefined) {
   if (!value) return null;
   const m = value.trim().match(/^(\d+):(\d{2})$/);
@@ -60,8 +78,23 @@ function parseDuration(value: string | null | undefined) {
   return Number(m[1]) * 60 + Number(m[2]);
 }
 
-const PARSE_PROMPT = `Read this Dota 2 post-game SCOREBOARD screenshot (the table with Items, LH/DN, GPM).
-Return ONLY JSON with this shape:
+function buildParsePrompt(knownNames: string[] = []) {
+  const knownBlock =
+    knownNames.length > 0
+      ? `
+
+KNOWN CUP PLAYER NAMES (prefer these spellings when the board clearly matches one;
+if unsure, transcribe exactly what you see — do not invent or force a weak match):
+${knownNames.map((n) => `- ${n}`).join("\n")}`
+      : "";
+
+  return `You are reading a Dota 2 post-game SCOREBOARD screenshot (Items / LH/DN / GPM columns).
+
+In the leftmost PLAYER column, each seat has TWO stacked lines:
+1) TOP line (larger, white) = PLAYER NAME — this is the only value for "name"
+2) BOTTOM line (smaller, grey) = "LEVEL HERO NAME" — use only for "hero"
+
+Return ONLY JSON:
 {
   "radiantTeam": "string",
   "direTeam": "string",
@@ -72,7 +105,8 @@ Return ONLY JSON with this shape:
   "matchId": "digits" or null,
   "players": [
     {
-      "name": "player name on the board",
+      "name": "exact player name from the TOP line",
+      "nameCore": "same name with clan tags in [] removed",
       "hero": "official Dota 2 hero name",
       "side": "radiant" or "dire",
       "kills": 0, "deaths": 0, "assists": 0,
@@ -82,12 +116,22 @@ Return ONLY JSON with this shape:
     }
   ]
 }
-Rules:
-- Exactly 10 players, radiant (left/top team) first, then dire.
-- Hero names must be official (Tidehunter, Shadow Shaman, Night Stalker, Lifestealer, Underlord, ...).
+
+NAME PRECISION (critical):
+- Copy the TOP player-name line character-by-character. Do not guess.
+- Never put the hero name into "name" (even if the player's name looks like a hero, e.g. INVOKER).
+- Keep letters, digits, spaces, underscores, apostrophes, hyphens.
+- Clan / party tags in square brackets belong in "name"; strip them only for "nameCore".
+- Decorative symbols (stars, diamonds, etc.) around names: keep the readable letters; omit symbols you cannot read clearly.
+- Do not merge two seats or invent players.
+- Exactly 10 players: radiant (top / left team) first, then dire.
+
+Other rules:
+- Hero names must be official (Tidehunter, Shadow Shaman, Night Stalker, Lifestealer, Underlord, …).
 - items = the 6 inventory slots left to right. Skip empty slots. Ignore backpack and neutrals.
 - xpm is 0 if the column is not on screen.
-- matchId is the number labeled Match, not Lobby.`;
+- matchId is the number labeled Match, not Lobby.${knownBlock}`;
+}
 
 function asRows(raw: unknown): ScoreboardPlayerRow[] {
   if (!Array.isArray(raw)) return [];
@@ -99,9 +143,13 @@ function asRows(raw: unknown): ScoreboardPlayerRow[] {
     const items = Array.isArray(row.items)
       ? row.items.map((item) => String(item)).filter(Boolean)
       : [];
+    const name = String(row.name ?? "").trim();
+    const nameCoreRaw = String(row.nameCore ?? "").trim();
+    const nameCore = nameCoreRaw || boardNameCore(name);
     return [
       {
-        name: String(row.name ?? "").trim(),
+        name,
+        nameCore: nameCore || undefined,
         hero: String(row.hero ?? "").trim(),
         side,
         kills: Number(row.kills) || 0,
@@ -156,12 +204,12 @@ function geminiImageMime(mime: string) {
 }
 
 const GEMINI_MODELS = [
+  "gemini-3.5-flash",
+  "gemini-3.6-flash",
+  "gemini-flash-latest",
   "gemini-3.5-flash-lite",
   "gemini-flash-lite-latest",
   "gemini-3.1-flash-lite",
-  "gemini-3.6-flash",
-  "gemini-3.5-flash",
-  "gemini-flash-latest",
 ];
 
 function isBusyGemini(status: number, message: string) {
@@ -183,6 +231,7 @@ async function generateGeminiJson(
   key: string,
   imageMime: string,
   buffer: Buffer,
+  prompt: string,
 ) {
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
@@ -192,12 +241,12 @@ async function generateGeminiJson(
         "Content-Type": "application/json",
         "x-goog-api-key": key,
       },
-      signal: AbortSignal.timeout(25_000),
+      signal: AbortSignal.timeout(40_000),
       body: JSON.stringify({
         contents: [
           {
             parts: [
-              { text: PARSE_PROMPT },
+              { text: prompt },
               {
                 inline_data: {
                   mime_type: imageMime,
@@ -222,13 +271,21 @@ async function parseWithGemini(
   buffer: Buffer,
   mime: string,
   key: string,
+  knownNames: string[] = [],
 ): Promise<ParsedScoreboard> {
   const imageMime = geminiImageMime(mime);
+  const prompt = buildParsePrompt(knownNames);
   let lastError = "Gemini did not return a scoreboard.";
   for (const model of GEMINI_MODELS) {
     for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
-        const { res, body } = await generateGeminiJson(model, key, imageMime, buffer);
+        const { res, body } = await generateGeminiJson(
+          model,
+          key,
+          imageMime,
+          buffer,
+          prompt,
+        );
         if (!res.ok) {
           lastError = body.error?.message || `Gemini ${model} returned ${res.status}.`;
           if (res.status === 404) break;
@@ -266,7 +323,9 @@ async function parseWithOpenAi(
   buffer: Buffer,
   mime: string,
   key: string,
+  knownNames: string[] = [],
 ): Promise<ParsedScoreboard | null> {
+  const prompt = buildParsePrompt(knownNames);
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -281,7 +340,7 @@ async function parseWithOpenAi(
         {
           role: "user",
           content: [
-            { type: "text", text: PARSE_PROMPT },
+            { type: "text", text: prompt },
             {
               type: "image_url",
               image_url: {
@@ -360,20 +419,21 @@ async function parseWithOcr(buffer: Buffer): Promise<ParsedScoreboard | null> {
 export async function parseScoreboardImage(
   buffer: Buffer,
   mime = "image/jpeg",
+  knownNames: string[] = [],
 ): Promise<ParsedScoreboard> {
   const gemini = process.env.GEMINI_API_KEY?.trim() || process.env.GOOGLE_GENERATIVE_AI_API_KEY?.trim();
   const openai = process.env.OPENAI_API_KEY?.trim();
   let lastError = "";
   if (gemini) {
     try {
-      return await parseWithGemini(buffer, mime, gemini);
+      return await parseWithGemini(buffer, mime, gemini, knownNames);
     } catch (error) {
       lastError = error instanceof Error ? error.message : String(error);
       console.warn("Gemini scoreboard parse failed, trying fallback:", lastError);
     }
   }
   if (openai) {
-    const parsed = await parseWithOpenAi(buffer, mime, openai);
+    const parsed = await parseWithOpenAi(buffer, mime, openai, knownNames);
     if (parsed) return parsed;
   }
   // Tesseract is too slow/unreliable on Vercel serverless — skip it there.
@@ -430,11 +490,19 @@ function playerLabels(player: {
   discordName?: string | null;
   aliases?: string[];
 }) {
-  const base = [player.steamName, player.discordName ?? ""]
-    .map(norm)
-    .filter(Boolean);
-  const extra = (player.aliases ?? []).map(norm).filter(Boolean);
-  return [...new Set([...base, ...extra])];
+  const raw = [
+    player.steamName,
+    player.discordName ?? "",
+    ...(player.aliases ?? []),
+  ].filter(Boolean);
+  const out = new Set<string>();
+  for (const value of raw) {
+    const full = norm(value);
+    if (full) out.add(full);
+    const core = norm(boardNameCore(value));
+    if (core) out.add(core);
+  }
+  return [...out];
 }
 
 /** Classic Levenshtein distance on normalized strings. */
@@ -461,9 +529,8 @@ export function levenshtein(a: string, b: string): number {
 
 /**
  * Match a board name only inside that side's current-season roster.
- * Exact / alias first; then one clear Levenshtein winner (distance ≤ 2,
- * strictly better than the runner-up). Never attaches another team's player.
- * Already-mapped players in `usedIds` are skipped so one seat cannot win twice.
+ * Exact / alias first (including clan-tag-stripped forms); then one clear
+ * Levenshtein winner. Never attaches another team's player.
  */
 export function resolvePlayer(
   name: string,
@@ -471,26 +538,41 @@ export function resolvePlayer(
   teamId: string | null | undefined,
   usedIds?: Set<string>,
 ): RosterPlayer | null {
-  const want = norm(name);
-  if (!want || !teamId) return null;
+  const wants = [...new Set([norm(name), norm(boardNameCore(name))].filter(Boolean))];
+  if (wants.length === 0 || !teamId) return null;
 
   const pool = roster.filter(
     (p) => p.teamId === teamId && !(usedIds?.has(p.id) ?? false),
   );
   if (pool.length === 0) return null;
 
-  const exact = pool.find((p) => p.labels.includes(want));
-  if (exact) return exact;
+  for (const want of wants) {
+    const exact = pool.find((p) => p.labels.includes(want));
+    if (exact) return exact;
+  }
+
+  const maxDist = (len: number) => {
+    if (len <= 4) return 1;
+    if (len <= 8) return 2;
+    return Math.min(3, Math.floor(len * 0.2));
+  };
 
   const scored = pool
     .map((p) => {
       const distance = Math.min(
-        ...p.labels.map((have) => levenshtein(want, have)),
+        ...wants.flatMap((want) =>
+          p.labels.map((have) => {
+            const d = levenshtein(want, have);
+            return d <= maxDist(Math.max(want.length, have.length))
+              ? d
+              : Number.POSITIVE_INFINITY;
+          }),
+        ),
         Number.POSITIVE_INFINITY,
       );
       return { player: p, distance };
     })
-    .filter((row) => Number.isFinite(row.distance) && row.distance <= 2)
+    .filter((row) => Number.isFinite(row.distance))
     .sort((a, b) => a.distance - b.distance);
 
   if (scored.length === 0) return null;
@@ -628,7 +710,12 @@ export async function applyParsedScoreboard(
     const standIn = standInAliases.has(norm(row.name));
     const mapped = standIn
       ? null
-      : resolvePlayer(row.name, roster, sideTeamId, usedIds);
+      : resolvePlayer(
+          row.nameCore?.trim() || row.name,
+          roster,
+          sideTeamId,
+          usedIds,
+        );
     if (mapped) usedIds.add(mapped.id);
     const items = row.items
       .map((label) => resolveItem(label, itemList))
@@ -714,7 +801,27 @@ export async function ingestScoreboardScreenshot(input: {
   screenshotPath?: string | null;
   sourceId?: string | null;
 }) {
-  const parsed = await parseScoreboardImage(input.buffer, input.mime);
+  const seasonId = await currentSeasonId().catch(() => null);
+  const knownNames = seasonId
+    ? (
+        await prisma.seasonPlayer.findMany({
+          where: { seasonId },
+          select: {
+            player: { select: { steamName: true, discordName: true } },
+          },
+        })
+      )
+        .flatMap((row) =>
+          [row.player.steamName, row.player.discordName ?? ""].filter(Boolean),
+        )
+        .filter((name, index, all) => all.indexOf(name) === index)
+        .slice(0, 80)
+    : [];
+  const parsed = await parseScoreboardImage(
+    input.buffer,
+    input.mime,
+    knownNames,
+  );
   return applyParsedScoreboard(parsed, input.screenshotPath, input.sourceId);
 }
 

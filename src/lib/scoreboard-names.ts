@@ -15,13 +15,14 @@ export async function rememberStandInBoardName(boardName: string) {
   });
 }
 
-export async function isRememberedStandInName(boardName: string) {
+/** Forget a remembered stand-in board name so future OCR can link it again. */
+export async function forgetStandInBoardName(boardName: string) {
   const alias = normalizeAlias(boardName.trim());
   if (!alias) return false;
-  const row = await prisma.scoreboardStandInName.findUnique({
+  const result = await prisma.scoreboardStandInName.deleteMany({
     where: { alias },
   });
-  return Boolean(row);
+  return result.count > 0;
 }
 
 export async function listStandInAliasSet() {
