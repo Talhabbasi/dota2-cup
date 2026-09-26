@@ -151,7 +151,7 @@ export function AdminScheduleBoard({
 
       <AdminDataTable
         title="Fixtures"
-        hint="Click a fixture to edit or delete it."
+        hint="Click a fixture to set win / walkover, edit, or delete."
         items={fixtures}
         getId={(f) => f.id}
         hrefFor={(f) => `/admin/schedule/${f.id}`}

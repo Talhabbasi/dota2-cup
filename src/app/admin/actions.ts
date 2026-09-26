@@ -34,6 +34,7 @@ import { revalidatePublicPages } from "@/lib/page-cache";
 import { adminClearPaid, adminMarkPaid } from "@/lib/payments";
 import { uploadMatchScreenshot, isObjectStorageConfigured } from "@/lib/object-storage";
 import { ingestScoreboardScreenshot } from "@/lib/scoreboard-shot";
+import { recordManualSeriesWinner } from "@/lib/results";
 import { prisma } from "@/lib/prisma";
 import type { Medal } from "@/lib/constants";
 
@@ -228,6 +229,19 @@ export async function actionUpdateFixture(formData: FormData) {
 export async function actionDeleteFixture(formData: FormData) {
   await requireAdmin();
   await deleteScheduledMatch(String(formData.get("fixtureId") ?? ""));
+  revalidateAdmin();
+}
+
+/** Record who won an upcoming fixture (played or walkover / no-show). */
+export async function actionRecordFixtureWinner(formData: FormData) {
+  await requireAdmin();
+  const fixtureId = String(formData.get("fixtureId") ?? "");
+  const winnerName = String(formData.get("winnerName") ?? "");
+  const walkover = String(formData.get("walkover") ?? "") === "1";
+  if (!fixtureId || !winnerName) {
+    throw new Error("Pick a fixture and a winning team.");
+  }
+  await recordManualSeriesWinner({ fixtureId, winnerName, walkover });
   revalidateAdmin();
 }
 

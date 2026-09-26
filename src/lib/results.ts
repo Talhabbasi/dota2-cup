@@ -337,6 +337,8 @@ export async function ingestMatch(input: {
 export async function recordManualSeriesWinner(input: {
   fixtureId: string;
   winnerName: string;
+  /** Mark as walkover (team no-show) — same result wiring, distinct match id. */
+  walkover?: boolean;
 }) {
   const fixture = await prisma.scheduledFixture.findUnique({
     where: { id: input.fixtureId },
@@ -368,12 +370,16 @@ export async function recordManualSeriesWinner(input: {
     );
   }
 
+  const openDotaId = input.walkover
+    ? `walkover-${fixture.id}`
+    : `manual-${fixture.id}`;
+
   let match = fixture.match;
   if (!match) {
     match = await prisma.match.create({
       data: {
         seasonId: fixture.seasonId ?? (await currentSeasonId()),
-        openDotaId: `manual-${fixture.id}`,
+        openDotaId,
         radiantWin: winner.id === fixture.radiantTeamId,
         radiantTeamId: fixture.radiantTeamId,
         direTeamId: fixture.direTeamId,
@@ -381,28 +387,63 @@ export async function recordManualSeriesWinner(input: {
         startedAt: fixture.scheduledAt,
       },
     });
-  } else if (!match.winnerTeamId) {
+  } else {
     match = await prisma.match.update({
       where: { id: match.id },
       data: {
         radiantWin: winner.id === fixture.radiantTeamId,
         winnerTeamId: winner.id,
+        ...(match.openDotaId.startsWith("manual-") ||
+        match.openDotaId.startsWith("walkover-")
+          ? { openDotaId }
+          : {}),
       },
     });
   }
 
-  const { completeScheduledFixture } = await import("./schedule");
-  await completeScheduledFixture({
-    radiantTeamId: fixture.radiantTeamId,
-    direTeamId: fixture.direTeamId,
-    winnerTeamId: winner.id,
-    matchId: match.id,
+  const radiantWins =
+    fixture.radiantWins + (winner.id === fixture.radiantTeamId ? 1 : 0);
+  const direWins =
+    fixture.direWins + (winner.id === fixture.direTeamId ? 1 : 0);
+  const needed = Math.ceil((fixture.bestOf || 1) / 2);
+  const seriesOver = radiantWins >= needed || direWins >= needed;
+
+  await prisma.scheduledFixture.update({
+    where: { id: fixture.id },
+    data: {
+      matchId: match.id,
+      radiantWins,
+      direWins,
+      status: seriesOver ? "completed" : "scheduled",
+    },
   });
+
+  if (seriesOver) {
+    const { scorePredictionsForFixture } = await import("./predictions");
+    await scorePredictionsForFixture(fixture.id);
+    const { advancePlayoff } = await import("./playoff");
+    await advancePlayoff(fixture.id);
+    if (fixture.kind === "final" || fixture.slotKey === "final") {
+      const { recordSeasonChampion } = await import("./seasons");
+      const championId =
+        radiantWins > direWins
+          ? fixture.radiantTeamId
+          : direWins > radiantWins
+            ? fixture.direTeamId
+            : winner.id;
+      await recordSeasonChampion(
+        fixture.seasonId ?? (await currentSeasonId()),
+        championId,
+      );
+    }
+  }
 
   return {
     radiant: fixture.radiantTeam.name,
     dire: fixture.direTeam.name,
     winner: winner.name,
+    walkover: Boolean(input.walkover),
+    seriesOver,
   };
 }
 

@@ -22,7 +22,7 @@ export default async function AdminSchedulePage() {
       <PageHeader
         eyebrow="Admin"
         title="Schedule"
-        subtitle="Fixture table — click a row to reschedule, swap teams, or delete."
+        subtitle="Click a fixture to set win / walkover, reschedule, or delete."
         pills={[{ value: pending.length, label: "pending" }]}
       />
       <AdminScheduleBoard
