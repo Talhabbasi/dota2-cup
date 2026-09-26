@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { PageHeader } from "@/components/common";
 import {
   EsportsTable,
@@ -37,7 +38,7 @@ export default async function AdminLogsPage() {
       <PageHeader
         eyebrow="Admin"
         title="Activity logs"
-        subtitle="Recent organizer actions with Discord id of who did it."
+        subtitle="Plain-language history of organizer changes — who did what."
         pills={[{ value: logs.length, label: "shown" }]}
       />
 
@@ -51,11 +52,10 @@ export default async function AdminLogsPage() {
           <EsportsTable>
             <EsportsTableHeader>
               <EsportsTableRow>
-                <EsportsTableHead>When (PKT)</EsportsTableHead>
-                <EsportsTableHead>Admin</EsportsTableHead>
-                <EsportsTableHead>Discord id</EsportsTableHead>
-                <EsportsTableHead>Action</EsportsTableHead>
-                <EsportsTableHead>Summary</EsportsTableHead>
+                <EsportsTableHead>When</EsportsTableHead>
+                <EsportsTableHead>Who</EsportsTableHead>
+                <EsportsTableHead>What</EsportsTableHead>
+                <EsportsTableHead>Detail</EsportsTableHead>
               </EsportsTableRow>
             </EsportsTableHeader>
             <EsportsTableBody>
@@ -64,17 +64,28 @@ export default async function AdminLogsPage() {
                   <EsportsTableCell className="whitespace-nowrap text-muted-foreground">
                     {formatWhen(row.createdAt)}
                   </EsportsTableCell>
-                  <EsportsTableCell className="font-medium">
-                    {row.actorName}
+                  <EsportsTableCell>
+                    <div className="font-medium">{row.actorName}</div>
+                    <div className="mt-0.5 font-mono text-[0.65rem] text-muted-foreground">
+                      {row.actorDiscordId}
+                    </div>
                   </EsportsTableCell>
-                  <EsportsTableCell className="font-mono text-xs">
-                    {row.actorDiscordId}
+                  <EsportsTableCell className="whitespace-nowrap font-medium text-primary">
+                    {row.actionLabel}
                   </EsportsTableCell>
-                  <EsportsTableCell className="font-mono text-xs text-primary">
-                    {row.action}
-                  </EsportsTableCell>
-                  <EsportsTableCell className="max-w-[28rem] text-sm">
-                    {row.summary}
+                  <EsportsTableCell className="max-w-[32rem] text-sm">
+                    <span>{row.summary}</span>
+                    {row.matchId ? (
+                      <>
+                        {" "}
+                        <Link
+                          href={`/admin/matches/${row.matchId}`}
+                          className="text-primary underline-offset-2 hover:underline"
+                        >
+                          Open match
+                        </Link>
+                      </>
+                    ) : null}
                   </EsportsTableCell>
                 </EsportsTableRow>
               ))}

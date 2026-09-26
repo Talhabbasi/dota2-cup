@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import type { Session } from "next-auth";
 import { requireAdmin } from "@/lib/admin-auth";
-import { logAdminActivity } from "@/lib/admin-log";
+import { logAdminActivity, playerDisplayName } from "@/lib/admin-log";
 import {
   adminAddCaptain,
   adminChangeCaptain,
@@ -66,15 +66,25 @@ async function note(
   await logAdminActivity(session, { action, summary, meta });
 }
 
+/** Prefer steam name in log text; fall back to discord id. */
+async function who(discordId: string) {
+  const name = await playerDisplayName(discordId);
+  return name || discordId.split(":")[0] || "player";
+}
+
 export async function actionLinkMatchPlayer(formData: FormData) {
   const session = await requireAdmin();
   const matchPlayerId = String(formData.get("matchPlayerId") ?? "");
   const playerId = String(formData.get("playerId") ?? "");
-  await adminLinkMatchPlayer({ matchPlayerId, playerId });
-  await note(session, "match.link_player", `Linked scoreboard seat to player`, {
-    matchPlayerId,
-    playerId,
-  });
+  const result = await adminLinkMatchPlayer({ matchPlayerId, playerId });
+  const board = result.boardName?.trim();
+  const who = result.playerName?.trim() || "player";
+  await note(
+    session,
+    "match.link_player",
+    board ? `Linked “${board}” → ${who}` : `Linked seat → ${who}`,
+    { matchPlayerId, playerId, boardName: board || undefined },
+  );
   revalidateAdmin();
 }
 
@@ -82,11 +92,12 @@ export async function actionMarkStandIn(formData: FormData) {
   const session = await requireAdmin();
   const matchPlayerId = String(formData.get("matchPlayerId") ?? "");
   const result = await adminMarkMatchStandIn(matchPlayerId);
+  const board = result.boardName?.trim();
   await note(
     session,
     "match.stand_in",
-    `Marked stand-in${result.boardName ? `: ${result.boardName}` : ""}`,
-    { matchPlayerId, alsoFixed: result.alsoFixed },
+    board ? `Marked “${board}” as stand-in` : "Marked seat as stand-in",
+    { matchPlayerId, alsoFixed: result.alsoFixed, boardName: board || undefined },
   );
   revalidateAdmin();
 }
@@ -95,11 +106,12 @@ export async function actionClearStandIn(formData: FormData) {
   const session = await requireAdmin();
   const matchPlayerId = String(formData.get("matchPlayerId") ?? "");
   const result = await adminClearMatchStandIn(matchPlayerId);
+  const board = result.boardName?.trim();
   await note(
     session,
     "match.stand_out",
-    `Cleared stand-in${result.boardName ? `: ${result.boardName}` : ""}`,
-    { matchPlayerId, alsoFixed: result.alsoFixed },
+    board ? `Cleared stand-in on “${board}”` : "Cleared stand-in on seat",
+    { matchPlayerId, alsoFixed: result.alsoFixed, boardName: board || undefined },
   );
   revalidateAdmin();
 }
@@ -118,10 +130,21 @@ export async function actionSetMatchTeams(formData: FormData) {
     direTeamId,
     winnerSide,
   });
+  const teams = await prisma.match.findUnique({
+    where: { id: matchId },
+    select: {
+      radiantTeam: { select: { name: true } },
+      direTeam: { select: { name: true } },
+    },
+  });
+  const a = teams?.radiantTeam?.name ?? "Radiant";
+  const b = teams?.direTeam?.name ?? "Dire";
+  const winner =
+    winnerSide === "radiant" ? a : winnerSide === "dire" ? b : "no winner";
   await note(
     session,
     "match.set_result",
-    `Updated match teams/winner (${winnerSide ?? "no winner"})`,
+    `Set ${a} vs ${b} — winner: ${winner}`,
     { matchId, radiantTeamId, direTeamId, winnerSide },
   );
   revalidateAdmin();
@@ -168,7 +191,7 @@ export async function actionAddToTeam(formData: FormData) {
   const discordId = String(formData.get("discordId") ?? "");
   const teamName = String(formData.get("teamName") ?? "");
   await adminAddPlayerToTeam({ discordId, teamName });
-  await note(session, "team.add_player", `Added <@${discordId.split(":")[0]}> to ${teamName}`, {
+  await note(session, "team.add_player", `Added ${await who(discordId)} to ${teamName}`, {
     discordId,
     teamName,
   });
@@ -178,8 +201,9 @@ export async function actionAddToTeam(formData: FormData) {
 export async function actionRemoveFromTeam(formData: FormData) {
   const session = await requireAdmin();
   const discordId = String(formData.get("discordId") ?? "");
+  const name = await who(discordId);
   await adminRemovePlayerFromTeam(discordId);
-  await note(session, "team.remove_player", `Removed <@${discordId.split(":")[0]}> from team`, {
+  await note(session, "team.remove_player", `Removed ${name} from team`, {
     discordId,
   });
   revalidateAdmin();
@@ -195,7 +219,7 @@ export async function actionUpdatePlayer(formData: FormData) {
     role: String(formData.get("role") ?? "") || null,
     playWindow: String(formData.get("playWindow") ?? "") || null,
   });
-  await note(session, "player.update", `Updated player <@${discordId.split(":")[0]}>`, {
+  await note(session, "player.update", `Updated ${await who(discordId)}`, {
     discordId,
   });
   revalidateAdmin();
@@ -210,7 +234,7 @@ export async function actionSetRosterSlot(formData: FormData) {
   await note(
     session,
     "player.roster_slot",
-    `Set <@${discordId.split(":")[0]}> to ${slot}`,
+    `Set ${await who(discordId)} to ${slot}`,
     { discordId, slot },
   );
   revalidateAdmin();
@@ -221,10 +245,12 @@ export async function actionAddAlias(formData: FormData) {
   const discordId = String(formData.get("discordId") ?? "");
   const alias = String(formData.get("alias") ?? "");
   await addPlayerAlias({ discordId, alias });
-  await note(session, "player.alias", `Added alias "${alias}" for <@${discordId.split(":")[0]}>`, {
-    discordId,
-    alias,
-  });
+  await note(
+    session,
+    "player.alias",
+    `Added alias “${alias}” for ${await who(discordId)}`,
+    { discordId, alias },
+  );
   revalidateAdmin();
 }
 
@@ -236,7 +262,7 @@ export async function actionAddCaptain(formData: FormData) {
   await note(
     session,
     "team.add_captain",
-    `Set captain <@${discordId.split(":")[0]}> on ${teamName}`,
+    `Set ${await who(discordId)} as captain of ${teamName}`,
     { discordId, teamName },
   );
   revalidateAdmin();
@@ -250,7 +276,7 @@ export async function actionChangeCaptain(formData: FormData) {
   await note(
     session,
     "team.change_captain",
-    `Changed ${teamName} captain to <@${discordId.split(":")[0]}>`,
+    `Changed ${teamName} captain to ${await who(discordId)}`,
     { discordId, teamName },
   );
   revalidateAdmin();
@@ -271,8 +297,9 @@ export async function actionRenameTeam(formData: FormData) {
 export async function actionRemoveCaptain(formData: FormData) {
   const session = await requireAdmin();
   const discordId = String(formData.get("discordId") ?? "");
+  const name = await who(discordId);
   await adminRemoveCaptain(discordId);
-  await note(session, "team.remove_captain", `Removed captain <@${discordId.split(":")[0]}>`, {
+  await note(session, "team.remove_captain", `Removed captain ${name}`, {
     discordId,
   });
   revalidateAdmin();
@@ -413,7 +440,7 @@ export async function actionMarkPaid(formData: FormData) {
   const session = await requireAdmin();
   const discordId = String(formData.get("discordId") ?? "");
   await adminMarkPaid(discordId, "web-admin");
-  await note(session, "payment.mark", `Marked paid <@${discordId.split(":")[0]}>`, {
+  await note(session, "payment.mark", `Marked ${await who(discordId)} as paid`, {
     discordId,
   });
   revalidateAdmin();
@@ -422,8 +449,9 @@ export async function actionMarkPaid(formData: FormData) {
 export async function actionClearPaid(formData: FormData) {
   const session = await requireAdmin();
   const discordId = String(formData.get("discordId") ?? "");
+  const name = await who(discordId);
   await adminClearPaid(discordId);
-  await note(session, "payment.clear", `Cleared paid <@${discordId.split(":")[0]}>`, {
+  await note(session, "payment.clear", `Cleared payment for ${name}`, {
     discordId,
   });
   revalidateAdmin();
@@ -515,11 +543,18 @@ export async function actionIngestScoreboardScreenshot(
       };
     }
 
+    const m = result.match;
+    const a = m.radiantTeam?.name ?? "Radiant";
+    const b = m.direTeam?.name ?? "Dire";
+    const score =
+      m.radiantScore != null && m.direScore != null
+        ? ` ${m.radiantScore}–${m.direScore}`
+        : "";
     await note(
       session,
       "match.ingest_scoreboard",
-      `Ingested scoreboard match ${result.match.id.slice(0, 8)}…`,
-      { matchId: result.match.id },
+      `Uploaded scoreboard: ${a} vs ${b}${score}`,
+      { matchId: m.id },
     );
     revalidateAdmin();
     revalidatePath(`/matches/${result.match.id}`);
@@ -590,7 +625,15 @@ export async function actionAttachMatchScreenshot(
       where: { id: matchId },
       data: { screenshotPath: uploaded.screenshotPath },
     });
-    await note(session, "match.attach_screenshot", `Attached screenshot to match`, {
+    const teams = await prisma.match.findUnique({
+      where: { id: matchId },
+      select: {
+        radiantTeam: { select: { name: true } },
+        direTeam: { select: { name: true } },
+      },
+    });
+    const label = `${teams?.radiantTeam?.name ?? "Radiant"} vs ${teams?.direTeam?.name ?? "Dire"}`;
+    await note(session, "match.attach_screenshot", `Attached screenshot: ${label}`, {
       matchId,
     });
     revalidateAdmin();

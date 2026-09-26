@@ -64,7 +64,12 @@ export async function adminLinkMatchPlayer(input: {
     }
   }
 
-  return { seatId: seat.id, alsoFixed, boardName };
+  return {
+    seatId: seat.id,
+    alsoFixed,
+    boardName,
+    playerName: player.steamName || player.discordName,
+  };
 }
 
 /**
