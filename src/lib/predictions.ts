@@ -98,6 +98,15 @@ export function isGroupStageLocked(lockAt: Date | null, now = new Date()) {
   return Boolean(lockAt && now >= lockAt);
 }
 
+/**
+ * Organizer Unlocked reopens picks even after the Friday schedule lock.
+ * Organizer Locked always closes picks. Friday is when organizers usually
+ * flip Locked in admin / Discord — not a hard gate once Unlocked again.
+ */
+export function picksClosedForOrganizer(predictionsEnabled: boolean) {
+  return !predictionsEnabled;
+}
+
 export function groupStageIsComplete(
   fixtures: { kind: string; status: string }[],
 ) {
@@ -207,7 +216,6 @@ export async function saveMatchPredictions(
     },
   });
   const byId = new Map(seasonFixtures.map((row) => [row.id, row]));
-  const groupLocked = isGroupStageLocked(groupStageLockAt(seasonFixtures));
   const groupsDone = groupStageIsComplete(seasonFixtures);
   const fallbackSeasonId =
     seasonFixtures.find((row) => row.seasonId)?.seasonId ??
@@ -221,11 +229,6 @@ export async function saveMatchPredictions(
     if (isGroupStagePredictionFixture(fixture.kind)) {
       if (fixture.status === "completed") {
         throw new Error("That series is already completed.");
-      }
-      if (groupLocked) {
-        throw new Error(
-          "Group stage picks locked at Friday 10:00 PM PKT.",
-        );
       }
     } else if (isInternationalPredictionFixture(fixture.kind)) {
       if (!groupsDone) {
@@ -309,16 +312,6 @@ export async function saveBracketPicks(
       direTeam: { select: { id: true, name: true } },
     },
   });
-  const firstKickoff = fixtures.reduce<Date | null>((soonest, row) => {
-    if (!soonest || row.scheduledAt < soonest) return row.scheduledAt;
-    return soonest;
-  }, null);
-  const treeLockAt = fridayPredictionLockAt(firstKickoff);
-  if (treeLockAt && now >= treeLockAt) {
-    throw new Error(
-      "The International bracket locked at Friday 10:00 PM PKT.",
-    );
-  }
 
   const actual: Partial<Record<BracketSlot, SlotResult>> = {};
   const lockedSlots = new Set<BracketSlot>();
@@ -424,7 +417,9 @@ export async function getInternationalPickem(
     return soonest;
   }, null);
   const treeLockAt = fridayPredictionLockAt(firstKickoff);
-  const treeLocked = Boolean(treeLockAt && now >= treeLockAt);
+  const scheduleTreeLocked = Boolean(treeLockAt && now >= treeLockAt);
+  const { predictionsEnabled } = await getCupFeatureSettings();
+  const treeLocked = picksClosedForOrganizer(predictionsEnabled);
 
   const actual: Partial<Record<BracketSlot, SlotResult>> = {};
   const lockedSlots = new Set<BracketSlot>();
@@ -455,11 +450,13 @@ export async function getInternationalPickem(
   return {
     unlocked: true,
     treeLocked,
-    lockLabel: treeLocked
-      ? "Locked Friday at 10:00 PM PKT"
-      : treeLockAt
-        ? `Locks ${formatScheduleWhen(treeLockAt)}`
-        : "Fill the tree. Locks Friday at 10:00 PM PKT.",
+    lockLabel: !predictionsEnabled
+      ? "Locked by organizer"
+      : scheduleTreeLocked
+        ? "Open (organizer reopened after Friday lock)"
+        : treeLockAt
+          ? `Locks ${formatScheduleWhen(treeLockAt)}`
+          : "Fill the tree. Locks Friday at 10:00 PM PKT.",
     seeds,
     actual,
     lockedSlots: [...lockedSlots],
@@ -570,13 +567,17 @@ function nightsFor(
 
 export async function getPredictionBoard(playerId?: string | null) {
   const now = new Date();
-  const all = await listCupSchedule({ publicOnly: true });
+  const [{ predictionsEnabled }, all] = await Promise.all([
+    getCupFeatureSettings(),
+    listCupSchedule({ publicOnly: true }),
+  ]);
   const group = all.filter((row) => isGroupStagePredictionFixture(row.kind));
   const international = all.filter((row) =>
     isInternationalPredictionFixture(row.kind),
   );
   const groupLockAt = groupStageLockAt(group);
-  const groupLocked = isGroupStageLocked(groupLockAt, now);
+  const fridayLocked = isGroupStageLocked(groupLockAt, now);
+  const groupLocked = picksClosedForOrganizer(predictionsEnabled);
   const groupsDone = groupStageIsComplete(group);
   const internationalLocked = !groupsDone;
 
@@ -608,7 +609,13 @@ export async function getPredictionBoard(playerId?: string | null) {
         ? 0
         : groupNights.flatMap((night) => night.fixtures).length,
       stageLocked: groupLocked,
-      lockLabel: groupLockAt ? formatScheduleWhen(groupLockAt) : null,
+      lockLabel: !predictionsEnabled
+        ? "Locked by organizer"
+        : fridayLocked
+          ? "Open (organizer reopened after Friday lock)"
+          : groupLockAt
+            ? formatScheduleWhen(groupLockAt)
+            : null,
     } satisfies PredictionStageView,
     international: {
       nights: internationalNights,
