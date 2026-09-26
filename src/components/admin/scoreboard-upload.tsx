@@ -1,9 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition, type FormEvent } from "react";
+import { useRef, useState, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { actionIngestScoreboardScreenshot } from "@/app/admin/actions";
 import { useAdminToast } from "@/components/admin/admin-toast";
+import {
+  AdminUploadProgress,
+  type UploadProgressPhase,
+} from "@/components/admin/upload-progress";
 import {
   AdminCard,
   AdminSection,
@@ -14,27 +18,16 @@ import {
 import { compressImageFileForUpload } from "@/lib/compress-image-client";
 import { cn } from "@/lib/utils";
 
-type Phase = "idle" | "compress" | "upload" | "ocr";
-
 /** Admin intake: compress → S3 → OCR → match editor. */
 export function AdminScoreboardUpload() {
   const formRef = useRef<HTMLFormElement>(null);
   const [pending, startTransition] = useTransition();
-  const [phase, setPhase] = useState<Phase>("idle");
-  const [elapsedSec, setElapsedSec] = useState(0);
+  const [phase, setPhase] = useState<UploadProgressPhase>("idle");
+  const [runId, setRunId] = useState(0);
   const [fileName, setFileName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const toast = useAdminToast();
   const router = useRouter();
-
-  useEffect(() => {
-    if (!pending) return;
-    const started = Date.now();
-    const id = window.setInterval(() => {
-      setElapsedSec(Math.floor((Date.now() - started) / 1000));
-    }, 250);
-    return () => window.clearInterval(id);
-  }, [pending]);
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -47,7 +40,7 @@ export function AdminScoreboardUpload() {
       return;
     }
     setError(null);
-    setElapsedSec(0);
+    setRunId((n) => n + 1);
     setPhase("compress");
     startTransition(async () => {
       try {
@@ -55,12 +48,16 @@ export function AdminScoreboardUpload() {
         const data = new FormData();
         data.set("screenshot", file);
         setPhase("upload");
+        // Brief upload phase, then OCR consumes most of the wait.
+        window.setTimeout(() => setPhase("ocr"), 700);
         const result = await actionIngestScoreboardScreenshot(data);
         if (!result.ok) {
           setError(result.error);
           toast.error(result.error);
+          setPhase("idle");
           return;
         }
+        setPhase("done");
         toast.success("Scoreboard ingested");
         formRef.current?.reset();
         setFileName(null);
@@ -73,18 +70,12 @@ export function AdminScoreboardUpload() {
             : "Could not read that screenshot. Try again.";
         setError(message);
         toast.error(message);
-      } finally {
         setPhase("idle");
       }
     });
   }
 
-  const pendingLabel =
-    phase === "compress"
-      ? "Preparing image…"
-      : phase === "upload" || phase === "ocr"
-        ? `Uploading & reading… ${elapsedSec}s`
-        : "Upload & ingest";
+  const busy = pending || phase === "done";
 
   return (
     <AdminCard tone="accent" className="mb-6">
@@ -121,14 +112,14 @@ export function AdminScoreboardUpload() {
             disabled={pending}
             className={cn(adminBtnClass, adminBtnPrimaryClass)}
           >
-            {pending ? pendingLabel : "Upload & ingest"}
+            {pending ? "Working…" : "Upload & ingest"}
           </button>
         </form>
-        {pending ? (
-          <p className="m-0 text-xs text-muted-foreground" aria-live="polite">
-            Usually finishes in under 20 seconds. Keep this tab open.
-          </p>
-        ) : null}
+        <AdminUploadProgress
+          key={runId}
+          active={busy && phase !== "idle"}
+          phase={phase}
+        />
         {error ? (
           <p
             role="alert"

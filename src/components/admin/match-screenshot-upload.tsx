@@ -1,9 +1,13 @@
 "use client";
 
-import { useEffect, useState, useTransition, type FormEvent } from "react";
+import { useState, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { actionAttachMatchScreenshot } from "@/app/admin/actions";
 import { useAdminToast } from "@/components/admin/admin-toast";
+import {
+  AdminUploadProgress,
+  type UploadProgressPhase,
+} from "@/components/admin/upload-progress";
 import {
   adminBtnClass,
   adminBtnPrimaryClass,
@@ -15,19 +19,11 @@ import { cn } from "@/lib/utils";
 /** Replace / attach a scoreboard image on an existing match (S3 only). */
 export function AdminMatchScreenshotUpload({ matchId }: { matchId: string }) {
   const [pending, startTransition] = useTransition();
-  const [elapsedSec, setElapsedSec] = useState(0);
+  const [phase, setPhase] = useState<UploadProgressPhase>("idle");
+  const [runId, setRunId] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const toast = useAdminToast();
   const router = useRouter();
-
-  useEffect(() => {
-    if (!pending) return;
-    const started = Date.now();
-    const id = window.setInterval(() => {
-      setElapsedSec(Math.floor((Date.now() - started) / 1000));
-    }, 250);
-    return () => window.clearInterval(id);
-  }, [pending]);
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -40,19 +36,23 @@ export function AdminMatchScreenshotUpload({ matchId }: { matchId: string }) {
       return;
     }
     setError(null);
-    setElapsedSec(0);
+    setRunId((n) => n + 1);
+    setPhase("compress");
     startTransition(async () => {
       try {
         const file = await compressImageFileForUpload(raw);
         const data = new FormData();
         data.set("matchId", matchId);
         data.set("screenshot", file);
+        setPhase("upload");
         const result = await actionAttachMatchScreenshot(data);
         if (!result.ok) {
           setError(result.error);
           toast.error(result.error);
+          setPhase("idle");
           return;
         }
+        setPhase("done");
         toast.success("Screenshot saved to S3");
         form.reset();
         setError(null);
@@ -64,9 +64,12 @@ export function AdminMatchScreenshotUpload({ matchId }: { matchId: string }) {
             : "Upload failed. Try again.";
         setError(message);
         toast.error(message);
+        setPhase("idle");
       }
     });
   }
+
+  const busy = pending || phase === "done";
 
   return (
     <div className="grid gap-3">
@@ -91,9 +94,14 @@ export function AdminMatchScreenshotUpload({ matchId }: { matchId: string }) {
           disabled={pending}
           className={cn(adminBtnClass, adminBtnPrimaryClass)}
         >
-          {pending ? `Uploading… ${elapsedSec}s` : "Save to S3"}
+          {pending ? "Working…" : "Save to S3"}
         </button>
       </form>
+      <AdminUploadProgress
+        key={runId}
+        active={busy && phase !== "idle"}
+        phase={phase === "ocr" ? "upload" : phase}
+      />
       {error ? (
         <p
           role="alert"
