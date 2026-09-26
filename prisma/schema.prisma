@@ -105,6 +105,16 @@ model PlayerAlias {
   @@index([playerId])
 }
 
+/// Board names marked as stand-ins (guests). Applied across matches + future OCR.
+model ScoreboardStandInName {
+  id        String   @id @default(cuid())
+  /// Normalized board name (same rules as PlayerAlias.alias).
+  alias     String   @unique
+  /// Original OCR / board label for display.
+  label     String
+  createdAt DateTime @default(now())
+}
+
 model CupSettings {
   id                   String   @id @default("singleton")
   registrationOpen     Boolean  @default(false)

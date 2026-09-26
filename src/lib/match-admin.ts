@@ -2,6 +2,11 @@ import { prisma } from "./prisma";
 import { currentSeasonId, syncSeasonPlayer } from "./seasons";
 import { rebalanceTeamRoster } from "./players-admin";
 import { STARTING_PURSE } from "./constants";
+import { addPlayerAlias } from "./player-aliases";
+import {
+  rememberStandInBoardName,
+  listMatchSeatsByBoardName,
+} from "./scoreboard-names";
 
 /** Link a scoreboard seat to a registered player (OCR fix). */
 export async function adminLinkMatchPlayer(input: {
@@ -18,7 +23,12 @@ export async function adminLinkMatchPlayer(input: {
   });
   if (!player) throw new Error("Player not found.");
 
-  return prisma.matchPlayer.update({
+  const boardName = seat.boardName.trim();
+  if (boardName) {
+    await addPlayerAlias({ playerId: player.id, alias: boardName });
+  }
+
+  await prisma.matchPlayer.update({
     where: { id: seat.id },
     data: {
       playerId: player.id,
@@ -27,11 +37,38 @@ export async function adminLinkMatchPlayer(input: {
       asStandIn: false,
     },
   });
+
+  // Same board name on other matches → same player link.
+  let alsoFixed = 0;
+  if (boardName) {
+    const others = await listMatchSeatsByBoardName(boardName, seat.id);
+    const toFix = others.filter(
+      (row) =>
+        row.asStandIn ||
+        row.unknown ||
+        !row.playerId ||
+        row.playerId === player.id,
+    );
+    if (toFix.length > 0) {
+      const result = await prisma.matchPlayer.updateMany({
+        where: { id: { in: toFix.map((row) => row.id) } },
+        data: {
+          playerId: player.id,
+          steam32: player.steam32,
+          unknown: false,
+          asStandIn: false,
+        },
+      });
+      alsoFixed = result.count;
+    }
+  }
+
+  return { seatId: seat.id, alsoFixed, boardName };
 }
 
 /**
  * Mark a seat as a stand-in: keep board name, clear player link.
- * Use when they are a guest, not an OCR miss to fix later.
+ * Remembers the board name and applies stand-in to matching seats elsewhere.
  */
 export async function adminMarkMatchStandIn(matchPlayerId: string) {
   const seat = await prisma.matchPlayer.findUnique({
@@ -39,7 +76,12 @@ export async function adminMarkMatchStandIn(matchPlayerId: string) {
   });
   if (!seat) throw new Error("Match seat not found.");
 
-  return prisma.matchPlayer.update({
+  const boardName = seat.boardName.trim();
+  if (boardName) {
+    await rememberStandInBoardName(boardName);
+  }
+
+  await prisma.matchPlayer.update({
     where: { id: seat.id },
     data: {
       playerId: null,
@@ -47,6 +89,24 @@ export async function adminMarkMatchStandIn(matchPlayerId: string) {
       asStandIn: true,
     },
   });
+
+  let alsoFixed = 0;
+  if (boardName) {
+    const others = await listMatchSeatsByBoardName(boardName, seat.id);
+    if (others.length > 0) {
+      const result = await prisma.matchPlayer.updateMany({
+        where: { id: { in: others.map((row) => row.id) } },
+        data: {
+          playerId: null,
+          unknown: true,
+          asStandIn: true,
+        },
+      });
+      alsoFixed = result.count;
+    }
+  }
+
+  return { seatId: seat.id, alsoFixed, boardName };
 }
 
 /** Set which franchises played and who won (fixes table “played” count). */

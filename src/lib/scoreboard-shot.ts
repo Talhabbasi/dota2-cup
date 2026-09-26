@@ -4,6 +4,7 @@ import { prisma } from "./prisma";
 import { currentSeasonId } from "./seasons";
 import { loadHeroCatalog, loadItemCatalog } from "./opendota";
 import { normalizeAlias } from "./player-aliases";
+import { listStandInAliasSet } from "./scoreboard-names";
 
 export type ScoreboardItem = { key: string; name: string };
 
@@ -528,7 +529,7 @@ export async function applyParsedScoreboard(
   }
 
   const seasonId = await currentSeasonId();
-  const [heroes, itemCatalog, seasonPlayers, aliasRows, teams] =
+  const [heroes, itemCatalog, seasonPlayers, aliasRows, teams, standInAliases] =
     await Promise.all([
       loadHeroCatalog(),
       loadItemCatalog(),
@@ -551,6 +552,7 @@ export async function applyParsedScoreboard(
         where: { seasonId },
         select: { id: true, name: true },
       }),
+      listStandInAliasSet(),
     ]);
   const itemList = Object.values(itemCatalog);
 
@@ -615,7 +617,10 @@ export async function applyParsedScoreboard(
     const hero = resolveHero(row.hero, heroes);
     const sideTeamId =
       row.side === "dire" ? direTeam?.id ?? null : radiantTeam?.id ?? null;
-    const mapped = resolvePlayer(row.name, roster, sideTeamId, usedIds);
+    const standIn = standInAliases.has(norm(row.name));
+    const mapped = standIn
+      ? null
+      : resolvePlayer(row.name, roster, sideTeamId, usedIds);
     if (mapped) usedIds.add(mapped.id);
     const items = row.items
       .map((label) => resolveItem(label, itemList))
@@ -624,6 +629,7 @@ export async function applyParsedScoreboard(
       steam32: mapped?.steam32 ?? 0,
       playerId: mapped?.id ?? null,
       unknown: !mapped,
+      asStandIn: standIn,
       boardName: row.name,
       side: row.side,
       hero: hero?.name ?? row.hero,

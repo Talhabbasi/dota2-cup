@@ -208,7 +208,8 @@ export default async function AdminMatchDetailPage({
                     <div className="flex flex-wrap gap-2">
                       <AdminConfirmForm
                         action={actionLinkMatchPlayer}
-                        message={`Link this scoreboard seat to the selected player?`}
+                        message={`Link this scoreboard seat to the selected player? Same board name on other matches will be fixed too.`}
+                        successMessage="Linked across matches"
                         className="flex min-w-0 flex-1 flex-wrap items-center gap-2"
                       >
                         <input
@@ -239,7 +240,8 @@ export default async function AdminMatchDetailPage({
                       </AdminConfirmForm>
                       <AdminConfirmForm
                         action={actionMarkStandIn}
-                        message={`Mark "${seat.boardName || seat.player?.steamName || "this seat"}" as a stand-in?`}
+                        message={`Mark "${seat.boardName || seat.player?.steamName || "this seat"}" as a stand-in? Same board name on other matches will be marked too.`}
+                        successMessage="Stand-in applied across matches"
                       >
                         <input
                           type="hidden"
