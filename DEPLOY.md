@@ -210,7 +210,7 @@ Set these on the **website (Vercel)** and the **bot host**:
 | `AWS_S3_BUCKET` | Bucket name |
 | `AWS_S3_PUBLIC_BASE_URL` | Optional CloudFront or custom base (no trailing slash) |
 
-Objects land under `matches/…`. Make that prefix publicly readable (bucket policy or CloudFront), or the site cannot show images.
+Objects land under `matches/…` as compressed JPEGs (max width 1920). Make that prefix publicly readable (bucket policy or CloudFront), or the site cannot show images.
 
 Without AWS env, uploads fail with a clear error (no local disk fallback).
 

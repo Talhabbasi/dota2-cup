@@ -1,5 +1,6 @@
 /**
- * Migrate Match.screenshotPath from local `/uploads/matches/...` to S3.
+ * Migrate Match.screenshotPath from local `/uploads/matches/...` to S3
+ * (images are JPEG-compressed in uploadMatchScreenshot).
  *
  * Looks for files under:
  *   - public/uploads/matches/

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import sharp from "sharp";
 
 /** True when AWS S3 env is complete enough to upload. */
 export function isObjectStorageConfigured(): boolean {
@@ -38,20 +39,53 @@ function s3PublicBaseUrl(): string {
   return `https://${bucket}.s3.${region}.amazonaws.com`;
 }
 
-function extForMime(mime: string): string {
-  if (mime.includes("png")) return ".png";
-  if (mime.includes("webp")) return ".webp";
-  if (mime.includes("gif")) return ".gif";
-  return ".jpg";
-}
-
 function safeKeyHint(hint: string): string {
   const cleaned = hint.replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
   return (cleaned || "file").slice(0, 64);
 }
 
+const MAX_UPLOAD_WIDTH = 1920;
+const JPEG_QUALITY = 78;
+
 /**
- * Upload an image to S3 only (no local disk / public/uploads).
+ * Shrink + JPEG-compress for S3. Falls back to the original buffer if sharp fails.
+ * Returned `ocrBuffer` stays close to the source for scoreboard parsing.
+ */
+export async function compressImageForS3(input: {
+  buffer: Buffer;
+  mime?: string | null;
+}): Promise<{ uploadBuffer: Buffer; uploadMime: string; ocrBuffer: Buffer; ocrMime: string }> {
+  const ocrMime = input.mime?.trim() || "image/jpeg";
+  try {
+    let pipeline = sharp(input.buffer, { failOn: "none" }).rotate();
+    const meta = await pipeline.metadata();
+    if ((meta.width ?? 0) > MAX_UPLOAD_WIDTH) {
+      pipeline = pipeline.resize({
+        width: MAX_UPLOAD_WIDTH,
+        withoutEnlargement: true,
+      });
+    }
+    const uploadBuffer = await pipeline
+      .jpeg({ quality: JPEG_QUALITY, mozjpeg: true })
+      .toBuffer();
+    return {
+      uploadBuffer,
+      uploadMime: "image/jpeg",
+      ocrBuffer: input.buffer,
+      ocrMime,
+    };
+  } catch {
+    return {
+      uploadBuffer: input.buffer,
+      uploadMime: ocrMime,
+      ocrBuffer: input.buffer,
+      ocrMime,
+    };
+  }
+}
+
+/**
+ * Upload an image to S3 only (compressed). No local disk / public/uploads.
  * `folder` e.g. `matches` or `payments`.
  */
 export async function uploadImageToS3(input: {
@@ -61,31 +95,36 @@ export async function uploadImageToS3(input: {
   folder?: string;
 }): Promise<{ screenshotPath: string; buffer: Buffer; mime: string; key: string }> {
   requireObjectStorage();
-  const mime = input.mime?.trim() || "image/jpeg";
-  const ext = extForMime(mime);
+  const compressed = await compressImageForS3({
+    buffer: input.buffer,
+    mime: input.mime,
+  });
   const hint = safeKeyHint(input.keyHint);
-  const folder = (input.folder ?? "matches").replace(/[^a-zA-Z0-9_-]+/g, "") || "matches";
-  const fileName = `${hint}-${randomUUID()}${ext}`;
+  const folder =
+    (input.folder ?? "matches").replace(/[^a-zA-Z0-9_-]+/g, "") || "matches";
+  const fileName = `${hint}-${randomUUID()}.jpg`;
   const key = `${folder}/${fileName}`;
 
   await s3Client().send(
     new PutObjectCommand({
       Bucket: process.env.AWS_S3_BUCKET!.trim(),
       Key: key,
-      Body: input.buffer,
-      ContentType: mime,
+      Body: compressed.uploadBuffer,
+      ContentType: compressed.uploadMime,
+      CacheControl: "public, max-age=31536000, immutable",
     }),
   );
 
   return {
     screenshotPath: `${s3PublicBaseUrl()}/${key}`,
-    buffer: input.buffer,
-    mime,
+    // Keep original bytes for OCR when callers use the returned buffer.
+    buffer: compressed.ocrBuffer,
+    mime: compressed.ocrMime,
     key,
   };
 }
 
-/** Match scoreboard screenshots → `matches/` on S3. */
+/** Match scoreboard screenshots → `matches/` on S3 (compressed). */
 export async function uploadMatchScreenshot(input: {
   buffer: Buffer;
   mime?: string | null;
