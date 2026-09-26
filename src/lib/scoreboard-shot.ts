@@ -204,9 +204,9 @@ function geminiImageMime(mime: string) {
 }
 
 const GEMINI_MODELS = [
-  "gemini-2.5-flash",
+  "gemini-3.8-flash",
   "gemini-flash-latest",
-  "gemini-2.0-flash",
+  "gemini-3.5-flash",
 ];
 
 function isBusyGemini(status: number, message: string) {
