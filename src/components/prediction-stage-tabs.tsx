@@ -181,13 +181,10 @@ export function PredictionStageTabs({
           <div className="section-head row">
             <h2>Group stage</h2>
             <span className="muted">
-              {group.stageLocked
-                ? (group.lockLabel ?? "Locked for everyone")
-                : group.lockLabel?.startsWith("Open")
-                  ? group.lockLabel
-                  : group.lockLabel
-                    ? `Locks ${group.lockLabel}`
-                    : "Locks Friday 10:00 PM PKT"}
+              {group.lockLabel ??
+                (group.stageLocked
+                  ? "Locked by organizer"
+                  : "Open · organizer controls lock")}
             </span>
           </div>
           <PredictionBoard

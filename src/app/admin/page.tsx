@@ -280,8 +280,8 @@ export default async function AdminPage({
                 defaultValue={settings.predictionsEnabled ? "on" : "off"}
                 className={adminControlClass}
               >
-                <option value="on">Unlocked</option>
-                <option value="off">Locked</option>
+                <option value="on">Unlocked — players can pick</option>
+                <option value="off">Locked — closes all picks</option>
               </select>
             </AdminField>
             <AdminField label="Max rank">

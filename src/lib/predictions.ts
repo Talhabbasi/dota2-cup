@@ -99,9 +99,8 @@ export function isGroupStageLocked(lockAt: Date | null, now = new Date()) {
 }
 
 /**
- * Organizer Unlocked reopens picks even after the Friday schedule lock.
- * Organizer Locked always closes picks. Friday is when organizers usually
- * flip Locked in admin / Discord — not a hard gate once Unlocked again.
+ * Only the organizer Predictions switch (admin / Discord) opens or closes picks.
+ * Completed series stay locked for scoring fairness.
  */
 export function picksClosedForOrganizer(predictionsEnabled: boolean) {
   return !predictionsEnabled;
@@ -216,7 +215,6 @@ export async function saveMatchPredictions(
     },
   });
   const byId = new Map(seasonFixtures.map((row) => [row.id, row]));
-  const groupsDone = groupStageIsComplete(seasonFixtures);
   const fallbackSeasonId =
     seasonFixtures.find((row) => row.seasonId)?.seasonId ??
     (await currentSeasonId());
@@ -231,11 +229,6 @@ export async function saveMatchPredictions(
         throw new Error("That series is already completed.");
       }
     } else if (isInternationalPredictionFixture(fixture.kind)) {
-      if (!groupsDone) {
-        throw new Error(
-          "The International unlocks after every group-stage match is done.",
-        );
-      }
       if (fixture.status === "completed") {
         throw new Error("That series is locked.");
       }
@@ -396,8 +389,9 @@ export async function getInternationalPickem(
     };
   }
 
-  const now = new Date();
   const season = await getCurrentSeasonSafe();
+  const { predictionsEnabled } = await getCupFeatureSettings();
+  const treeLocked = picksClosedForOrganizer(predictionsEnabled);
   const fixtures = await prisma.scheduledFixture.findMany({
     where: {
       ...publicFixtureWhere,
@@ -408,16 +402,6 @@ export async function getInternationalPickem(
       direTeam: { select: { id: true, name: true } },
     },
   });
-  const firstKickoff = fixtures.reduce<Date | null>((soonest, row) => {
-    if (!soonest || asDate(row.scheduledAt) < asDate(soonest)) {
-      return row.scheduledAt;
-    }
-    return soonest;
-  }, null);
-  const treeLockAt = fridayPredictionLockAt(firstKickoff);
-  const scheduleTreeLocked = Boolean(treeLockAt && now >= treeLockAt);
-  const { predictionsEnabled } = await getCupFeatureSettings();
-  const treeLocked = picksClosedForOrganizer(predictionsEnabled);
 
   const actual: Partial<Record<BracketSlot, SlotResult>> = {};
   const lockedSlots = new Set<BracketSlot>();
@@ -428,8 +412,6 @@ export async function getInternationalPickem(
       if (outcome) actual[fixture.slotKey] = outcome;
       lockedSlots.add(fixture.slotKey);
     } else if (treeLocked) {
-      // Organizer Locked closes the tree. Unlocked stays open past kickoff
-      // until the series is completed.
       lockedSlots.add(fixture.slotKey);
     }
   }
@@ -450,13 +432,9 @@ export async function getInternationalPickem(
   return {
     unlocked: true,
     treeLocked,
-    lockLabel: !predictionsEnabled
+    lockLabel: treeLocked
       ? "Locked by organizer"
-      : scheduleTreeLocked
-        ? "Open (organizer reopened after Friday lock)"
-        : treeLockAt
-          ? `Locks ${formatScheduleWhen(treeLockAt)}`
-          : "Fill the tree. Locks Friday at 10:00 PM PKT.",
+      : "Open · organizer controls lock",
     seeds,
     actual,
     lockedSlots: [...lockedSlots],
@@ -561,7 +539,6 @@ function nightsFor(
 }
 
 export async function getPredictionBoard(playerId?: string | null) {
-  const now = new Date();
   const [{ predictionsEnabled }, all] = await Promise.all([
     getCupFeatureSettings(),
     listCupSchedule({ publicOnly: true }),
@@ -570,11 +547,8 @@ export async function getPredictionBoard(playerId?: string | null) {
   const international = all.filter((row) =>
     isInternationalPredictionFixture(row.kind),
   );
-  const groupLockAt = groupStageLockAt(group);
-  const fridayLocked = isGroupStageLocked(groupLockAt, now);
-  const groupLocked = picksClosedForOrganizer(predictionsEnabled);
+  const stageLocked = picksClosedForOrganizer(predictionsEnabled);
   const groupsDone = groupStageIsComplete(group);
-  const internationalLocked = !groupsDone;
 
   const ids = [...group, ...international].map((row) => row.id);
   const picks = playerId
@@ -589,40 +563,38 @@ export async function getPredictionBoard(playerId?: string | null) {
     picks.map((pick) => [pick.fixtureId, pick.predictedTeamId]),
   );
 
-  const groupNights = nightsFor(group, pickByFixture, groupLocked);
+  const groupNights = nightsFor(group, pickByFixture, stageLocked);
   const internationalNights = nightsFor(
     international,
     pickByFixture,
-    internationalLocked,
+    stageLocked,
   );
+  const lockLabel = stageLocked
+    ? "Locked by organizer"
+    : "Open · organizer controls lock";
 
   return {
     group: {
       nights: groupNights,
-      openCount: groupLocked
+      openCount: stageLocked
         ? 0
         : groupNights.flatMap((night) => night.fixtures).length,
-      stageLocked: groupLocked,
-      lockLabel: !predictionsEnabled
-        ? "Locked by organizer"
-        : fridayLocked
-          ? "Open (organizer reopened after Friday lock)"
-          : groupLockAt
-            ? formatScheduleWhen(groupLockAt)
-            : null,
+      stageLocked,
+      lockLabel,
     } satisfies PredictionStageView,
     international: {
       nights: internationalNights,
-      openCount:
-        internationalLocked
-          ? 0
-          : internationalNights
-              .flatMap((night) => night.fixtures)
-              .filter((row) => !row.locked).length,
-      stageLocked: internationalLocked,
+      openCount: stageLocked
+        ? 0
+        : internationalNights
+            .flatMap((night) => night.fixtures)
+            .filter((row) => !row.locked).length,
+      stageLocked,
       lockLabel: groupsDone
-        ? null
-        : "Unlocks when every group-stage match is done",
+        ? lockLabel
+        : stageLocked
+          ? lockLabel
+          : "Tree fills after group stage · organizer still controls lock",
     } satisfies PredictionStageView,
   };
 }

@@ -19,7 +19,7 @@ export const dynamic = "force-dynamic";
 
 export const metadata = pageMeta(
   "Match Predictions",
-  `Pick ${CUP_NAME} winners. Group stage and The International lock Friday at 10:00 PM PKT. One combined points board.`,
+  `Pick ${CUP_NAME} winners. Organizers open and close picks from admin. One combined points board.`,
 );
 
 export default async function PredictionsPage() {
@@ -47,7 +47,7 @@ export default async function PredictionsPage() {
       <PageHeader
         eyebrow="Pick’em"
         title="Predictions"
-        subtitle={`Group stage and The International lock Friday at 10:00 PM PKT. Group picks are ${PREDICTION_POINTS} points each. The International is a Dota 2 Pick’em tree — tap a winner to send them forward. Grand Final is ${FINAL_PREDICTION_POINTS} points.`}
+        subtitle={`Organizers open and close picks from admin. Group picks are ${PREDICTION_POINTS} points each. The International is a Dota 2 Pick’em tree — tap a winner to send them forward. Grand Final is ${FINAL_PREDICTION_POINTS} points.`}
         pills={[
           ...(season ? [{ label: `Season ${season.number}` }] : []),
           {
