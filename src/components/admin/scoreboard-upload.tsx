@@ -18,8 +18,16 @@ import {
 import { compressImageFileForUpload } from "@/lib/compress-image-client";
 import { cn } from "@/lib/utils";
 
-/** Admin intake: compress → S3 → OCR → match editor. */
-export function AdminScoreboardUpload() {
+/** Fixture-scoped OCR upload — winner comes from the scoreboard, no extra tap. */
+export function AdminScoreboardUpload({
+  fixtureId,
+  teamA,
+  teamB,
+}: {
+  fixtureId: string;
+  teamA: string;
+  teamB: string;
+}) {
   const formRef = useRef<HTMLFormElement>(null);
   const [pending, startTransition] = useTransition();
   const [phase, setPhase] = useState<UploadProgressPhase>("idle");
@@ -46,9 +54,9 @@ export function AdminScoreboardUpload() {
       try {
         const file = await compressImageFileForUpload(raw);
         const data = new FormData();
+        data.set("fixtureId", fixtureId);
         data.set("screenshot", file);
         setPhase("upload");
-        // Brief upload phase, then OCR consumes most of the wait.
         window.setTimeout(() => setPhase("ocr"), 700);
         const result = await actionIngestScoreboardScreenshot(data);
         if (!result.ok) {
@@ -58,20 +66,21 @@ export function AdminScoreboardUpload() {
           return;
         }
         setPhase("done");
-        toast.success("Scoreboard ingested");
+        toast.success("Scoreboard saved · winner from screenshot");
         formRef.current?.reset();
         setFileName(null);
         setError(null);
         router.push(`/admin/matches/${result.matchId}`);
+        router.refresh();
       } catch (err) {
-        const raw =
+        const rawMsg =
           err instanceof Error && err.message.trim() ? err.message : "";
         const message =
           /aborted due to timeout|timed? out|TimeoutError|AbortError/i.test(
-            raw,
+            rawMsg,
           )
             ? "Upload timed out while reading the scoreboard. Try again with a clearer crop."
-            : raw || "Could not read that screenshot. Try again.";
+            : rawMsg || "Could not read that screenshot. Try again.";
         setError(message);
         toast.error(message);
         setPhase("idle");
@@ -83,10 +92,11 @@ export function AdminScoreboardUpload() {
 
   return (
     <AdminCard tone="accent" className="mb-6">
-      <AdminSection title="Upload scoreboard">
+      <AdminSection title="Option A · Upload scoreboard">
         <p className="m-0 text-sm text-muted-foreground">
-          Image is compressed in the browser, then saved to S3 and read with
-          OCR. Use the SCOREBOARD tab (PNG/JPEG).
+          Upload the SCOREBOARD tab for <strong>{teamA}</strong> vs{" "}
+          <strong>{teamB}</strong>. OCR reads the winner — you do not need to
+          tap win/lose after this.
         </p>
         <form
           ref={formRef}
@@ -116,7 +126,7 @@ export function AdminScoreboardUpload() {
             disabled={pending}
             className={cn(adminBtnClass, adminBtnPrimaryClass)}
           >
-            {pending ? "Working…" : "Upload & ingest"}
+            {pending ? "Working…" : "Upload scoreboard"}
           </button>
         </form>
         <AdminUploadProgress

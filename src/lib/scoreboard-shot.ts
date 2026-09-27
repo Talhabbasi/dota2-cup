@@ -631,6 +631,7 @@ export async function applyParsedScoreboard(
   parsed: ParsedScoreboard,
   screenshotPath?: string | null,
   sourceId?: string | null,
+  fixtureId?: string | null,
 ) {
   if (parsed.players.length < 8) {
     throw new Error("That screenshot does not look like a 10-player scoreboard.");
@@ -688,6 +689,29 @@ export async function applyParsedScoreboard(
   const direTeam = resolveTeam(parsed.direTeam, teams);
   const sourceKey = sourceId ? `shot-${sourceId}` : null;
 
+  const linkedFixture = fixtureId
+    ? await prisma.scheduledFixture.findUnique({
+        where: { id: fixtureId },
+        select: {
+          id: true,
+          status: true,
+          radiantTeamId: true,
+          direTeamId: true,
+          radiantTeam: { select: { id: true, name: true } },
+          direTeam: { select: { id: true, name: true } },
+        },
+      })
+    : null;
+  if (fixtureId && (!linkedFixture || linkedFixture.status !== "scheduled")) {
+    throw new Error(
+      "That scheduled match is missing or already completed. Open the pending fixture from Schedule.",
+    );
+  }
+
+  // Prefer schedule sides when uploading from a fixture page.
+  const fixtureRadiant = linkedFixture?.radiantTeam ?? null;
+  const fixtureDire = linkedFixture?.direTeam ?? null;
+
   // Only reuse a match by explicit match/source id — never by team pair alone.
   // Rematches (e.g. group Saif vs Toji, then playoff Saif vs Toji) must create a
   // new Match row; otherwise OCR overwrites the old completed series.
@@ -709,19 +733,19 @@ export async function applyParsedScoreboard(
 
   // Fill a very recent manual/walkover stub for the same teams (from schedule
   // winner buttons), never a historical completed series match.
-  if (!existing && radiantTeam && direTeam) {
+  const stubTeams = fixtureRadiant && fixtureDire
+    ? [fixtureRadiant, fixtureDire]
+    : radiantTeam && direTeam
+      ? [radiantTeam, direTeam]
+      : null;
+  if (!existing && stubTeams) {
+    const [teamA, teamB] = stubTeams;
     const stubs = await prisma.match.findMany({
       where: {
         createdAt: { gte: new Date(Date.now() - 6 * 60 * 60 * 1000) },
         OR: [
-          {
-            radiantTeamId: radiantTeam.id,
-            direTeamId: direTeam.id,
-          },
-          {
-            radiantTeamId: direTeam.id,
-            direTeamId: radiantTeam.id,
-          },
+          { radiantTeamId: teamA.id, direTeamId: teamB.id },
+          { radiantTeamId: teamB.id, direTeamId: teamA.id },
         ],
       },
       include: {
@@ -748,11 +772,35 @@ export async function applyParsedScoreboard(
       ? "dire"
       : "radiant");
 
+  // If OCR sides are swapped vs the fixture, keep fixture orientation and flip winner.
+  let orientedRadiant = radiantTeam;
+  let orientedDire = direTeam;
+  let orientedWinnerSide: "radiant" | "dire" = winnerSide;
+  if (fixtureRadiant && fixtureDire && radiantTeam && direTeam) {
+    const ocrIds = new Set([radiantTeam.id, direTeam.id]);
+    if (ocrIds.has(fixtureRadiant.id) && ocrIds.has(fixtureDire.id)) {
+      const ocrRadiantIsFixtureRadiant = radiantTeam.id === fixtureRadiant.id;
+      orientedRadiant = fixtureRadiant;
+      orientedDire = fixtureDire;
+      if (!ocrRadiantIsFixtureRadiant) {
+        orientedWinnerSide = winnerSide === "radiant" ? "dire" : "radiant";
+      }
+    } else {
+      orientedRadiant = fixtureRadiant;
+      orientedDire = fixtureDire;
+    }
+  } else if (fixtureRadiant && fixtureDire) {
+    orientedRadiant = fixtureRadiant;
+    orientedDire = fixtureDire;
+  }
+
   const usedIds = new Set<string>();
   const rows = parsed.players.map((row) => {
     const hero = resolveHero(row.hero, heroes);
     const sideTeamId =
-      row.side === "dire" ? direTeam?.id ?? null : radiantTeam?.id ?? null;
+      row.side === "dire"
+        ? orientedDire?.id ?? null
+        : orientedRadiant?.id ?? null;
     const standIn = standInAliases.has(norm(row.name));
     const mapped = standIn
       ? null
@@ -786,10 +834,10 @@ export async function applyParsedScoreboard(
     };
   });
 
-  const radiantTeamId = radiantTeam?.id ?? existing?.radiantTeamId ?? null;
-  const direTeamId = direTeam?.id ?? existing?.direTeamId ?? null;
+  const radiantTeamId = orientedRadiant?.id ?? existing?.radiantTeamId ?? null;
+  const direTeamId = orientedDire?.id ?? existing?.direTeamId ?? null;
   const winnerTeamId =
-    winnerSide === "dire" ? direTeamId : radiantTeamId;
+    orientedWinnerSide === "dire" ? direTeamId : radiantTeamId;
 
   const data = {
     openDotaId:
@@ -797,7 +845,7 @@ export async function applyParsedScoreboard(
       existing?.openDotaId ||
       (sourceId ? `shot-${sourceId}` : `shot-${Date.now()}`),
     duration: parsed.durationSeconds ?? existing?.duration ?? null,
-    radiantWin: winnerSide === "radiant",
+    radiantWin: orientedWinnerSide === "radiant",
     radiantTeamId,
     direTeamId,
     winnerTeamId,
@@ -832,6 +880,7 @@ export async function applyParsedScoreboard(
         direTeamId: match.direTeamId,
         winnerTeamId: match.winnerTeamId,
         matchId: match.id,
+        fixtureId: linkedFixture?.id ?? null,
       });
     } catch {
       /* schedule optional */
@@ -864,6 +913,7 @@ export async function ingestScoreboardScreenshot(input: {
   screenshotPath?: string | null;
   sourceId?: string | null;
   knownNames?: string[];
+  fixtureId?: string | null;
 }) {
   const knownNames =
     input.knownNames ?? (await listScoreboardKnownNames());
@@ -872,7 +922,12 @@ export async function ingestScoreboardScreenshot(input: {
     input.mime,
     knownNames,
   );
-  return applyParsedScoreboard(parsed, input.screenshotPath, input.sourceId);
+  return applyParsedScoreboard(
+    parsed,
+    input.screenshotPath,
+    input.sourceId,
+    input.fixtureId,
+  );
 }
 
 export async function ingestScoreboardFile(filePath: string) {

@@ -476,12 +476,31 @@ function actionErrorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
-/** Upload scoreboard → S3 first → OCR ingest. Returns new match id. */
+/** Upload scoreboard → S3 first → OCR ingest. Returns new match id.
+ * Prefer passing fixtureId from Schedule so rematches bind to that series. */
 export async function actionIngestScoreboardScreenshot(
   formData: FormData,
 ): Promise<ScoreboardUploadResult> {
   try {
     const session = await requireAdmin();
+    const fixtureId = String(formData.get("fixtureId") ?? "").trim() || null;
+    if (!fixtureId) {
+      return {
+        ok: false,
+        error:
+          "Open the match from Schedule and upload the scoreboard there (not from Matches).",
+      };
+    }
+    const fixture = await prisma.scheduledFixture.findUnique({
+      where: { id: fixtureId },
+      select: { id: true, status: true },
+    });
+    if (!fixture || fixture.status !== "scheduled") {
+      return {
+        ok: false,
+        error: "That fixture is missing or already completed.",
+      };
+    }
     const file = formData.get("screenshot");
     if (!(file instanceof File) || file.size === 0) {
       return { ok: false, error: "Choose a SCOREBOARD screenshot to upload." };
@@ -509,7 +528,7 @@ export async function actionIngestScoreboardScreenshot(
         uploadMatchScreenshot({
           buffer,
           mime,
-          keyHint: `admin-${Date.now()}`,
+          keyHint: `fixture-${fixtureId.slice(0, 8)}`,
         }),
         listScoreboardKnownNames().catch(() => [] as string[]),
       ]);
@@ -532,8 +551,9 @@ export async function actionIngestScoreboardScreenshot(
         buffer: uploaded.buffer,
         mime: uploaded.mime,
         screenshotPath: uploaded.screenshotPath,
-        sourceId: `admin-${Date.now()}`,
+        sourceId: `admin-${fixtureId.slice(0, 8)}-${Date.now()}`,
         knownNames,
+        fixtureId,
       });
     } catch (error) {
       console.error("Scoreboard OCR ingest failed:", error);
@@ -557,11 +577,12 @@ export async function actionIngestScoreboardScreenshot(
       session,
       "match.ingest_scoreboard",
       `Uploaded scoreboard: ${a} vs ${b}${score}`,
-      { matchId: m.id },
+      { matchId: m.id, fixtureId },
     );
     revalidateAdmin();
     revalidatePath(`/matches/${result.match.id}`);
     revalidatePath(`/admin/matches/${result.match.id}`);
+    revalidatePath(`/admin/schedule/${fixtureId}`);
     return { ok: true, matchId: result.match.id };
   } catch (error) {
     console.error("Scoreboard ingest action failed:", error);

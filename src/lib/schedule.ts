@@ -694,22 +694,33 @@ export async function completeScheduledFixture(input: {
   direTeamId: string | null;
   winnerTeamId: string | null;
   matchId: string;
+  /** When set, complete this fixture only (avoids rematch mix-ups). */
+  fixtureId?: string | null;
 }) {
-  if (!input.radiantTeamId || !input.direTeamId || !hasScheduleTable()) return;
+  if (!hasScheduleTable()) return;
+  if (!input.fixtureId && (!input.radiantTeamId || !input.direTeamId)) return;
 
   try {
-    const keyA = [input.radiantTeamId, input.direTeamId].sort();
-    const fixture = await prisma.scheduledFixture.findFirst({
-      where: {
-        status: "scheduled",
-        OR: [
-          { radiantTeamId: keyA[0], direTeamId: keyA[1] },
-          { radiantTeamId: keyA[1], direTeamId: keyA[0] },
-        ],
-      },
-      // Prefer the soonest upcoming / latest booked rematch, not an old leftover.
-      orderBy: [{ scheduledAt: "desc" }],
-    });
+    const fixture = input.fixtureId
+      ? await prisma.scheduledFixture.findFirst({
+          where: { id: input.fixtureId, status: "scheduled" },
+        })
+      : await prisma.scheduledFixture.findFirst({
+          where: {
+            status: "scheduled",
+            OR: [
+              {
+                radiantTeamId: [input.radiantTeamId!, input.direTeamId!].sort()[0],
+                direTeamId: [input.radiantTeamId!, input.direTeamId!].sort()[1],
+              },
+              {
+                radiantTeamId: [input.radiantTeamId!, input.direTeamId!].sort()[1],
+                direTeamId: [input.radiantTeamId!, input.direTeamId!].sort()[0],
+              },
+            ],
+          },
+          orderBy: [{ scheduledAt: "desc" }],
+        });
 
     if (!fixture) return;
 
