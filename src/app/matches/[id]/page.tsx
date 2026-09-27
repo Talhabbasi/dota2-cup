@@ -18,6 +18,7 @@ import {
 import { formatDuration, getMatch, getMatchMeta } from "@/lib/data";
 import { formatKillScore, matchKillTotals } from "@/lib/match-score";
 import { loadHeroCatalog, heroIconUrl } from "@/lib/opendota";
+import { MatchScreenshotImage } from "@/components/match-screenshot-image";
 import { screenshotDisplayUrl } from "@/lib/screenshot-url";
 import { isMatchStandIn, unmatchedLabel, standInLabel } from "@/lib/stand-in";
 import { cn } from "@/lib/utils";
@@ -405,12 +406,7 @@ export default async function MatchPage({
       {shotUrl ? (
         <EsportsCard interactive={false} className="mb-6 overflow-hidden p-0">
           <a href={shotUrl} target="_blank" rel="noreferrer" className="block">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={shotUrl}
-              alt="Match scoreboard"
-              className="h-auto w-full object-contain"
-            />
+            <MatchScreenshotImage src={shotUrl} />
           </a>
         </EsportsCard>
       ) : null}

@@ -32,6 +32,7 @@ import {
 } from "@/app/admin/actions";
 import { cn } from "@/lib/utils";
 import { AdminMatchScreenshotUpload } from "@/components/admin/match-screenshot-upload";
+import { MatchScreenshotImage } from "@/components/match-screenshot-image";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -78,12 +79,7 @@ export default async function AdminMatchDetailPage({
               rel="noreferrer"
               className="mb-4 block overflow-hidden rounded-lg border border-white/10"
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={shotUrl}
-                alt="Match scoreboard"
-                className="h-auto w-full object-contain"
-              />
+              <MatchScreenshotImage src={shotUrl} />
             </a>
           ) : match.screenshotPath ? (
             <p className="mb-4 text-sm text-amber-200/90">
