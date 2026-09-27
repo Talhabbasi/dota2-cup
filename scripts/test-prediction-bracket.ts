@@ -46,6 +46,28 @@ const uf = slots.find((row) => row.slotKey === "uf");
 assert(lb1?.right?.id === b2.id, "Match 1 loser should land on A3's lower match");
 assert(uf?.left?.id === a1.id && uf?.right?.id === b1.id, "Upper Final should be the two Match 1/2 winners");
 
+// Instant cascade: one upper pick fills UF left + LB1 right without waiting.
+const partial = pickemSlots(seeds, {}, { ub1: a1.id }, new Set(), false);
+const partialUf = partial.find((row) => row.slotKey === "uf");
+const partialLb1 = partial.find((row) => row.slotKey === "lb1");
+assert(partialUf?.left?.id === a1.id, "UF left fills from Match 1 winner immediately");
+assert(partialUf?.right == null, "UF right stays TBD until Match 2");
+assert(partialLb1?.right?.id === b2.id, "LB1 right fills from Match 1 loser immediately");
+assert(partialLb1?.left?.id === a3.id, "LB1 left stays Group A 3rd");
+assert(!partialUf?.ready, "UF not ready until both sides known");
+
+// Upper Final loser drops to Lower Final as soon as UF is picked.
+const withUf = pickemSlots(
+  seeds,
+  {},
+  { ub1: a1.id, ub2: b1.id, uf: a1.id },
+  new Set(),
+  false,
+);
+const lf = withUf.find((row) => row.slotKey === "lb_final");
+assert(lf?.right?.id === b1.id, "UF loser goes to Lower Final immediately");
+assert(lf?.left == null, "LF left waits for Lower Round 2");
+
 // Completed slots must keep the player's real pick, not overwrite with the winner.
 const done = pickemSlots(
   seeds,
@@ -57,6 +79,16 @@ const done = pickemSlots(
 const lb2 = done.find((row) => row.slotKey === "lb2");
 assert(lb2?.myPickId === a2.id, "Completed slot should still show Ash as my pick");
 assert(lb2?.winnerTeamId === b3.id, "Completed slot should show Toji as winner");
-assert(lb2?.myPickId !== lb2?.winnerTeamId, "Missed pick stays distinct from winner");
+assert(lb2?.pickStatus === "busted", "Wrong pick is busted/missed");
+assert(lb2?.pickTeamName === "Ash", "Busted pick keeps team name");
+
+const hit = pickemSlots(
+  seeds,
+  { lb2: { winner: b3, loser: a2 } },
+  { lb2: b3.id },
+  new Set(["lb2"]),
+  false,
+).find((row) => row.slotKey === "lb2");
+assert(hit?.pickStatus === "correct", "Right pick is correct");
 
 console.log("prediction bracket tests passed");

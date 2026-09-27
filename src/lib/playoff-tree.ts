@@ -230,47 +230,30 @@ export function unlockedPairings(
     out.lb2 = { ...out.lb2, left: seeds.b3 };
   }
 
+  // Fill each side as soon as its feeder resolves — do not wait for both.
   if (results.ub1) {
-    out.lb1 = {
-      ...out.lb1,
-      left: out.lb1.left,
-      right: results.ub1.loser,
-    };
+    out.lb1 = { ...out.lb1, right: results.ub1.loser };
+    out.uf = { ...out.uf, left: results.ub1.winner };
   }
   if (results.ub2) {
-    out.lb2 = {
-      ...out.lb2,
-      left: out.lb2.left,
-      right: results.ub2.loser,
-    };
+    out.lb2 = { ...out.lb2, right: results.ub2.loser };
+    out.uf = { ...out.uf, right: results.ub2.winner };
   }
-  if (results.lb1 && results.lb2) {
-    out.lb3 = {
-      ...out.lb3,
-      left: results.lb1.winner,
-      right: results.lb2.winner,
-    };
+  if (results.lb1) {
+    out.lb3 = { ...out.lb3, left: results.lb1.winner };
   }
-  if (results.ub1 && results.ub2) {
-    out.uf = {
-      ...out.uf,
-      left: results.ub1.winner,
-      right: results.ub2.winner,
-    };
+  if (results.lb2) {
+    out.lb3 = { ...out.lb3, right: results.lb2.winner };
   }
-  if (results.lb3 && results.uf) {
-    out.lb_final = {
-      ...out.lb_final,
-      left: results.lb3.winner,
-      right: results.uf.loser,
-    };
+  if (results.lb3) {
+    out.lb_final = { ...out.lb_final, left: results.lb3.winner };
   }
-  if (results.uf && results.lb_final) {
-    out.final = {
-      ...out.final,
-      left: results.uf.winner,
-      right: results.lb_final.winner,
-    };
+  if (results.uf) {
+    out.lb_final = { ...out.lb_final, right: results.uf.loser };
+    out.final = { ...out.final, left: results.uf.winner };
+  }
+  if (results.lb_final) {
+    out.final = { ...out.final, right: results.lb_final.winner };
   }
 
   return out;

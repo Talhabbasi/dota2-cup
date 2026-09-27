@@ -5105,6 +5105,14 @@ tr:last-child td {
   border-color: rgba(61, 206, 120, 0.32);
 }
 
+.ti-node-correct {
+  border-color: rgba(61, 206, 120, 0.45);
+}
+
+.ti-node-busted {
+  border-color: rgba(224, 122, 106, 0.4);
+}
+
 .ti-node-locked {
   opacity: 0.88;
 }
@@ -5201,6 +5209,53 @@ tr:last-child td {
   flex-shrink: 0;
   font-size: 0.7rem;
   color: var(--gold);
+}
+
+.ti-side-mark-ok {
+  color: #3dce78;
+}
+
+.ti-side-mark-bad {
+  color: #e07a6a;
+}
+
+.ti-side-strike {
+  text-decoration: line-through;
+  opacity: 0.75;
+}
+
+.ti-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-size: 0.62rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.ti-badge-ok {
+  color: #7dcea0;
+}
+
+.ti-badge-bad {
+  color: #e07a6a;
+}
+
+.ti-badge-pick {
+  color: var(--gold);
+}
+
+.ti-busted-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.75rem;
+  border-top: 1px solid rgba(224, 122, 106, 0.2);
+  background: rgba(224, 122, 106, 0.06);
+  color: #e07a6a;
 }
 
 .dark {

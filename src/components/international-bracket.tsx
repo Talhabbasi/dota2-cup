@@ -20,28 +20,50 @@ function SlotNode({
   saving: boolean;
   onPick: (slotKey: string, teamId: string) => void;
 }) {
-  const ready = Boolean(match.left && match.right);
-  const pickNote = match.completed
-    ? match.myPickId
-      ? match.myPickId === match.winnerTeamId
-        ? `Correct · +${match.points}`
-        : "Missed"
-      : "No pick"
-    : match.locked
-      ? match.myPickId
-        ? "Locked in"
-        : "Locked"
-      : match.myPickId
-        ? "Picked · save when you are done"
-        : ready
-          ? "Tap a team"
-          : match.waiting;
+  const ready = match.ready;
+  const headStatus =
+    match.pickStatus === "correct"
+      ? "✓ Correct"
+      : match.pickStatus === "busted"
+        ? match.completed
+          ? "✗ Missed"
+          : "✗ Busted"
+        : match.completed
+          ? "Done"
+          : match.locked
+            ? "Locked"
+            : `${match.points} pts`;
+
+  const pickNote =
+    match.pickStatus === "correct"
+      ? `Correct · +${match.points}`
+      : match.pickStatus === "busted"
+        ? match.pickTeamName
+          ? match.completed
+            ? `Missed · picked ${match.pickTeamName}`
+            : `Busted · ${match.pickTeamName} out`
+          : match.completed
+            ? "Missed"
+            : "Busted"
+        : match.pickStatus === "picked"
+          ? match.pickTeamName
+            ? `Picked: ${match.pickTeamName}`
+            : "Picked · save when you are done"
+          : match.locked
+            ? "Locked"
+            : ready
+              ? "Tap a team"
+              : match.left || match.right
+                ? "Waiting for the other side"
+                : match.waiting;
 
   return (
     <article
       className={[
         "ti-node",
         match.completed ? "ti-node-done" : "",
+        match.pickStatus === "busted" ? "ti-node-busted" : "",
+        match.pickStatus === "correct" ? "ti-node-correct" : "",
         match.locked ? "ti-node-locked" : "",
         ready && !match.locked && !match.completed ? "ti-node-open" : "",
       ]
@@ -53,16 +75,18 @@ function SlotNode({
           {match.matchNumber != null ? `M${match.matchNumber}` : "M"} ·{" "}
           {match.round}
         </span>
-        <span>
-          {match.completed
-            ? match.myPickId
-              ? match.myPickId === match.winnerTeamId
-                ? "Correct"
-                : "Missed"
-              : "Done"
-            : match.locked
-              ? "Locked"
-              : `${match.points} pts`}
+        <span
+          className={
+            match.pickStatus === "correct"
+              ? "ti-badge ti-badge-ok"
+              : match.pickStatus === "busted"
+                ? "ti-badge ti-badge-bad"
+                : match.pickStatus === "picked"
+                  ? "ti-badge ti-badge-pick"
+                  : undefined
+          }
+        >
+          {headStatus}
         </span>
       </div>
       {([match.left, match.right] as const).map((team, index) => {
@@ -71,18 +95,17 @@ function SlotNode({
         const wonSeries = Boolean(
           match.completed && team && match.winnerTeamId === team.id,
         );
-        // Same rules as group stage: your pick + winner = correct, your pick + loss = miss.
-        const correct = match.completed && selected && wonSeries;
-        const missed = match.completed && selected && !wonSeries;
+        const correct = match.pickStatus === "correct" && selected;
+        const bustedPick = match.pickStatus === "busted" && selected;
         return (
           <button
-            key={team?.id ?? fallback}
+            key={team?.id ?? `${fallback}-${index}`}
             type="button"
             className={[
               "ti-side",
               selected ? "ti-side-on" : "",
               correct ? "ti-side-correct" : "",
-              missed ? "ti-side-miss" : "",
+              bustedPick ? "ti-side-miss" : "",
               wonSeries ? "ti-side-winner" : "",
               !team ? "ti-side-tbd" : "",
             ]
@@ -91,8 +114,25 @@ function SlotNode({
             disabled={!canPick || match.locked || saving || !ready || !team}
             onClick={team ? () => onPick(match.slotKey, team.id) : undefined}
           >
-            <span className="ti-side-name">{team?.name ?? fallback}</span>
-            {selected ? (
+            <span
+              className={[
+                "ti-side-name",
+                bustedPick ? "ti-side-strike" : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
+            >
+              {team?.name ?? fallback}
+            </span>
+            {correct ? (
+              <span className="ti-side-mark ti-side-mark-ok" aria-hidden>
+                ✓
+              </span>
+            ) : bustedPick ? (
+              <span className="ti-side-mark ti-side-mark-bad" aria-hidden>
+                ✗
+              </span>
+            ) : selected ? (
               <span className="ti-side-mark" aria-hidden>
                 ▶
               </span>
@@ -100,6 +140,16 @@ function SlotNode({
           </button>
         );
       })}
+      {match.pickStatus === "busted" &&
+      match.pickTeamName &&
+      match.myPickId &&
+      match.left?.id !== match.myPickId &&
+      match.right?.id !== match.myPickId ? (
+        <p className="ti-busted-line">
+          <span className="ti-side-strike">{match.pickTeamName}</span>
+          <span className="ti-badge ti-badge-bad">Prediction off</span>
+        </p>
+      ) : null}
       <p className="ti-node-note">{pickNote}</p>
     </article>
   );
@@ -154,8 +204,8 @@ export function InternationalBracket({
   return (
     <div className="playoff-graph-wrap ti-pickem-wrap">
       <p className="pg-hint muted">
-        Tap a winner to send them forward — same as Dota 2 Pick’em. Winners
-        move right. Losers drop to Lower. Later matches fill in as you pick.
+        Tap a winner — they move forward and the loser drops to Lower right
+        away. You can fill the next match as soon as one side is known.
       </p>
       <div className="playoff-graph-scroll">
         <div
