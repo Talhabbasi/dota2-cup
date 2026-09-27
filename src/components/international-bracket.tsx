@@ -21,6 +21,22 @@ function SlotNode({
   onPick: (slotKey: string, teamId: string) => void;
 }) {
   const ready = Boolean(match.left && match.right);
+  const pickNote = match.completed
+    ? match.myPickId
+      ? match.myPickId === match.winnerTeamId
+        ? `Correct · +${match.points}`
+        : "Missed"
+      : "No pick"
+    : match.locked
+      ? match.myPickId
+        ? "Locked in"
+        : "Locked"
+      : match.myPickId
+        ? "Picked · save when you are done"
+        : ready
+          ? "Tap a team"
+          : match.waiting;
+
   return (
     <article
       className={[
@@ -39,7 +55,11 @@ function SlotNode({
         </span>
         <span>
           {match.completed
-            ? "Done"
+            ? match.myPickId
+              ? match.myPickId === match.winnerTeamId
+                ? "Correct"
+                : "Missed"
+              : "Done"
             : match.locked
               ? "Locked"
               : `${match.points} pts`}
@@ -48,11 +68,12 @@ function SlotNode({
       {([match.left, match.right] as const).map((team, index) => {
         const fallback = index === 0 ? match.leftLabel : match.rightLabel;
         const selected = Boolean(team && match.myPickId === team.id);
-        const correct =
-          match.completed && selected && match.winnerTeamId === team?.id;
-        const missed =
-          match.completed && selected && match.winnerTeamId !== team?.id;
-        const winner = match.completed && match.winnerTeamId === team?.id;
+        const wonSeries = Boolean(
+          match.completed && team && match.winnerTeamId === team.id,
+        );
+        // Same rules as group stage: your pick + winner = correct, your pick + loss = miss.
+        const correct = match.completed && selected && wonSeries;
+        const missed = match.completed && selected && !wonSeries;
         return (
           <button
             key={team?.id ?? fallback}
@@ -62,7 +83,7 @@ function SlotNode({
               selected ? "ti-side-on" : "",
               correct ? "ti-side-correct" : "",
               missed ? "ti-side-miss" : "",
-              winner ? "ti-side-winner" : "",
+              wonSeries ? "ti-side-winner" : "",
               !team ? "ti-side-tbd" : "",
             ]
               .filter(Boolean)
@@ -79,6 +100,7 @@ function SlotNode({
           </button>
         );
       })}
+      <p className="ti-node-note">{pickNote}</p>
     </article>
   );
 }

@@ -57,5 +57,6 @@ const done = pickemSlots(
 const lb2 = done.find((row) => row.slotKey === "lb2");
 assert(lb2?.myPickId === a2.id, "Completed slot should still show Ash as my pick");
 assert(lb2?.winnerTeamId === b3.id, "Completed slot should show Toji as winner");
+assert(lb2?.myPickId !== lb2?.winnerTeamId, "Missed pick stays distinct from winner");
 
 console.log("prediction bracket tests passed");

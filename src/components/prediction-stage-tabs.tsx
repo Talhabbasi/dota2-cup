@@ -34,14 +34,23 @@ export function PredictionStageTabs({
   const livePicks = useMemo(() => {
     const merged = { ...pickem.savedPicks, ...committed, ...drafts };
     if (!pickem.seeds) return merged;
-    const slotPicks = pickMapFrom(
+    const openSlotPicks = pickMapFrom(
       resolvedBracketPicks(pickem.seeds, pickem.actual, merged),
     );
     const groupPicks: Record<string, string> = {};
+    const completedPicks: Record<string, string> = {};
     for (const [key, value] of Object.entries(merged)) {
-      if (!isBracketSlot(key)) groupPicks[key] = value;
+      if (!isBracketSlot(key)) {
+        groupPicks[key] = value;
+        continue;
+      }
+      // resolvedBracketPicks skips finished matches — keep the saved pick so
+      // Correct / Missed still shows what they actually selected.
+      if (pickem.actual[key]) {
+        completedPicks[key] = value;
+      }
     }
-    return { ...groupPicks, ...slotPicks };
+    return { ...groupPicks, ...completedPicks, ...openSlotPicks };
   }, [pickem.savedPicks, pickem.seeds, pickem.actual, committed, drafts]);
   const groupDirty = useMemo(
     () =>

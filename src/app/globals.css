@@ -4949,6 +4949,10 @@ tr:last-child td {
   box-shadow: none;
 }
 
+.pred-pick-winner:not(.pred-pick-on):not(.pred-pick-miss) {
+  box-shadow: inset 0 0 0 1px rgba(61, 206, 120, 0.35);
+}
+
 .pred-pick-miss {
   border-color: rgba(224, 122, 106, 0.65);
   background: rgba(224, 122, 106, 0.12);
@@ -5168,10 +5172,22 @@ tr:last-child td {
   box-shadow: inset 3px 0 0 #3dce78;
 }
 
+.ti-side-winner:not(.ti-side-on):not(.ti-side-miss) {
+  box-shadow: inset 3px 0 0 rgba(61, 206, 120, 0.45);
+}
+
 .ti-side-miss {
   background: rgba(224, 122, 106, 0.12);
   color: #e07a6a;
   box-shadow: inset 3px 0 0 #e07a6a;
+}
+
+.ti-node-note {
+  margin: 0;
+  padding: 0.35rem 0.7rem 0.5rem;
+  font-size: 0.72rem;
+  color: var(--muted);
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .ti-side-name {

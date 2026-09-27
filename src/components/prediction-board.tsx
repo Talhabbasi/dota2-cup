@@ -96,7 +96,9 @@ export function PredictionBoard({
                             className={[
                               "pred-pick",
                               selected ? "pred-pick-on" : "",
-                              result === "win" ? "pred-pick-correct" : "",
+                              result === "win" && selected
+                                ? "pred-pick-correct"
+                                : "",
                               result === "loss" && selected
                                 ? "pred-pick-miss"
                                 : "",
