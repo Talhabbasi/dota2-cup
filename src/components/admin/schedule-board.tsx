@@ -87,7 +87,7 @@ export function AdminScheduleBoard({
           <AdminActionForm
             action={actionCreateFixture}
             successMessage="Fixture booked"
-            className="mt-4 grid gap-3 border-t border-white/10 pt-4 sm:grid-cols-2 lg:grid-cols-5"
+            className="mt-4 grid gap-3 border-t border-white/10 pt-4 sm:grid-cols-2 lg:grid-cols-3"
           >
             <AdminField label="Team A">
               <select name="teamA" required className={adminControlClass}>
@@ -137,12 +137,26 @@ export function AdminScheduleBoard({
                 defaultValue="group"
                 className={adminControlClass}
               >
-                <option value="group">Group</option>
-                <option value="playoff">Playoff</option>
-                <option value="final">Final</option>
+                <option value="group">Group (Bo1)</option>
+                <option value="ub">Upper bracket (Bo1)</option>
+                <option value="lb">Lower bracket (Bo1)</option>
+                <option value="ub_final">Upper Final (Bo1)</option>
+                <option value="lb_final">Lower Final (Bo1)</option>
+                <option value="final">Grand Final (Bo3)</option>
               </select>
             </AdminField>
-            <AdminSubmitButton className="sm:col-span-2 lg:col-span-5">
+            <AdminField label="Best of">
+              <select
+                name="bestOf"
+                defaultValue=""
+                className={adminControlClass}
+              >
+                <option value="">Auto (Final = Bo3)</option>
+                <option value="1">Bo1</option>
+                <option value="3">Bo3</option>
+              </select>
+            </AdminField>
+            <AdminSubmitButton className="sm:col-span-2 lg:col-span-3">
               Book match
             </AdminSubmitButton>
           </AdminActionForm>

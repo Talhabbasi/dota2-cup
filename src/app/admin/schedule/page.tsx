@@ -22,7 +22,7 @@ export default async function AdminSchedulePage() {
       <PageHeader
         eyebrow="Admin"
         title="Schedule"
-        subtitle="Click a fixture to set win / walkover, reschedule, or delete."
+        subtitle="Open a fixture → Who won / walkover, or upload scoreboard from Matches. Rematches always create a new match."
         pills={[{ value: pending.length, label: "pending" }]}
       />
       <AdminScheduleBoard

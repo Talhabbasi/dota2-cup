@@ -312,12 +312,15 @@ export async function actionCreateFixture(formData: FormData) {
   const date = String(formData.get("date") ?? "");
   const time = String(formData.get("time") ?? "");
   const kind = String(formData.get("kind") ?? "") || undefined;
-  await createScheduledMatch({ teamA, teamB, date, time, kind });
+  const bestOfRaw = String(formData.get("bestOf") ?? "").trim();
+  const bestOf =
+    bestOfRaw === "1" || bestOfRaw === "3" ? Number(bestOfRaw) : undefined;
+  await createScheduledMatch({ teamA, teamB, date, time, kind, bestOf });
   await note(
     session,
     "schedule.create",
-    `Booked ${kind ?? "group"}: ${teamA} vs ${teamB} (${date} ${time}:00 PKT)`,
-    { teamA, teamB, date, time, kind },
+    `Booked ${kind ?? "group"}${bestOf ? ` Bo${bestOf}` : ""}: ${teamA} vs ${teamB} (${date} ${time}:00 PKT)`,
+    { teamA, teamB, date, time, kind, bestOf },
   );
   revalidateAdmin();
 }

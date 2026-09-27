@@ -707,7 +707,8 @@ export async function completeScheduledFixture(input: {
           { radiantTeamId: keyA[1], direTeamId: keyA[0] },
         ],
       },
-      orderBy: [{ kind: "asc" }, { scheduledAt: "asc" }],
+      // Prefer the soonest upcoming / latest booked rematch, not an old leftover.
+      orderBy: [{ scheduledAt: "desc" }],
     });
 
     if (!fixture) return;

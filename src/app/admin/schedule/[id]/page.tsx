@@ -121,10 +121,11 @@ export default async function AdminFixtureDetailPage({
       {isPending ? (
         <AdminCard tone="accent" className="mb-6">
           <AdminSection title="Who won?">
-            <p className="m-0 mb-3 text-sm text-muted-foreground">
-              Tap the team that gets the win. Use walkover when the other side is
-              not coming (no-show).
-            </p>
+        <p className="m-0 mb-3 text-sm text-muted-foreground">
+          Tap the team that gets the win. Use walkover when the other side is
+          not coming (no-show). For Bo3, tap again after each map until the
+          series ends (first to 2).
+        </p>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="grid gap-2 rounded-lg border border-emerald-500/25 bg-emerald-500/5 p-3">
                 <p className="m-0 text-sm font-semibold text-foreground">{teamA}</p>

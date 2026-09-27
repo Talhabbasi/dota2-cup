@@ -688,22 +688,17 @@ export async function applyParsedScoreboard(
   const direTeam = resolveTeam(parsed.direTeam, teams);
   const sourceKey = sourceId ? `shot-${sourceId}` : null;
 
-  const existingWhere = [
+  // Only reuse a match by explicit match/source id — never by team pair alone.
+  // Rematches (e.g. group Saif vs Toji, then playoff Saif vs Toji) must create a
+  // new Match row; otherwise OCR overwrites the old completed series.
+  const identityWhere = [
     parsed.matchId ? { openDotaId: parsed.matchId } : undefined,
     sourceKey ? { openDotaId: sourceKey } : undefined,
-    radiantTeam && direTeam
-      ? {
-          OR: [
-            { radiantTeamId: radiantTeam.id, direTeamId: direTeam.id },
-            { radiantTeamId: direTeam.id, direTeamId: radiantTeam.id },
-          ],
-        }
-      : undefined,
-  ].filter(Boolean) as object[];
+  ].filter(Boolean) as { openDotaId: string }[];
 
-  const existing = existingWhere.length
+  let existing = identityWhere.length
     ? await prisma.match.findFirst({
-        where: { OR: existingWhere },
+        where: { OR: identityWhere },
         include: {
           players: true,
           scheduledFixture: { select: { status: true } },
@@ -711,6 +706,39 @@ export async function applyParsedScoreboard(
         orderBy: { createdAt: "desc" },
       })
     : null;
+
+  // Fill a very recent manual/walkover stub for the same teams (from schedule
+  // winner buttons), never a historical completed series match.
+  if (!existing && radiantTeam && direTeam) {
+    const stubs = await prisma.match.findMany({
+      where: {
+        createdAt: { gte: new Date(Date.now() - 6 * 60 * 60 * 1000) },
+        OR: [
+          {
+            radiantTeamId: radiantTeam.id,
+            direTeamId: direTeam.id,
+          },
+          {
+            radiantTeamId: direTeam.id,
+            direTeamId: radiantTeam.id,
+          },
+        ],
+      },
+      include: {
+        players: true,
+        scheduledFixture: { select: { status: true } },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 5,
+    });
+    existing =
+      stubs.find(
+        (row) =>
+          (row.openDotaId.startsWith("manual-") ||
+            row.openDotaId.startsWith("walkover-")) &&
+          row.scheduledFixture?.status !== "completed",
+      ) ?? null;
+  }
 
   const winnerSide =
     parsed.winnerSide ??
