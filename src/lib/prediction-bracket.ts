@@ -112,7 +112,7 @@ export function pickemSlots(
       right: pairing.right,
       leftLabel: pairing.leftLabel,
       rightLabel: pairing.rightLabel,
-      myPickId: actualResult?.winner.id ?? picks[slot] ?? null,
+      myPickId: picks[slot] ?? null,
       winnerTeamId: actualResult?.winner.id ?? null,
       locked,
       completed,
