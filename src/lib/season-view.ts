@@ -1,5 +1,3 @@
-import { cookies } from "next/headers";
-import { SEASON_VIEW_COOKIE } from "./season-view-cookie";
 import {
   getLiveSeason,
   getSeasonByIdOrNumber,
@@ -14,12 +12,20 @@ export type ResolvedViewSeason = {
   number: number;
   name: string;
   phase: string;
+  plannedStartAt: string | null;
+  startedAt: string | null;
+  tournamentFormat: string;
+  teamCount: number;
   isLive: boolean;
   isArchive: boolean;
   championName: string | null;
 };
 
-/** Parse `?season=` (id or number). Empty → cookie → live → newest. */
+/**
+ * Public season context.
+ * Only an explicit `?season=` query selects a non-live season (archive links).
+ * Cookie is ignored so the main site never sticks on a past season.
+ */
 export async function resolveViewSeason(input?: {
   season?: string | null;
 }): Promise<ResolvedViewSeason | null> {
@@ -28,13 +34,6 @@ export async function resolveViewSeason(input?: {
     const row = await getSeasonByIdOrNumber(param);
     if (!row) return null;
     return toResolved(row);
-  }
-
-  const jar = await cookies();
-  const cookie = jar.get(SEASON_VIEW_COOKIE)?.value?.trim();
-  if (cookie) {
-    const row = await getSeasonByIdOrNumber(cookie);
-    if (row) return toResolved(row);
   }
 
   const live = await getLiveSeason();
@@ -54,6 +53,12 @@ function toResolved(row: PublicSeasonRow): ResolvedViewSeason {
     number: row.number,
     name: row.name,
     phase: row.phase,
+    plannedStartAt: row.plannedStartAt
+      ? row.plannedStartAt.toISOString()
+      : null,
+    startedAt: row.startedAt ? row.startedAt.toISOString() : null,
+    tournamentFormat: row.tournamentFormat,
+    teamCount: row.teamCount,
     isLive: row.isActive,
     isArchive: row.status === "archived" || row.phase === "COMPLETED",
     championName: row.championName,

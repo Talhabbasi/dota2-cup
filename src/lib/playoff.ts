@@ -19,6 +19,7 @@ import {
   BRACKET_META,
   BRACKET_SLOTS,
   advanceBracket,
+  eliminatedFromSeeds,
   isBracketSlot,
   loadPlayoffSeeds,
   maybeOpenPlayoffsFromGroups,
@@ -26,13 +27,16 @@ import {
   unlockedPairings,
   type BracketSlot,
 } from "./playoff-bracket";
+import { getLivePlayoffFormat } from "./playoff-format";
 import { isLiveCupTeam, publicFixtureWhere } from "./dummy";
 import type { GroupStandingRow } from "./group-stage-schedule";
 import { CUP_NAME } from "@/lib/brand";
 
 export { isLiveCupTeam };
 
+/** @deprecated Prefer getLivePlayoffFormat() — kept for callers that assume classic 8. */
 export const PLAYOFF_TEAM_COUNT = 8;
+/** @deprecated Prefer getLivePlayoffFormat() — kept for callers that assume classic 8. */
 export const PLAYOFF_GROUP_SIZE = 4;
 
 export const PLAYOFF_KINDS = [
@@ -167,10 +171,13 @@ function shuffle<T>(items: T[]) {
 }
 
 export async function seedPlayoffGroups() {
-  const teams = await requireLiveRosters();
-  if (teams.length !== PLAYOFF_TEAM_COUNT) {
+  const [teams, format] = await Promise.all([
+    requireLiveRosters(),
+    getLivePlayoffFormat(),
+  ]);
+  if (teams.length !== format.teamCount) {
     throw new Error(
-      `Need exactly **${PLAYOFF_TEAM_COUNT}** live teams for 2 groups. Currently **${teams.length}**.`,
+      `Need exactly **${format.teamCount}** live teams for 2 groups of ${format.groupSize}. Currently **${teams.length}**.`,
     );
   }
 
@@ -179,7 +186,7 @@ export async function seedPlayoffGroups() {
     shuffled.map((team, index) =>
       prisma.team.update({
         where: { id: team.id },
-        data: { groupKey: index < PLAYOFF_GROUP_SIZE ? "A" : "B" },
+        data: { groupKey: index < format.groupSize ? "A" : "B" },
       }),
     ),
   );
@@ -192,7 +199,7 @@ export async function assignPlayoffGroup(input: {
   group: "A" | "B";
 }) {
   const name = input.teamName.trim();
-  const teams = await liveTeams();
+  const [teams, format] = await Promise.all([liveTeams(), getLivePlayoffFormat()]);
   const team = teams.find(
     (row) => row.name.toLowerCase() === name.toLowerCase(),
   );
@@ -203,8 +210,8 @@ export async function assignPlayoffGroup(input: {
   const already = teams.filter(
     (row) => row.groupKey === input.group && row.id !== team.id,
   );
-  if (already.length >= PLAYOFF_GROUP_SIZE) {
-    throw new Error(`Group ${input.group} already has ${PLAYOFF_GROUP_SIZE} teams.`);
+  if (already.length >= format.groupSize) {
+    throw new Error(`Group ${input.group} already has ${format.groupSize} teams.`);
   }
 
   await prisma.team.update({
@@ -215,10 +222,17 @@ export async function assignPlayoffGroup(input: {
   return { teamName: team.name, group: input.group };
 }
 
-function pairGroup(teams: { id: string; name: string }[]) {
+function pairGroup(teams: { id: string; name: string }[], groupSize: number) {
   const shuffled = shuffle(teams);
-  if (shuffled.length !== PLAYOFF_GROUP_SIZE) {
-    throw new Error("Each group needs exactly 4 teams.");
+  if (shuffled.length !== groupSize) {
+    throw new Error(`Each group needs exactly ${groupSize} teams.`);
+  }
+  // Legacy 4-slot generate path: pair into two matches. Round-robin booking
+  // (`/schedule groups`) is the primary path for both 8- and 10-team seasons.
+  if (groupSize !== 4) {
+    throw new Error(
+      `Legacy /playoff generate only supports groups of 4. Use \`/schedule groups\` for the ${groupSize}-team round-robin.`,
+    );
   }
   return {
     seed1: orientIds(shuffled[0], shuffled[1]),
@@ -291,21 +305,25 @@ export async function generatePlayoffGroupStage(input?: {
   friday?: string;
   force?: boolean;
 }) {
-  const teams = await requireLiveRosters();
+  const [teams, format] = await Promise.all([
+    requireLiveRosters(),
+    getLivePlayoffFormat(),
+  ]);
   const groupA = teams.filter((team) => team.groupKey === "A");
   const groupB = teams.filter((team) => team.groupKey === "B");
-  if (groupA.length !== PLAYOFF_GROUP_SIZE || groupB.length !== PLAYOFF_GROUP_SIZE) {
+  if (groupA.length !== format.groupSize || groupB.length !== format.groupSize) {
     throw new Error(
-      `Assign all ${PLAYOFF_TEAM_COUNT} teams first: Group A has ${groupA.length}, Group B has ${groupB.length}. Use \`/playoff groups\` or \`/playoff assign\`.`,
+      `Assign all ${format.teamCount} teams first: Group A has ${groupA.length}, Group B has ${groupB.length}. Use \`/playoff groups\` or \`/playoff assign\`.`,
     );
   }
 
+  const expectedRr = format.matchesPerGroup * 2;
   const groupRoundRobin = await prisma.scheduledFixture.count({
     where: { kind: "group", slotKey: null },
   });
   if (groupRoundRobin > 0) {
     throw new Error(
-      "The 12-match group round-robin is already booked. Finish Group A and Group B, then use `/playoff open` to start the playoff bracket. Do not run `/playoff generate`.",
+      `The ${expectedRr}-match group round-robin is already booked. Finish Group A and Group B, then use \`/playoff open\` to start the playoff bracket. Do not run \`/playoff generate\`.`,
     );
   }
 
@@ -328,8 +346,8 @@ export async function generatePlayoffGroupStage(input?: {
   const friday = input?.friday
     ? parseFridayInput(input.friday, offsetH)
     : resolveWeekendFriday(new Date(), offsetH);
-  const pairsA = pairGroup(groupA);
-  const pairsB = pairGroup(groupB);
+  const pairsA = pairGroup(groupA, format.groupSize);
+  const pairsB = pairGroup(groupB, format.groupSize);
   const weekendIndex = await nextWeekendIndex();
 
   const rows: Array<{
@@ -603,6 +621,11 @@ export type PlayoffView = {
   groupRoundRobin: number;
   groupStageComplete: boolean;
   eliminated: { id: string; name: string }[];
+  teamCount: number;
+  groupSize: number;
+  gamesPerTeam: number;
+  hasLowerPlayIn: boolean;
+  eliminatePlace: number;
 };
 
 function displayStatusFor(
@@ -696,7 +719,8 @@ export const getPlayoffView = unstable_cache(
       loadPlayoffSeeds(),
       currentSeasonFilter(),
     ]);
-    const { groupA: standingsA, groupB: standingsB, complete, seeds } = seeded;
+    const { groupA: standingsA, groupB: standingsB, complete, seeds, format } =
+      seeded;
     const now = new Date();
     const fixtures = await prisma.scheduledFixture.findMany({
       where: {
@@ -729,7 +753,10 @@ export const getPlayoffView = unstable_cache(
       if (outcome) results[slot] = outcome;
     }
     const pairings = unlockedPairings(seeds, results);
-    const matches = BRACKET_SLOTS.map((slotKey) =>
+    const visibleSlots = format.hasLowerPlayIn
+      ? BRACKET_SLOTS
+      : BRACKET_SLOTS.filter((slot) => slot !== "lb0a" && slot !== "lb0b");
+    const matches = visibleSlots.map((slotKey) =>
       matchViewFromSlot(slotKey, bySlot.get(slotKey), pairings[slotKey], now),
     );
 
@@ -748,12 +775,12 @@ export const getPlayoffView = unstable_cache(
       groupStageComplete: complete,
       standingsA,
       standingsB,
-      eliminated: complete && standingsA[3] && standingsB[3]
-        ? [
-            { id: standingsA[3].id, name: standingsA[3].name },
-            { id: standingsB[3].id, name: standingsB[3].name },
-          ]
-        : [],
+      eliminated: complete && seeds ? eliminatedFromSeeds(seeds) : [],
+      teamCount: format.teamCount,
+      groupSize: format.groupSize,
+      gamesPerTeam: format.gamesPerTeam,
+      hasLowerPlayIn: format.hasLowerPlayIn,
+      eliminatePlace: format.eliminatePlace,
     };
   },
   ["playoff-view"],
@@ -761,10 +788,14 @@ export const getPlayoffView = unstable_cache(
 );
 
 export async function openPlayoffsFromGroups() {
-  const { complete } = await loadPlayoffSeeds();
+  const { complete, format } = await loadPlayoffSeeds();
   if (!complete) {
+    const elim = format.eliminatePlace;
+    const lowerHint = format.hasLowerPlayIn
+      ? `Then A3 vs B4 and B3 vs A4 play into Lower Round 1 against Upper Round 1 losers.`
+      : `Each 3rd-place team waits for a crossover loser.`;
     throw new Error(
-      "Finish every Group A and Group B match first. 4th place is then eliminated and Upper Round 1 (A1 vs B2, B1 vs A2) is booked automatically. Each 3rd-place team waits for a crossover loser.",
+      `Finish every Group A and Group B match first. ${elim}th place is then eliminated and Upper Round 1 (A1 vs B2, B1 vs A2) is booked automatically. ${lowerHint}`,
     );
   }
   const opened = await maybeOpenPlayoffsFromGroups();
@@ -786,7 +817,7 @@ export function playoffMatchesReady(view: PlayoffView) {
 export function formatPlayoffGroups(view: PlayoffView) {
   const lines = [
     `**${CUP_NAME} — Group stage**`,
-    "8 teams, 2 groups of 4. Single round-robin, Bo1.",
+    `${view.teamCount} teams, 2 groups of ${view.groupSize}. Single round-robin, Bo1. Each team plays ${view.gamesPerTeam} games.`,
     "",
     "**Group A**",
     view.groupA.length
@@ -836,10 +867,11 @@ export function formatPlayoffStatus(view: PlayoffView) {
   const lines = [formatPlayoffGroups(view)];
 
   if (view.groupStageComplete && view.standingsA.length && view.standingsB.length) {
+    const elimIndex = view.eliminatePlace - 1;
     const rank = (rows: GroupStandingRow[]) =>
       rows
         .map((row, index) => {
-          const tag = index === 3 ? " — Eliminated" : "";
+          const tag = index === elimIndex ? " — Eliminated" : "";
           return `${index + 1}. ${row.name}${tag}`;
         })
         .join("\n");
@@ -894,12 +926,20 @@ export function formatPlayoffGraph(view: PlayoffView) {
             : "";
     return `${code} ${left} vs ${right}${state}`;
   };
-  return [
+  const lines = [
     "**Bracket graph** (winners move right, losers drop to Lower)",
     "```",
     `Upper  ${label("ub1")}`,
     "           └─► Upper Final ─► Grand Final Bo3",
     `       ${label("ub2")}`,
+  ];
+  if (view.hasLowerPlayIn) {
+    lines.push(
+      `Play-in ${label("lb0a")}`,
+      `        ${label("lb0b")}`,
+    );
+  }
+  lines.push(
     `Lower  ${label("lb1")}`,
     "           └─► Lower Round 2 ─► Lower Final ─► Grand Final",
     `       ${label("lb2")}`,
@@ -908,5 +948,6 @@ export function formatPlayoffGraph(view: PlayoffView) {
     `Lower Round 2: ${label("lb3")}`,
     `Lower Final: ${label("lb_final")}`,
     `Grand Final: ${label("final")}`,
-  ].join("\n");
+  );
+  return lines.join("\n");
 }

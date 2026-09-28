@@ -15,7 +15,18 @@ function toDateInput(value: Date | null) {
   if (!value) return null;
   const d = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(d.getTime())) return null;
-  return d.toISOString().slice(0, 10);
+  // Calendar day in PKT — avoid UTC off-by-one from toISOString().
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Karachi",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(d);
+  const y = parts.find((p) => p.type === "year")?.value;
+  const m = parts.find((p) => p.type === "month")?.value;
+  const day = parts.find((p) => p.type === "day")?.value;
+  if (!y || !m || !day) return null;
+  return `${y}-${m}-${day}`;
 }
 
 export default async function AdminSeasonsPage() {
@@ -51,7 +62,7 @@ export default async function AdminSeasonsPage() {
       <PageHeader
         eyebrow="Admin"
         title="Seasons"
-        subtitle="Full CRUD — create, edit, set active, end & archive, delete. Homepage and live boards follow the Active season."
+        subtitle="Create, edit, set active, end & archive, delete. Planned start + team count sync to the site hero, banner, Teams, and Players pages."
       />
       <AdminSeasonsBoard
         seasons={rows}

@@ -49,9 +49,12 @@ export type AdminInsights = {
 };
 
 function topN(map: Map<string, Agg>, n: number): InsightLeader[] {
-  return [...map.values()]
-    .sort((a, b) => b.value - a.value)
-    .slice(0, n)
+  const sorted = [...map.values()].sort((a, b) => b.value - a.value);
+  if (sorted.length === 0 || n <= 0) return [];
+  const cutoff = sorted[Math.min(n, sorted.length) - 1]!.value;
+  // Keep everyone tied with the Nth place so leaders aren't truncated mid-tie.
+  return sorted
+    .filter((row) => row.value >= cutoff)
     .map((row) => ({
       name: row.name,
       teamName: row.teamName,

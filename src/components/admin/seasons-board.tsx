@@ -23,7 +23,7 @@ import {
   SEASON_PHASE,
   TOURNAMENT_FORMAT,
   formatSeasonLabel,
-} from "@/lib/seasons";
+} from "@/lib/season-constants";
 
 type AdminSeasonRow = {
   id: string;
@@ -221,7 +221,7 @@ export function AdminSeasonsBoard({
                       ) : (
                         <AdminConfirmForm
                           action={actionActivateSeason}
-                          message={`Set ${row.name} as the active season? Homepage, predictions, and live boards will switch immediately.`}
+                          message={`Set ${row.name} as the active season? Homepage and live boards switch immediately. Previous cup Team Chat/Voice rooms and cup roles (Captain, Registered, team, play-window) are removed; Admin stays.`}
                           successMessage="Active season updated"
                         >
                           <input type="hidden" name="seasonId" value={row.id} />
@@ -255,10 +255,10 @@ export function AdminSeasonsBoard({
                             row.status === "live") && (
                             <AdminConfirmForm
                               action={actionEndSeasonArchive}
-                              message={`End and archive ${row.name}? Clears active pointer; data stays in Seasons archive.`}
+                              message={`End and archive ${row.name}? Clears the active pointer, removes Team Chat + Team Voice, and deletes cup Discord roles (Captain, Registered, team, play-window). Admin role stays.`}
                               title="End season"
                               confirmLabel="End & archive"
-                              successMessage="Season archived"
+                              successMessage="Season archived · team Discord rooms cleared"
                             >
                               <input type="hidden" name="seasonId" value={row.id} />
                               <AdminSubmitButton

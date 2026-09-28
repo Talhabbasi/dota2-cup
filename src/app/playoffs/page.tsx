@@ -14,6 +14,7 @@ import { listCupSchedule } from "@/lib/schedule-crud";
 import { getSeasonSnapshotBracket } from "@/lib/seasons";
 import { pageMeta } from "@/lib/seo";
 import { CUP_NAME } from "@/lib/brand";
+import { seasonPlayoffsSubtitle } from "@/lib/season-public-copy";
 
 export const revalidate = 30;
 
@@ -62,6 +63,29 @@ export default async function PlayoffsPage({
     }));
 
   const noGroups = view.groupA.length === 0 && view.groupB.length === 0;
+  const subtitle = viewSeason
+    ? (
+        <>
+          {seasonPlayoffsSubtitle({
+            number: viewSeason.number,
+            name: viewSeason.name,
+            teamCount: viewSeason.teamCount,
+            tournamentFormat: viewSeason.tournamentFormat,
+            plannedStartAt: viewSeason.plannedStartAt,
+            startedAt: viewSeason.startedAt,
+            phase: viewSeason.phase,
+          })}{" "}
+          Follow the graph, then the match cards. See the{" "}
+          <Link href="/schedule">schedule</Link>.
+        </>
+      )
+    : (
+        <>
+          After the group stage: last place is eliminated, crossovers feed a
+          double-elimination bracket. Grand Final is Bo3; every other series is
+          Bo1. See the <Link href="/schedule">schedule</Link>.
+        </>
+      );
 
   return (
     <div className="page playoffs-page">
@@ -69,15 +93,7 @@ export default async function PlayoffsPage({
       <PageHeader
         eyebrow="Tournament"
         title={viewSeason ? `Playoffs · Season ${viewSeason.number}` : "Playoffs"}
-        subtitle={
-          <>
-            After the group stage: 4th is eliminated. 3rd in each group waits
-            for a crossover loser — A3 vs the loser of A1 vs B2, B3 vs the loser
-            of B1 vs A2 — then a 6-team double-elimination bracket. Grand Final
-            is Bo3; every other series is Bo1. Follow the graph, then the match
-            cards. See the <Link href="/schedule">schedule</Link>.
-          </>
-        }
+        subtitle={subtitle}
         pills={
           noGroups
             ? undefined

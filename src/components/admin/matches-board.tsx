@@ -14,7 +14,15 @@ export type AdminMatchRow = {
   standInCount: number;
 };
 
-export function AdminMatchesBoard({ matches }: { matches: AdminMatchRow[] }) {
+export function AdminMatchesBoard({
+  matches,
+  readOnly = false,
+  publicSeasonParam,
+}: {
+  matches: AdminMatchRow[];
+  readOnly?: boolean;
+  publicSeasonParam?: string;
+}) {
   const teamNames = [
     ...new Set(
       matches.flatMap((m) => [m.radiantName, m.direName].filter(Boolean)),
@@ -23,14 +31,26 @@ export function AdminMatchesBoard({ matches }: { matches: AdminMatchRow[] }) {
 
   return (
     <AdminDataTable
-      title="Matches"
-      hint="Click a match to open the full editor (OCR, stand-ins, result)."
+      title={readOnly ? "Archive matches" : "Matches"}
+      hint={
+        readOnly
+          ? "Read-only. Click a row to open the public matches archive for this season."
+          : "Click a match to open the full editor (OCR, stand-ins, result)."
+      }
       items={matches}
       getId={(m) => m.id}
-      hrefFor={(m) => `/admin/matches/${m.id}`}
+      hrefFor={(m) =>
+        readOnly
+          ? `/matches?season=${publicSeasonParam ?? ""}`
+          : `/admin/matches/${m.id}`
+      }
       searchPlaceholder="Search teams…"
       searchText={(m) => `${m.radiantName} ${m.direName} ${m.winnerName ?? ""}`}
-      emptyLabel="No matches uploaded this season."
+      emptyLabel={
+        readOnly
+          ? "No matches recorded for this season."
+          : "No matches uploaded this season."
+      }
       filters={[
         {
           key: "status",

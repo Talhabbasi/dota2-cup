@@ -141,8 +141,10 @@ import {
   backfillSeason1,
   createSeason,
   currentSeasonFilter,
+  endSeasonArchive,
   formatSeasonLabel,
   getCurrentSeason,
+  getLiveSeason,
   listSeasons,
   startSeason,
 } from "../src/lib/seasons";
@@ -217,6 +219,7 @@ import {
   tryStripMemberTeamRoles,
   trySyncCupChannelAccess,
   tryTeardownTeamDiscord,
+  tryClearAllTeamDiscordRooms,
 } from "../src/lib/discord-access";
 import { trySetMemberRegisteredRole } from "../src/lib/payments-channel-access";
 import { syncGuildIcon } from "../src/lib/guild-branding";
@@ -710,6 +713,21 @@ const commands = [
           o
             .setName("name")
             .setDescription("Display name, e.g. Season 2 (default: Season N)"),
+        )
+        .addIntegerOption((o) =>
+          o
+            .setName("teams")
+            .setDescription("Planned team count (8, 10, or 12)")
+            .addChoices(
+              { name: "8 teams", value: 8 },
+              { name: "10 teams", value: 10 },
+              { name: "12 teams", value: 12 },
+            ),
+        )
+        .addStringOption((o) =>
+          o
+            .setName("start_date")
+            .setDescription("Planned start date YYYY-MM-DD (shows on site hero)"),
         ),
     )
     .addSubcommand((s) =>
@@ -722,6 +740,13 @@ const commands = [
             .setDescription("Season number to make live")
             .setRequired(true)
             .setMinValue(1),
+        ),
+    )
+    .addSubcommand((s) =>
+      s
+        .setName("end")
+        .setDescription(
+          "Admin: end & archive the live season (clears team rooms + cup roles)",
         ),
     ),
   new SlashCommandBuilder()
@@ -1008,7 +1033,7 @@ const commands = [
     .addSubcommand((s) =>
       s
         .setName("groups")
-        .setDescription("Admin: randomly split 8 teams into Group A and Group B"),
+        .setDescription("Admin: randomly split season teams into Group A and Group B"),
     )
     .addSubcommand((s) =>
       s
@@ -1966,28 +1991,72 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
       await interaction.deferReply();
       try {
         if (sub === "create") {
+          const startRaw = interaction.options.getString("start_date");
+          let plannedStartAt: Date | null = null;
+          if (startRaw?.trim()) {
+            const parsed = new Date(`${startRaw.trim()}T12:00:00.000Z`);
+            if (Number.isNaN(parsed.getTime())) {
+              await interaction.editReply(
+                "Invalid `start_date`. Use YYYY-MM-DD (e.g. 2026-10-20).",
+              );
+              return;
+            }
+            plannedStartAt = parsed;
+          }
           const created = await createSeason({
             name: interaction.options.getString("name"),
+            teamCount: interaction.options.getInteger("teams") ?? undefined,
+            plannedStartAt,
           });
           const current = await getCurrentSeason();
           await interaction.editReply(
-            `Created **${formatSeasonLabel(created)}**.\nLive season is still **${current ? formatSeasonLabel(current) : "unset"}**. Creating a season does not move teams or players.`,
+            [
+              `Created **${formatSeasonLabel(created)}**.`,
+              `Plan: **${created.teamCount} teams**${
+                created.plannedStartAt
+                  ? ` · starts **${created.plannedStartAt.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}**`
+                  : ""
+              }.`,
+              `Live season is still **${current ? formatSeasonLabel(current) : "unset"}**. Creating a season does not move teams or players.`,
+              "Edit name / teams / start anytime in Admin → Seasons (feeds the site hero).",
+            ].join("\n"),
           );
           return;
         }
         if (sub === "start") {
           const number = interaction.options.getInteger("number", true);
           const switched = await startSeason(number);
+          // startSeason already archives the previous season (which clears Discord rooms via REST).
+          // Extra Guild pass if rooms remain.
+          if (switched.previous && interaction.guild) {
+            await tryClearAllTeamDiscordRooms(interaction.guild);
+          }
           await interaction.editReply(
             [
               `Live season is now **${formatSeasonLabel(switched.current)}**.`,
               switched.previous
-                ? `Archived **${formatSeasonLabel(switched.previous)}** (history kept).`
+                ? `Archived **${formatSeasonLabel(switched.previous)}** (history kept). Team Chat/Voice rooms and cup roles (Captain, Registered, team, play-window) were cleared — Admin kept.`
                 : null,
-              "Old teams stay on the archived season. Appoint captains again for the new cup, then `/admin setup`.",
+              "Appoint captains again for the new cup, then `/admin setup` to recreate team rooms.",
             ]
               .filter(Boolean)
               .join("\n"),
+          );
+          void notifySiteRefresh();
+          return;
+        }
+        if (sub === "end") {
+          const live = await getLiveSeason();
+          if (!live) {
+            await interaction.editReply("No live season to end.");
+            return;
+          }
+          const archived = await endSeasonArchive(live.id);
+          if (interaction.guild) {
+            await tryClearAllTeamDiscordRooms(interaction.guild);
+          }
+          await interaction.editReply(
+            `Ended **${formatSeasonLabel(archived)}**. Team Chat/Voice rooms and cup roles (Captain, Registered, team, play-window) were removed — Admin kept. Site is on archive until you activate the next season.`,
           );
           void notifySiteRefresh();
           return;
@@ -3141,7 +3210,9 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
             result.created.length
               ? `Playoffs opened. Booked **${result.created.length}** match(es): ${result.created.join(", ")}.`
               : "Playoff slots that are already unlocked were already booked.",
-            "4th in each group is eliminated. Each 3rd waits for a crossover loser. Grand Final is Bo3.",
+            view.hasLowerPlayIn
+              ? `${view.eliminatePlace}th in each group is eliminated. A3 vs B4 and B3 vs A4 play into lower vs Upper Round 1 losers. Grand Final is Bo3.`
+              : `${view.eliminatePlace}th in each group is eliminated. Each 3rd waits for a crossover loser. Grand Final is Bo3.`,
             "",
             formatPlayoffStatus(view),
           ].join("\n"),

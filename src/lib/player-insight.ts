@@ -57,9 +57,19 @@ export function tournamentImpactScore(input: {
   return input.kills * 1 + input.assists * 1.45 - input.deaths * 0.8;
 }
 
-function pickTopByValue<T extends { value: number }>(rows: T[]): T | null {
+function pickTopByValue<T extends { value: number; name: string }>(
+  rows: T[],
+): (T & { tieDetail?: string }) | null {
   if (rows.length === 0) return null;
-  return [...rows].sort((a, b) => b.value - a.value)[0] ?? null;
+  const sorted = [...rows].sort((a, b) => b.value - a.value);
+  const top = sorted[0]!;
+  const tied = sorted.filter((row) => row.value === top.value);
+  if (tied.length <= 1) return top;
+  const others = tied
+    .slice(1)
+    .map((row) => row.name)
+    .join(", ");
+  return { ...top, tieDetail: `Tied with ${others}` };
 }
 
 function toAward(
@@ -77,6 +87,10 @@ function toAward(
     detail,
     kind: row.kind,
   };
+}
+
+function awardDetail(base: string, tieDetail?: string) {
+  return [base, tieDetail].filter(Boolean).join(" · ");
 }
 
 function pickPot(totals: Totals[]): (Totals & { score: number }) | null {
@@ -291,9 +305,12 @@ export async function getPublicPlayerInsight(options?: {
           mostKillsRow,
           mostKillsRow.kills,
           `${mostKillsRow.kills} kills`,
-          mostKillsRow.kind === "standin"
-            ? `Stand-in · ${mostKillsRow.games} game${mostKillsRow.games === 1 ? "" : "s"}`
-            : `${mostKillsRow.games} game${mostKillsRow.games === 1 ? "" : "s"}`,
+          awardDetail(
+            mostKillsRow.kind === "standin"
+              ? `Stand-in · ${mostKillsRow.games} game${mostKillsRow.games === 1 ? "" : "s"}`
+              : `${mostKillsRow.games} game${mostKillsRow.games === 1 ? "" : "s"}`,
+            mostKillsRow.tieDetail,
+          ),
         )
       : null,
     mostAssists: mostAssistsRow
@@ -301,9 +318,12 @@ export async function getPublicPlayerInsight(options?: {
           mostAssistsRow,
           mostAssistsRow.assists,
           `${mostAssistsRow.assists} assists`,
-          mostAssistsRow.kind === "standin"
-            ? "Stand-in · support impact"
-            : "Support impact",
+          awardDetail(
+            mostAssistsRow.kind === "standin"
+              ? "Stand-in · support impact"
+              : "Support impact",
+            mostAssistsRow.tieDetail,
+          ),
         )
       : null,
     mostDeaths: mostDeathsRow
@@ -311,9 +331,12 @@ export async function getPublicPlayerInsight(options?: {
           mostDeathsRow,
           mostDeathsRow.deaths,
           `${mostDeathsRow.deaths} deaths`,
-          mostDeathsRow.kind === "standin"
-            ? `Stand-in · ${mostDeathsRow.games} game${mostDeathsRow.games === 1 ? "" : "s"}`
-            : `${mostDeathsRow.games} game${mostDeathsRow.games === 1 ? "" : "s"}`,
+          awardDetail(
+            mostDeathsRow.kind === "standin"
+              ? `Stand-in · ${mostDeathsRow.games} game${mostDeathsRow.games === 1 ? "" : "s"}`
+              : `${mostDeathsRow.games} game${mostDeathsRow.games === 1 ? "" : "s"}`,
+            mostDeathsRow.tieDetail,
+          ),
         )
       : null,
     mostTeamKills: mostTeamKillsRow
@@ -323,7 +346,10 @@ export async function getPublicPlayerInsight(options?: {
           teamName: mostTeamKillsRow.name,
           value: mostTeamKillsRow.kills,
           valueLabel: `${mostTeamKillsRow.kills} kills`,
-          detail: "All seats for this franchise",
+          detail: awardDetail(
+            "All seats for this franchise",
+            mostTeamKillsRow.tieDetail,
+          ),
           kind: "roster",
         }
       : null,
@@ -334,7 +360,10 @@ export async function getPublicPlayerInsight(options?: {
           teamName: mostTeamDeathsRow.name,
           value: mostTeamDeathsRow.deaths,
           valueLabel: `${mostTeamDeathsRow.deaths} deaths`,
-          detail: "All seats for this franchise",
+          detail: awardDetail(
+            "All seats for this franchise",
+            mostTeamDeathsRow.tieDetail,
+          ),
           kind: "roster",
         }
       : null,

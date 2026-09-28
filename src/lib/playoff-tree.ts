@@ -1,6 +1,8 @@
 export const BRACKET_SLOTS = [
   "ub1",
   "ub2",
+  "lb0a",
+  "lb0b",
   "lb1",
   "lb2",
   "lb3",
@@ -31,6 +33,10 @@ export type GroupSeeds = {
   b2: NamedTeam;
   b3: NamedTeam;
   b4: NamedTeam;
+  /** Last place each group (4th in 2×4, 5th in 2×5). */
+  eliminated: [NamedTeam, NamedTeam];
+  /** When true, A3 vs B4 and B3 vs A4 book as lb0 before facing upper losers. */
+  hasLowerPlayIn: boolean;
 };
 
 export type SlotResult = {
@@ -73,7 +79,7 @@ export const BRACKET_META: Record<BracketSlot, BracketMeta> = {
     rightLabel: "Group B 2nd",
     waiting: "Waiting for Group A and Group B to finish",
     winnerGoes: "Upper Final",
-    loserGoes: "Lower Round 1 vs Group A 3rd",
+    loserGoes: "Lower Round 1",
   },
   ub2: {
     slotKey: "ub2",
@@ -87,7 +93,35 @@ export const BRACKET_META: Record<BracketSlot, BracketMeta> = {
     rightLabel: "Group A 2nd",
     waiting: "Waiting for Group A and Group B to finish",
     winnerGoes: "Upper Final",
-    loserGoes: "Lower Round 1 vs Group B 3rd",
+    loserGoes: "Lower Round 1",
+  },
+  lb0a: {
+    slotKey: "lb0a",
+    kind: "lb",
+    matchNumber: null,
+    bestOf: 1,
+    label: "Lower play-in · A3 vs B4",
+    stage: "lower",
+    round: "Lower play-in",
+    leftLabel: "Group A 3rd",
+    rightLabel: "Group B 4th",
+    waiting: "Waiting for Group A and Group B to finish",
+    winnerGoes: "Lower Round 1 vs Match 1 loser",
+    loserGoes: "Eliminated",
+  },
+  lb0b: {
+    slotKey: "lb0b",
+    kind: "lb",
+    matchNumber: null,
+    bestOf: 1,
+    label: "Lower play-in · B3 vs A4",
+    stage: "lower",
+    round: "Lower play-in",
+    leftLabel: "Group B 3rd",
+    rightLabel: "Group A 4th",
+    waiting: "Waiting for Group A and Group B to finish",
+    winnerGoes: "Lower Round 1 vs Match 2 loser",
+    loserGoes: "Eliminated",
   },
   lb1: {
     slotKey: "lb1",
@@ -97,7 +131,7 @@ export const BRACKET_META: Record<BracketSlot, BracketMeta> = {
     label: "Match 3 · Lower Round 1",
     stage: "lower",
     round: "Lower Round 1",
-    leftLabel: "Group A 3rd",
+    leftLabel: "Group A lower seed",
     rightLabel: "Match 1 loser",
     waiting: "Waiting for Upper Round 1 Match 1 (A1 vs B2)",
     winnerGoes: "Lower Round 2",
@@ -111,7 +145,7 @@ export const BRACKET_META: Record<BracketSlot, BracketMeta> = {
     label: "Match 4 · Lower Round 1",
     stage: "lower",
     round: "Lower Round 1",
-    leftLabel: "Group B 3rd",
+    leftLabel: "Group B lower seed",
     rightLabel: "Match 2 loser",
     waiting: "Waiting for Upper Round 1 Match 2 (B1 vs A2)",
     winnerGoes: "Lower Round 2",
@@ -186,7 +220,7 @@ export function isBracketSlot(slotKey: string | null | undefined): slotKey is Br
 }
 
 export function eliminatedFromSeeds(seeds: GroupSeeds): NamedTeam[] {
-  return [seeds.a4, seeds.b4];
+  return [...seeds.eliminated];
 }
 
 export function initialPairings(seeds: GroupSeeds): Record<
@@ -226,8 +260,31 @@ export function unlockedPairings(
       left: first.ub2.left,
       right: first.ub2.right,
     };
-    out.lb1 = { ...out.lb1, left: seeds.a3 };
-    out.lb2 = { ...out.lb2, left: seeds.b3 };
+
+    if (seeds.hasLowerPlayIn) {
+      // 10-team (2×5): A3 vs B4 / B3 vs A4 play-in, then winner faces upper loser.
+      out.lb0a = {
+        ...out.lb0a,
+        left: seeds.a3,
+        right: seeds.b4,
+      };
+      out.lb0b = {
+        ...out.lb0b,
+        left: seeds.b3,
+        right: seeds.a4,
+      };
+    } else {
+      // 8-team (2×4): 4th already eliminated; 3rd waits for upper loser.
+      out.lb1 = { ...out.lb1, left: seeds.a3 };
+      out.lb2 = { ...out.lb2, left: seeds.b3 };
+    }
+  }
+
+  if (results.lb0a) {
+    out.lb1 = { ...out.lb1, left: results.lb0a.winner };
+  }
+  if (results.lb0b) {
+    out.lb2 = { ...out.lb2, left: results.lb0b.winner };
   }
 
   // Fill each side as soon as its feeder resolves — do not wait for both.

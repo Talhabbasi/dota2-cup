@@ -11,10 +11,13 @@ import {
 import type { GroupStandingRow } from "@/lib/group-stage-schedule";
 import { cn } from "@/lib/utils";
 
-function rowTone(rank: number, eliminated: boolean) {
+function rowTone(rank: number, eliminated: boolean, groupSize: number) {
   if (eliminated) return "opacity-50";
   if (rank <= 2) return "border-l-4 border-amber-500 bg-amber-500/5";
-  if (rank === 3) return "border-l-4 border-cyan-400 bg-cyan-400/5";
+  // 3rd (and 4th in groups of 5+) feed the lower bracket / play-in.
+  if (rank === 3 || (groupSize >= 5 && rank === 4)) {
+    return "border-l-4 border-cyan-400 bg-cyan-400/5";
+  }
   return "";
 }
 
@@ -57,7 +60,7 @@ export function GroupStandingsTable({
               return (
                 <EsportsTableRow
                   key={row.id}
-                  className={cn(rowTone(rank, eliminated))}
+                  className={cn(rowTone(rank, eliminated, rows.length))}
                 >
                   <EsportsTableCell className="w-12 font-mono text-sm tabular-nums text-muted-foreground">
                     {rank}

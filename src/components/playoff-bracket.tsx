@@ -42,12 +42,14 @@ function Round({
   matches: PlayoffMatchView[];
 }) {
   const bySlot = new Map(matches.map((match) => [match.slotKey, match]));
+  const visible = slots.filter((slot) => bySlot.has(slot));
+  if (visible.length === 0) return null;
   return (
     <section className="playoff-round">
       <h2>{title}</h2>
       {note ? <p className="muted">{note}</p> : null}
       <div className="playoff-round-grid">
-        {slots.map((slot) => {
+        {visible.map((slot) => {
           const match = bySlot.get(slot);
           return match ? <MatchCard key={slot} match={match} /> : null;
         })}
@@ -57,14 +59,28 @@ function Round({
 }
 
 export function PlayoffBracket({ view }: { view: PlayoffView }) {
+  const elimOrdinal =
+    view.eliminatePlace === 5
+      ? "5th"
+      : view.eliminatePlace === 4
+        ? "4th"
+        : `${view.eliminatePlace}th`;
+  const unlockCopy = view.hasLowerPlayIn
+    ? `${elimOrdinal} place is eliminated. Top 4 from each group advance: 1st/2nd to Upper Round 1, A3 vs B4 and B3 vs A4 play into Lower Round 1 against Upper Round 1 losers.`
+    : `${elimOrdinal} place is eliminated. Each 3rd-place team waits for a crossover loser: A3 vs the A1–B2 loser, B3 vs the B1–A2 loser.`;
+  const lowerNote = view.hasLowerPlayIn
+    ? "Play-ins: A3 vs B4 and B3 vs A4. Winners face Upper Round 1 losers in Lower Round 1, then Lower Round 2, Lower Final. All Bo1."
+    : "Group A 3rd waits for the Match 1 loser. Group B 3rd waits for the Match 2 loser. Those winners play, then the Upper Final loser. All Bo1.";
+  const lowerSlots: PlayoffMatchView["slotKey"][] = view.hasLowerPlayIn
+    ? ["lb0a", "lb0b", "lb1", "lb2", "lb3", "lb_final"]
+    : ["lb1", "lb2", "lb3", "lb_final"];
+
   return (
     <div className="playoff-board">
       {!view.groupStageComplete ? (
         <p className="muted playoff-later">
-          Playoffs unlock after every Group A and Group B match is completed.
-          4th place is eliminated. Each 3rd-place team waits for a crossover
-          loser: A3 vs the A1–B2 loser, B3 vs the B1–A2 loser. See the{" "}
-          <Link href="/schedule">schedule</Link>.
+          Playoffs unlock after every Group A and Group B match is completed.{" "}
+          {unlockCopy} See the <Link href="/schedule">schedule</Link>.
         </p>
       ) : view.eliminated.length > 0 ? (
         <p className="playoff-elim-banner">
@@ -82,8 +98,8 @@ export function PlayoffBracket({ view }: { view: PlayoffView }) {
         />
         <Round
           title="Lower Bracket"
-          note="Group A 3rd waits for the Match 1 loser. Group B 3rd waits for the Match 2 loser. Those winners play, then the Upper Final loser. All Bo1."
-          slots={["lb1", "lb2", "lb3", "lb_final"]}
+          note={lowerNote}
+          slots={lowerSlots}
           matches={view.matches}
         />
         <Round

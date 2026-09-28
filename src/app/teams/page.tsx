@@ -13,6 +13,8 @@ import { getPublicSeasonContext } from "@/lib/season-page";
 import { isRosterSub } from "@/lib/roles";
 import { pageMeta } from "@/lib/seo";
 import { CUP_NAME } from "@/lib/brand";
+import { seasonPlanLine } from "@/lib/season-constants";
+import { seasonEmptyTeamsCopy } from "@/lib/season-public-copy";
 
 export const revalidate = 30;
 
@@ -78,7 +80,17 @@ export default async function TeamsPage({
     <div className="page teams-list-page">
       <SeasonArchiveBannerServer season={sp.season} />
       <PageHeader
-        eyebrow={view ? `Season ${view.number}` : "Franchises"}
+        eyebrow={
+          view
+            ? seasonPlanLine({
+                number: view.number,
+                teamCount: view.teamCount,
+                plannedStartAt: view.plannedStartAt,
+                startedAt: view.startedAt,
+                phase: view.phase,
+              })
+            : "Franchises"
+        }
         title="Teams"
         pills={
           cards.length > 0
@@ -89,7 +101,9 @@ export default async function TeamsPage({
                   label: "players signed",
                 },
               ]
-            : undefined
+            : view
+              ? [{ value: view.teamCount, label: "planned teams" }]
+              : undefined
         }
       />
 
@@ -100,7 +114,14 @@ export default async function TeamsPage({
           </span>
           <p className="muted" style={{ margin: 0 }}>
             {view
-              ? `No teams for Season ${view.number}.`
+              ? seasonEmptyTeamsCopy({
+                  number: view.number,
+                  name: view.name,
+                  teamCount: view.teamCount,
+                  plannedStartAt: view.plannedStartAt,
+                  startedAt: view.startedAt,
+                  phase: view.phase,
+                })
               : "No teams yet."}
           </p>
         </div>

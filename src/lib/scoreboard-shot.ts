@@ -266,8 +266,7 @@ async function generateGeminiJson(
           },
         ],
         generationConfig: {
-          // Minimal thinking keeps scoreboard OCR under serverless limits.
-          thinkingConfig: { thinkingLevel: "minimal" },
+          // Omit thinkingConfig — several Flash aliases reject MINIMAL and 400 the request.
           responseMimeType: "application/json",
           temperature: 0.1,
           maxOutputTokens: 4096,

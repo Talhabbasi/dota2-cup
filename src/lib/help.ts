@@ -74,13 +74,13 @@ Subs do **not** pay. Each team must be exactly **5000 PKR** (5 starters).
 \`/schedule remove fixture:\` — delete one booked match
 \`/schedule list\` · \`/schedule clear\` — clear deletes **pending** fixtures (careful)
 \`/schedule final\` — book a Bo3 grand final (legacy helper)
-\`/playoff groups\` — randomly split 8 teams into A/B (groups are already set)
+\`/playoff groups\` — randomly split season teams into A/B
 \`/playoff assign team:<name> group:<A|B>\`
 \`/playoff open\` — book playoffs from **final group standings** (does not touch group matches)
 \`/playoff post\` — post/refresh the bracket graph in **#matches**
 \`/playoff status\` — same data as the website Playoffs page
 \`/playoff clear\` — pending playoff fixtures only (keeps the group-stage grid)
-Website: **Schedule** + **Playoffs** (tournament graph) + **Predictions**. Group-stage picks (10 pts) and **The International** tree lock Friday **10:00 PM PKT**. Grand Final 50 pts. One combined points board (name → points). After groups: 4th out; each 3rd waits for a crossover loser (A3 vs A1–B2 loser, B3 vs B1–A2 loser); then double-elim. Grand Final **Bo3**.
+Website: **Schedule** + **Playoffs** (tournament graph) + **Predictions**. Group-stage picks (10 pts) and **The International** tree lock Friday **10:00 PM PKT**. Grand Final 50 pts. One combined points board (name → points). After groups: last place out; **8 teams** each 3rd waits for a crossover loser; **10 teams** A3 vs B4 / B3 vs A4 play into lower vs upper losers; then double-elim. Grand Final **Bo3**.
 
 **Admin — results**
 In **#results**, post the Dota 2 **SCOREBOARD** screenshot (heroes, items, LH/DN, GPM). The bot fills the website from that picture. You can also \`!result\` with the image, or \`!result 8123456789\` if you have a Match ID.
@@ -109,7 +109,7 @@ export const HELP_GUIDE = `## How to run the cup
 
 **Auction night.** Admin runs one **rank** pool at a time in #auction (Immortal, then Divine, and so on). Same medal = same pool, regardless of role. Captains buy any players within budget — no position limits. Roster is 5 starters + 2 subs (captain counts as a starter). Practice in **#auction-test** (Admin only) — that channel never writes purses, rosters, or the website.
 
-**Playoffs.** 8 teams, 2 groups of 4. Admin: \`/playoff groups\` then \`/schedule groups\` (Group A Saturday, Group B Sunday, 10:00 PM–4:00 AM PKT). When both groups finish, 4th is eliminated and \`/playoff open\` (or the last \`!result\`) books Upper Round 1 (A1 vs B2, B1 vs A2). Each 3rd waits for a loser. Playoff kickoffs are Saturday/Sunday **10:00 AM–3:00 AM PKT**. Grand Final is **Bo3**; every other series is **Bo1**. Change any booked match with \`/schedule edit\`. Kickoff times also show on the website **Schedule** / **Playoffs** pages and in **#matches**.
+**Playoffs.** Season team count from Admin (classic **8 = 2×4**, or **10 = 2×5**). Admin: \`/playoff groups\` then \`/schedule groups\` (Group A Saturday, Group B Sunday). When both groups finish, last place is eliminated and \`/playoff open\` (or the last \`!result\`) books Upper Round 1 (A1 vs B2, B1 vs A2). **8 teams:** each 3rd waits for a loser. **10 teams:** A3 vs B4 and B3 vs A4 play into lower, then face those losers. Playoff kickoffs are Saturday/Sunday **10:00 AM–3:00 AM PKT**. Grand Final is **Bo3**; every other series is **Bo1**. Change any booked match with \`/schedule edit\`. Kickoff times also show on the website **Schedule** / **Playoffs** pages and in **#matches**.
 
 **Reminders.** The bot pings captains in #general about **1 hour** before a scheduled match (configurable).
 

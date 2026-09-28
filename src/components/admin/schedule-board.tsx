@@ -52,14 +52,19 @@ export type AdminFixtureRow = {
 export function AdminScheduleBoard({
   fixtures,
   teams,
+  readOnly = false,
+  publicSeasonParam,
 }: {
   fixtures: AdminFixtureRow[];
   teams: { id: string; name: string }[];
+  readOnly?: boolean;
+  publicSeasonParam?: string;
 }) {
   const [showAdd, setShowAdd] = useState(false);
 
   return (
     <div className="space-y-6">
+      {!readOnly ? (
       <div
         className={cn(
           adminCardClass,
@@ -162,16 +167,27 @@ export function AdminScheduleBoard({
           </AdminActionForm>
         ) : null}
       </div>
+      ) : null}
 
       <AdminDataTable
-        title="Fixtures"
-        hint="Click a fixture to set win / walkover, edit, or delete."
+        title={readOnly ? "Archive fixtures" : "Fixtures"}
+        hint={
+          readOnly
+            ? "Read-only. Click a row to open the public schedule for this season."
+            : "Click a fixture to set win / walkover, edit, or delete."
+        }
         items={fixtures}
         getId={(f) => f.id}
-        hrefFor={(f) => `/admin/schedule/${f.id}`}
+        hrefFor={(f) =>
+          readOnly
+            ? `/schedule?season=${publicSeasonParam ?? ""}`
+            : `/admin/schedule/${f.id}`
+        }
         searchPlaceholder="Search teams…"
         searchText={(f) => `${f.teamA} ${f.teamB} ${f.kind} ${f.when}`}
-        emptyLabel="No pending fixtures."
+        emptyLabel={
+          readOnly ? "No fixtures for this season." : "No pending fixtures."
+        }
         filters={[
           {
             key: "kind",

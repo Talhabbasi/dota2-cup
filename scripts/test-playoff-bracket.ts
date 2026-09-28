@@ -10,6 +10,7 @@ import {
   type NamedTeam,
   type SlotResult,
 } from "../src/lib/playoff-bracket";
+import { playoffFormatFromTeamCount } from "../src/lib/playoff-format";
 import {
   isAllowedPlayoffKickoff,
   isGroupNightHour,
@@ -78,6 +79,12 @@ assert(seeds.b1.name === "Team Saif", `B1 should be Saif, got ${seeds.b1.name}`)
 assert(seeds.b2.name === "Team Ash", `B2 should be Ash, got ${seeds.b2.name}`);
 assert(seeds.b3.name === "Team Grand_Master", `B3 should be Grand_Master, got ${seeds.b3.name}`);
 assert(seeds.b4.name === "Team Stoic", `B4 should be Stoic, got ${seeds.b4.name}`);
+assert(!seeds.hasLowerPlayIn, "Classic 8-team format has no lower play-in");
+assert(
+  seeds.eliminated.map((row) => row.id).sort().join(",") ===
+    [yona.id, stoic.id].sort().join(","),
+  "4th-place teams are listed as eliminated",
+);
 
 const first = initialPairings(seeds);
 assert(sameTeam(first.ub1.left, xtc) && sameTeam(first.ub1.right, ash), "Match 1 must be A1 vs B2 (XTC vs Ash)");
@@ -104,7 +111,10 @@ assert(
   "Lower Round 1 Match 3 must be Group A 3rd vs Match 1 loser",
 );
 assert(!afterUb1.lb2.right, "Match 4 still needs Match 2");
-assert(!afterUb1.uf.left, "Upper Final still needs Match 2");
+assert(
+  sameTeam(afterUb1.uf.left, xtc) && !afterUb1.uf.right,
+  "Upper Final left fills from Match 1; right waits for Match 2",
+);
 
 const afterUb = unlockedPairings(seeds, {
   ub1: result(xtc, ash),
@@ -152,7 +162,10 @@ assert(
   sameTeam(almost.lb_final.left, ash) && sameTeam(almost.lb_final.right, chessman),
   "Lower Final must be Match 6 winner vs Upper Final loser",
 );
-assert(!almost.final.left, "Grand Final must wait for the Lower Final");
+assert(
+  sameTeam(almost.final.left, xtc) && !almost.final.right,
+  "Grand Final left fills from Upper Final; right waits for Lower Final",
+);
 
 const finals = unlockedPairings(seeds, afterAll);
 assert(
@@ -184,6 +197,52 @@ assert(sameTeam(altFirst.ub2.left, stoic) && sameTeam(altFirst.ub2.right, yona),
 const altEmpty = unlockedPairings(alt, {});
 assert(sameTeam(altEmpty.lb1.left, chessman), "A different table must still seat A3 vs the Match 1 loser");
 assert(sameTeam(altEmpty.lb2.left, ash), "A different table must still seat B3 vs the Match 2 loser");
+
+// --- 10-team (2×5): 5th out, A3 vs B4 / B3 vs A4 play-in ---
+const fmt10 = playoffFormatFromTeamCount(10);
+assert(fmt10.groupSize === 5 && fmt10.hasLowerPlayIn, "10 teams → 2×5 with lower play-in");
+assert(fmt10.eliminatePlace === 5 && fmt10.gamesPerTeam === 4, "5th out, 4 games each");
+
+const a5 = team("a-fifth", "Team FifthA");
+const b5 = team("b-fifth", "Team FifthB");
+const rankingA10 = [xtc, chessman, lala, yona, a5];
+const rankingB10 = [saif, ash, gm, stoic, b5];
+const groupA10 = rankingA10.map((row, index) => ({
+  id: row.id,
+  name: row.name,
+  played: 4,
+  wins: 4 - index,
+  losses: index,
+  points: 4 - index,
+}));
+const groupB10 = rankingB10.map((row, index) => ({
+  id: row.id,
+  name: row.name,
+  played: 4,
+  wins: 4 - index,
+  losses: index,
+  points: 4 - index,
+}));
+const seeds10 = seedsFromStandings(groupA10, groupB10, fmt10);
+assert(seeds10, "10-team seeds should resolve once every team has played 4 games");
+assert(seeds10.hasLowerPlayIn, "10-team seeds enable lower play-in");
+assert(
+  eliminatedFromSeeds(seeds10).map((row) => row.id).sort().join(",") ===
+    [a5.id, b5.id].sort().join(","),
+  "5th-place teams are eliminated",
+);
+const empty10 = unlockedPairings(seeds10, {});
+assert(sameTeam(empty10.lb0a.left, lala) && sameTeam(empty10.lb0a.right, stoic), "A play-in is A3 vs B4");
+assert(sameTeam(empty10.lb0b.left, gm) && sameTeam(empty10.lb0b.right, yona), "B play-in is B3 vs A4");
+assert(!empty10.lb1.left && !empty10.lb1.right, "LB1 waits for play-in winner + Match 1 loser");
+const afterPlayIn = unlockedPairings(seeds10, {
+  ub1: result(xtc, ash),
+  lb0a: result(lala, stoic),
+});
+assert(
+  sameTeam(afterPlayIn.lb1.left, lala) && sameTeam(afterPlayIn.lb1.right, ash),
+  "LB1 is play-in winner vs Match 1 loser",
+);
 
 assert(parseMatchNightHour("10am") === 10, "10am should parse");
 assert(parseMatchNightHour("15") === 15, "3pm should parse");

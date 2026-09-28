@@ -120,7 +120,18 @@ function findTeamName(
   if (!teamId) return null;
   const inPair = teamNameInPairing(pairing, teamId);
   if (inPair) return inPair;
-  for (const team of Object.values(seeds)) {
+  const seedTeams: NamedTeam[] = [
+    seeds.a1,
+    seeds.a2,
+    seeds.a3,
+    seeds.a4,
+    seeds.b1,
+    seeds.b2,
+    seeds.b3,
+    seeds.b4,
+    ...seeds.eliminated,
+  ];
+  for (const team of seedTeams) {
     if (team.id === teamId) return team.name;
   }
   for (const result of Object.values(results)) {
@@ -157,7 +168,10 @@ export function pickemSlots(
 ): PickemSlotView[] {
   const results = applyPicksToResults(seeds, actual, picks);
   const pairings = unlockedPairings(seeds, results);
-  return BRACKET_SLOTS.map((slot) => {
+  const slots = seeds.hasLowerPlayIn
+    ? BRACKET_SLOTS
+    : BRACKET_SLOTS.filter((slot) => slot !== "lb0a" && slot !== "lb0b");
+  return slots.map((slot) => {
     const meta = BRACKET_META[slot];
     const pairing = pairings[slot];
     const actualResult = actual[slot];

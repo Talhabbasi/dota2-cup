@@ -4,28 +4,23 @@ import { prisma } from "./prisma";
 import { publicFixtureWhere, publicPlayerWhere } from "./dummy";
 import { SEASON_LABEL } from "./brand";
 import { isRosterSub, sortTeamRoster } from "./roles";
+import {
+  ALLOWED_TEAM_COUNTS,
+  SEASON_PHASE,
+  SEASON_STATUS,
+  TOURNAMENT_FORMAT,
+  formatSeasonLabel,
+  type SeasonStatus,
+} from "./season-constants";
 
-export const SEASON_STATUS = {
-  upcoming: "upcoming",
-  live: "live",
-  archived: "archived",
-} as const;
-
-export const SEASON_PHASE = {
-  UPCOMING: "UPCOMING",
-  AUCTION_ACTIVE: "AUCTION_ACTIVE",
-  IN_PROGRESS: "IN_PROGRESS",
-  COMPLETED: "COMPLETED",
-} as const;
-
-export const TOURNAMENT_FORMAT = {
-  AUCTION_BASED: "AUCTION_BASED",
-  TEAM_BASED: "TEAM_BASED",
-} as const;
-
-export const ALLOWED_TEAM_COUNTS = [8, 10, 12] as const;
-
-export type SeasonStatus = (typeof SEASON_STATUS)[keyof typeof SEASON_STATUS];
+export {
+  ALLOWED_TEAM_COUNTS,
+  SEASON_PHASE,
+  SEASON_STATUS,
+  TOURNAMENT_FORMAT,
+  formatSeasonLabel,
+  type SeasonStatus,
+} from "./season-constants";
 
 const DEFAULT_SEASON_NUMBER = 1;
 const DEFAULT_SEASON_NAME = SEASON_LABEL;
@@ -115,16 +110,21 @@ export async function ensureDefaultSeason(db: Db = prisma) {
         },
       });
     } else {
-      // Season 1 already archived — organizers must create Season 2+ explicitly.
-      throw new Error(
-        "No live season. Create a new season in Admin → Seasons, then activate it.",
-      );
+      // Between seasons (S1 archived, nothing active) — do not throw.
+      // Admin must still open /admin/seasons to create/activate the next cup.
+      const newest = await db.season.findFirst({ orderBy: { number: "desc" } });
+      if (!newest) {
+        throw new Error(
+          "No seasons exist. Create one in Admin → Seasons.",
+        );
+      }
+      return newest;
     }
   }
 
   if (season.number === DEFAULT_SEASON_NUMBER && season.status === SEASON_STATUS.upcoming) {
     season = await setActiveSeason(season.id, db);
-  } else if (!season.isActive) {
+  } else if (!season.isActive && season.status !== SEASON_STATUS.archived) {
     season = await setActiveSeason(season.id, db);
   }
 
@@ -137,7 +137,8 @@ export async function ensureDefaultSeason(db: Db = prisma) {
     });
   } else if (
     settings.currentSeasonId !== season.id &&
-    season.status === SEASON_STATUS.live
+    season.status === SEASON_STATUS.live &&
+    season.isActive
   ) {
     await db.cupSettings.update({
       where: { id: "singleton" },
@@ -158,6 +159,10 @@ export async function currentSeasonId(db: Db = prisma) {
   });
   if (upcoming) return upcoming.id;
 
+  // Prefer newest season id for admin reads — never throw just to list matches.
+  const newest = await db.season.findFirst({ orderBy: { number: "desc" } });
+  if (newest) return newest.id;
+
   const season = await ensureDefaultSeason(db);
   return season.id;
 }
@@ -169,7 +174,12 @@ export async function seasonScope(
   return currentSeasonFilter();
 }
 
-export async function createSeason(input?: { name?: string | null }) {
+export async function createSeason(input?: {
+  name?: string | null;
+  plannedStartAt?: Date | null;
+  tournamentFormat?: string;
+  teamCount?: number;
+}) {
   const last = await prisma.season.findFirst({
     orderBy: { number: "desc" },
   });
@@ -183,12 +193,24 @@ export async function createSeason(input?: { name?: string | null }) {
     throw new Error(`Season ${number} already exists.`);
   }
 
+  const format =
+    input?.tournamentFormat === TOURNAMENT_FORMAT.TEAM_BASED
+      ? TOURNAMENT_FORMAT.TEAM_BASED
+      : TOURNAMENT_FORMAT.AUCTION_BASED;
+  const teamCount = input?.teamCount ?? 8;
+  if (!(ALLOWED_TEAM_COUNTS as readonly number[]).includes(teamCount)) {
+    throw new Error("Team count must be 8, 10, or 12.");
+  }
+
   return prisma.season.create({
     data: {
       number,
       name: seasonName(number, input?.name),
       status: SEASON_STATUS.upcoming,
       phase: SEASON_PHASE.UPCOMING,
+      plannedStartAt: input?.plannedStartAt ?? null,
+      tournamentFormat: format,
+      teamCount,
     },
   });
 }
@@ -396,9 +418,44 @@ export type PublicSeasonRow = {
   plannedStartAt: Date | null;
   startedAt: Date | null;
   endedAt: Date | null;
+  tournamentFormat: string;
+  teamCount: number;
   isActive: boolean;
   championName: string | null;
 };
+
+function toPublicSeasonRow(
+  row: {
+    id: string;
+    number: number;
+    name: string;
+    status: string;
+    phase: string;
+    plannedStartAt: Date | null;
+    startedAt: Date | null;
+    endedAt: Date | null;
+    tournamentFormat: string;
+    teamCount: number;
+    isActive: boolean;
+    championTeam: { name: string } | null;
+  },
+  liveId: string | null | undefined,
+): PublicSeasonRow {
+  return {
+    id: row.id,
+    number: row.number,
+    name: row.name,
+    status: row.status,
+    phase: row.phase,
+    plannedStartAt: row.plannedStartAt,
+    startedAt: row.startedAt,
+    endedAt: row.endedAt,
+    tournamentFormat: row.tournamentFormat,
+    teamCount: row.teamCount,
+    isActive: Boolean(row.isActive) || liveId === row.id,
+    championName: row.championTeam?.name ?? null,
+  };
+}
 
 export async function listPublicSeasons(): Promise<PublicSeasonRow[]> {
   const [rows, live] = await Promise.all([
@@ -408,18 +465,7 @@ export async function listPublicSeasons(): Promise<PublicSeasonRow[]> {
     }),
     getLiveSeason(),
   ]);
-  return rows.map((row) => ({
-    id: row.id,
-    number: row.number,
-    name: row.name,
-    status: row.status,
-    phase: row.phase,
-    plannedStartAt: row.plannedStartAt,
-    startedAt: row.startedAt,
-    endedAt: row.endedAt,
-    isActive: live?.id === row.id,
-    championName: row.championTeam?.name ?? null,
-  }));
+  return rows.map((row) => toPublicSeasonRow(row, live?.id));
 }
 
 export async function getSeasonByIdOrNumber(
@@ -435,18 +481,7 @@ export async function getSeasonByIdOrNumber(
   });
   if (!row) return null;
   const live = await getLiveSeason();
-  return {
-    id: row.id,
-    number: row.number,
-    name: row.name,
-    status: row.status,
-    phase: row.phase,
-    plannedStartAt: row.plannedStartAt,
-    startedAt: row.startedAt,
-    endedAt: row.endedAt,
-    isActive: Boolean(row.isActive) || live?.id === row.id,
-    championName: row.championTeam?.name ?? null,
-  };
+  return toPublicSeasonRow(row, live?.id);
 }
 
 export async function listSeasonsForAdmin() {
@@ -472,6 +507,10 @@ export async function setActiveSeason(seasonId: string, db: Db = prisma) {
 
   const promoteFromArchive = target.status === SEASON_STATUS.archived;
   const promoteFromUpcoming = target.status === SEASON_STATUS.upcoming;
+  const now = new Date();
+  const plannedStillAhead =
+    Boolean(target.plannedStartAt) &&
+    target.plannedStartAt!.getTime() > now.getTime();
 
   await db.$transaction(async (tx) => {
     await tx.season.updateMany({ data: { isActive: false } });
@@ -485,13 +524,19 @@ export async function setActiveSeason(seasonId: string, db: Db = prisma) {
             : target.status === SEASON_STATUS.live
               ? SEASON_STATUS.live
               : target.status,
+        // Keep UPCOMING while Planned start is still in the future so the
+        // site shows "starts 20 Oct" instead of treating activate-as-start.
         phase:
-          promoteFromArchive ||
-          promoteFromUpcoming ||
-          target.phase === SEASON_PHASE.COMPLETED
-            ? SEASON_PHASE.IN_PROGRESS
-            : target.phase,
-        startedAt: target.startedAt ?? new Date(),
+          promoteFromUpcoming && plannedStillAhead
+            ? SEASON_PHASE.UPCOMING
+            : promoteFromArchive ||
+                promoteFromUpcoming ||
+                target.phase === SEASON_PHASE.COMPLETED
+              ? SEASON_PHASE.IN_PROGRESS
+              : target.phase,
+        startedAt: plannedStillAhead
+          ? null
+          : target.startedAt ?? now,
         endedAt: promoteFromArchive ? null : target.endedAt,
       },
     });
@@ -502,13 +547,79 @@ export async function setActiveSeason(seasonId: string, db: Db = prisma) {
     });
   });
 
-  // Mirror this season's payment ledger onto Player.paidAt for legacy readers.
+  // Mirror this season's payment + roster onto Player for legacy readers.
   if (db === prisma) {
     const { hydratePlayerPaymentsFromSeason } = await import("./payments");
     await hydratePlayerPaymentsFromSeason(target.id);
+    await hydratePlayerRosterFromSeason(target.id);
   }
 
   return db.season.findUniqueOrThrow({ where: { id: target.id } });
+}
+
+/**
+ * Copy SeasonPlayer team/captain/roster onto Player so legacy admin/auction
+ * paths that still read Player.teamId stay aligned with the active season.
+ * Players not in this season are cleared off any roster.
+ */
+export async function hydratePlayerRosterFromSeason(seasonId: string) {
+  const rows = await prisma.seasonPlayer.findMany({
+    where: { seasonId },
+    select: {
+      playerId: true,
+      teamId: true,
+      isCaptain: true,
+      rosterRole: true,
+      teamJoinedAt: true,
+    },
+  });
+  const inSeason = new Set(rows.map((r) => r.playerId));
+
+  // Empty season (fresh cup) — clear every legacy Player roster/payment mirror.
+  if (inSeason.size === 0) {
+    await prisma.player.updateMany({
+      data: {
+        teamId: null,
+        isCaptain: false,
+        rosterRole: null,
+        teamJoinedAt: null,
+        auctionStatus: "UNSOLD",
+      },
+    });
+    return;
+  }
+
+  await prisma.$transaction([
+    ...rows.map((row) =>
+      prisma.player.update({
+        where: { id: row.playerId },
+        data: {
+          teamId: row.teamId,
+          isCaptain: row.isCaptain,
+          rosterRole: row.rosterRole,
+          teamJoinedAt: row.teamJoinedAt,
+          auctionStatus: row.teamId ? "SOLD" : "UNSOLD",
+        },
+      }),
+    ),
+    prisma.player.updateMany({
+      where: {
+        id: { notIn: [...inSeason] },
+        OR: [
+          { teamId: { not: null } },
+          { isCaptain: true },
+          { rosterRole: { not: null } },
+        ],
+      },
+      data: {
+        teamId: null,
+        isCaptain: false,
+        rosterRole: null,
+        teamJoinedAt: null,
+        auctionStatus: "UNSOLD",
+      },
+    }),
+  ]);
 }
 
 /** @deprecated Prefer setActiveSeason — kept for admin action name compatibility. */
@@ -606,18 +717,24 @@ export async function getSeasonSnapshotBracket(
   });
   if (!snap?.bracketJson) return null;
   try {
-    return JSON.parse(snap.bracketJson) as import("./playoff").PlayoffView;
+    const view = JSON.parse(snap.bracketJson) as import("./playoff").PlayoffView;
+    // Older archives predate format fields / lower play-ins.
+    return {
+      ...view,
+      teamCount: view.teamCount ?? 8,
+      groupSize: view.groupSize ?? 4,
+      gamesPerTeam: view.gamesPerTeam ?? 3,
+      hasLowerPlayIn: view.hasLowerPlayIn ?? false,
+      eliminatePlace: view.eliminatePlace ?? 4,
+      matches: (view.matches ?? []).filter(
+        (match) =>
+          (view.hasLowerPlayIn ?? false) ||
+          (match.slotKey !== "lb0a" && match.slotKey !== "lb0b"),
+      ),
+    };
   } catch {
     return null;
   }
-}
-
-export function formatSeasonLabel(season: {
-  number: number;
-  name: string;
-  status: string;
-}) {
-  return `Season ${season.number} · ${season.name} (${season.status})`;
 }
 
 export async function syncSeasonPlayer(playerId: string, db: Db = prisma) {
@@ -627,34 +744,56 @@ export async function syncSeasonPlayer(playerId: string, db: Db = prisma) {
   const player = await db.player.findUnique({ where: { id: playerId } });
   if (!player) return null;
 
-  return db.seasonPlayer.upsert({
-    where: {
-      seasonId_playerId: { seasonId: season.id, playerId: player.id },
-    },
-    create: {
+  const key = { seasonId: season.id, playerId: player.id };
+  const existing = await db.seasonPlayer.findUnique({
+    where: { seasonId_playerId: key },
+  });
+
+  if (existing) {
+    // Identity / preference only — roster & payment stay season-scoped writers.
+    return db.seasonPlayer.update({
+      where: { seasonId_playerId: key },
+      data: {
+        medal: player.medal,
+        rolesJson: player.rolesJson,
+        playWindow: player.playWindow,
+      },
+    });
+  }
+
+  // New season membership starts clean — never copy prior-season team/payment
+  // off the global Player row (that leaked Season 1 into Season 2).
+  const created = await db.seasonPlayer.create({
+    data: {
       seasonId: season.id,
       playerId: player.id,
-      teamId: player.teamId,
-      rosterRole: player.rosterRole,
-      teamJoinedAt: player.teamJoinedAt,
-      isCaptain: player.isCaptain,
+      teamId: null,
+      rosterRole: null,
+      teamJoinedAt: null,
+      isCaptain: false,
       medal: player.medal,
       rolesJson: player.rolesJson,
       playWindow: player.playWindow,
-      paidAt: player.paidAt,
-      paymentAmount: player.paymentAmount,
-    },
-    update: {
-      teamId: player.teamId,
-      rosterRole: player.rosterRole,
-      teamJoinedAt: player.teamJoinedAt,
-      isCaptain: player.isCaptain,
-      medal: player.medal,
-      rolesJson: player.rolesJson,
-      playWindow: player.playWindow,
-      // Keep season-scoped payment fields; do not overwrite from global Player.
+      paidAt: null,
+      paymentAmount: 0,
     },
   });
+
+  // Clear legacy Player mirrors so admin/list surfaces don't show last season's team/fee.
+  await db.player.update({
+    where: { id: player.id },
+    data: {
+      teamId: null,
+      isCaptain: false,
+      rosterRole: null,
+      teamJoinedAt: null,
+      auctionStatus: "UNSOLD",
+      paidAt: null,
+      paymentAmount: 0,
+    },
+  });
+
+  return created;
 }
 
 export async function syncSeasonPlayers(playerIds: string[], db: Db = prisma) {
@@ -910,8 +1049,18 @@ export type SeasonHistoryRow = {
 };
 
 export async function getSeasonHistory(): Promise<SeasonHistoryRow[]> {
+  // Public archive only — in-progress seasons (e.g. live Season 2) stay hidden
+  // until they are archived, ended, or have a recorded champion.
   const [seasons, current] = await Promise.all([
     prisma.season.findMany({
+      where: {
+        OR: [
+          { status: SEASON_STATUS.archived },
+          { phase: SEASON_PHASE.COMPLETED },
+          { endedAt: { not: null } },
+          { championTeamId: { not: null } },
+        ],
+      },
       orderBy: { number: "desc" },
       include: {
         championTeam: { select: { id: true, name: true } },
@@ -979,6 +1128,20 @@ export async function getSeasonHistory(): Promise<SeasonHistoryRow[]> {
   }
 
   return rows;
+}
+
+/** How many seasons belong on the public archive (/seasons). */
+export async function countCompletedSeasons() {
+  return prisma.season.count({
+    where: {
+      OR: [
+        { status: SEASON_STATUS.archived },
+        { phase: SEASON_PHASE.COMPLETED },
+        { endedAt: { not: null } },
+        { championTeamId: { not: null } },
+      ],
+    },
+  });
 }
 
 export const hasCrownedSeason = cache(async () => {

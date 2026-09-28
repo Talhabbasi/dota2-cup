@@ -11,6 +11,7 @@ import { loadPlayersForSeason } from "@/lib/season-data";
 import { getPublicSeasonContext } from "@/lib/season-page";
 import { pageMeta } from "@/lib/seo";
 import { CUP_NAME } from "@/lib/brand";
+import { formatSeasonStartDate, seasonPlanLine } from "@/lib/season-constants";
 
 export const revalidate = 30;
 
@@ -60,7 +61,17 @@ export default async function PlayersPage({
       <SeasonArchiveBannerServer season={sp.season} />
       <PageHeader
         className="players-list-hero"
-        eyebrow={view ? `Season ${view.number}` : "Pool"}
+        eyebrow={
+          view
+            ? seasonPlanLine({
+                number: view.number,
+                teamCount: view.teamCount,
+                plannedStartAt: view.plannedStartAt,
+                startedAt: view.startedAt,
+                phase: view.phase,
+              })
+            : "Pool"
+        }
         title="Players"
         pills={
           views.length > 0
@@ -109,8 +120,12 @@ export default async function PlayersPage({
           </span>
           <p className="muted" style={{ margin: 0 }}>
             {view
-              ? `No players registered for Season ${view.number}.`
-              : "No players registered."}
+              ? `No players registered for Season ${view.number} yet${
+                  formatSeasonStartDate(view.plannedStartAt)
+                    ? ` · starts ${formatSeasonStartDate(view.plannedStartAt)}`
+                    : ""
+                }. Returning players keep the same Steam account — register again on the site or Discord (or ask an admin to link them) to appear here.`
+              : "No players registered for the live season yet."}
           </p>
         </div>
       ) : (

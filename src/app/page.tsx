@@ -17,7 +17,9 @@ import { PlayoffGraphLazy } from "@/components/playoff-graph-lazy";
 import { getPlayoffView } from "@/lib/playoff";
 import { getActiveWeekendBundle } from "@/lib/schedule";
 import { getCurrentSeasonChampion, getCurrentSeasonSafe, getLiveSeason, listPublicSeasons } from "@/lib/seasons";
-import { resolveViewSeason } from "@/lib/season-view";
+import { SEASON_STATUS } from "@/lib/season-constants";
+import { seasonFormatCards } from "@/lib/season-public-copy";
+import { toIso } from "@/lib/format";
 
 export const revalidate = 30;
 
@@ -58,8 +60,7 @@ export default async function Home() {
     season,
     champion,
     live,
-    seasons,
-    view,
+    publicSeasons,
   ] = await Promise.all([
     getStandings(),
     getRecentMatches(5),
@@ -72,14 +73,36 @@ export default async function Home() {
     getCurrentSeasonChampion(),
     getLiveSeason(),
     listPublicSeasons(),
-    resolveViewSeason(),
   ]);
 
   const latest = matches[0] ?? null;
   const recent = latest ? matches.slice(1, 5) : matches.slice(0, 4);
   const crowned = Boolean(live && champion);
   const siteMode = crowned ? "champion" : live ? "active" : "upcoming";
-  const viewSeasonNumber = view?.number ?? live?.number ?? null;
+  const plannedSeason =
+    live ??
+    publicSeasons.find(
+      (row) =>
+        row.status === SEASON_STATUS.upcoming ||
+        row.phase === "UPCOMING" ||
+        row.phase === "AUCTION_ACTIVE",
+    ) ??
+    null;
+  const seasonPlan = plannedSeason
+    ? {
+        number: plannedSeason.number,
+        name: plannedSeason.name,
+        teamCount: plannedSeason.teamCount,
+        plannedStartAt: plannedSeason.plannedStartAt
+          ? toIso(plannedSeason.plannedStartAt)
+          : null,
+        startedAt: plannedSeason.startedAt
+          ? toIso(plannedSeason.startedAt)
+          : null,
+        phase: plannedSeason.phase,
+        tournamentFormat: plannedSeason.tournamentFormat,
+      }
+    : null;
 
   return (
     <>
@@ -88,10 +111,9 @@ export default async function Home() {
         teamCount={teamCount}
         matchCount={matchCount}
         seasonLabel={season ? `Season ${season.number}` : null}
+        seasonPlan={seasonPlan}
         champion={crowned ? champion : null}
         siteMode={siteMode}
-        seasons={seasons}
-        viewSeasonNumber={viewSeasonNumber}
       />
 
       <div className="page home-body">
@@ -147,17 +169,17 @@ export default async function Home() {
             className="mb-7 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"
             aria-label="Cup format"
           >
-            {[
-              ["01", "Group stage", "Two groups of four. Round-robin Bo1. Fourth place is out."],
-              ["02", "Crossovers", "A1 vs B2 and B1 vs A2. Each 3rd waits for a loser."],
-              ["03", "Playoffs", "Double-elim graph. Grand Final is Bo3. Everything else Bo1."],
-            ].map(([index, title, copy]) => (
-              <EsportsCard key={index} className="px-5 py-5">
-                <p className="m-0 font-mono text-lg font-bold text-amber-500">{index}</p>
+            {seasonFormatCards(seasonPlan?.teamCount ?? 8).map((card) => (
+              <EsportsCard key={card.index} className="px-5 py-5">
+                <p className="m-0 font-mono text-lg font-bold text-amber-500">
+                  {card.index}
+                </p>
                 <h2 className="mt-2 mb-1.5 font-display text-lg tracking-wide text-foreground uppercase">
-                  {title}
+                  {card.title}
                 </h2>
-                <p className="m-0 text-sm leading-relaxed text-muted-foreground">{copy}</p>
+                <p className="m-0 text-sm leading-relaxed text-muted-foreground">
+                  {card.copy}
+                </p>
               </EsportsCard>
             ))}
           </section>

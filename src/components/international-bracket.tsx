@@ -227,6 +227,15 @@ export function InternationalBracket({
             </div>
             <div className="pg-lane pg-lane-lower">
               <span className="pg-lane-label">Lower</span>
+              {view.seeds?.hasLowerPlayIn ? (
+                <>
+                  <div className="pg-stack">
+                    {card("lb0a")}
+                    {card("lb0b")}
+                  </div>
+                  <div className="pg-line" aria-hidden />
+                </>
+              ) : null}
               <div className="pg-stack">
                 {card("lb1")}
                 {card("lb2")}

@@ -10,6 +10,12 @@ import { steam32To64, steamProfileUrl } from "@/lib/steam";
 import { COMMUNITY_NAME, CUP_NAME } from "@/lib/brand";
 import { getCupFeatureSettings } from "@/lib/cup-features";
 import { MEDAL_LABELS } from "@/lib/constants";
+import { getLiveSeason } from "@/lib/seasons";
+import {
+  formatSeasonStartDate,
+  seasonPlanLine,
+  tournamentFormatLabel,
+} from "@/lib/season-constants";
 
 export const dynamic = "force-dynamic";
 
@@ -20,10 +26,21 @@ export const metadata = pageMeta(
 
 export default async function RegisterPage() {
   const { session, player } = await currentPlayer();
-  const [publicOpen, features] = await Promise.all([
+  const [publicOpen, features, live] = await Promise.all([
     isRegistrationOpen(),
     getCupFeatureSettings(),
+    getLiveSeason(),
   ]);
+  const planLine = live
+    ? seasonPlanLine({
+        number: live.number,
+        teamCount: live.teamCount,
+        plannedStartAt: live.plannedStartAt,
+        startedAt: live.startedAt,
+        phase: live.phase,
+      })
+    : null;
+  const startLabel = formatSeasonStartDate(live?.plannedStartAt);
 
   const existing = player
     ? {
@@ -41,13 +58,15 @@ export default async function RegisterPage() {
         <header className="teams-list-hero register-hero">
           <div className="team-hero-glow" aria-hidden />
           <div className="teams-list-hero-body">
-            <p className="eyebrow">Sign-up</p>
+            <p className="eyebrow">Sign-up{planLine ? ` · ${planLine}` : ""}</p>
             <h1>Registration closed</h1>
             <p className="lede">
-              Public registration is closed. This is an indoor tournament for
-              players who have played with {COMMUNITY_NAME}. Outdoor members are
-              not allowed. Entry fee is {formatEntryFee()} per starter — pay in
-              Discord #payments after an admin registers you.
+              Public registration is closed
+              {live ? ` for ${live.name}` : ""}
+              {startLabel ? ` (planned start ${startLabel})` : ""}. This is an
+              indoor tournament for players who have played with {COMMUNITY_NAME}.
+              Outdoor members are not allowed. Entry fee is {formatEntryFee()} per
+              starter — pay in Discord #payments after an admin registers you.
             </p>
             {player ? (
               <p className="lede" style={{ marginTop: "0.75rem" }}>
@@ -69,18 +88,22 @@ export default async function RegisterPage() {
       <header className="teams-list-hero register-hero">
         <div className="team-hero-glow" aria-hidden />
         <div className="teams-list-hero-body">
-          <p className="eyebrow">Sign-up</p>
-          <h1>Register</h1>
-          <p className="lede">
-            Link one Discord account to one Steam account. This page works even
-            when the Discord bot is offline — same rank, role, weekend window,
-            and Steam rules as <code>/register</code> in #register. Entry fee is{" "}
-            {formatEntryFee()} per starter (subs free). After you register, post
-            the payment screenshot in Discord #payments.
-            {features.maxMedalToApply
-              ? ` Max medal: ${MEDAL_LABELS[features.maxMedalToApply]} and below.`
-              : ""}
-          </p>
+            <p className="eyebrow">Sign-up{planLine ? ` · ${planLine}` : ""}</p>
+            <h1>Register</h1>
+            <p className="lede">
+              Link one Discord account to one Steam account. Same rules as{" "}
+              <code>/register</code> in Discord — either place works. Entry fee is{" "}
+              {formatEntryFee()} per starter (subs free). After you register, post
+              the payment screenshot in Discord #payments.
+              {live
+                ? ` ${live.name} is ${tournamentFormatLabel(live.tournamentFormat).toLowerCase()} · ${live.teamCount} teams${
+                    startLabel ? ` · starts ${startLabel}` : ""
+                  }.`
+                : ""}
+              {features.maxMedalToApply
+                ? ` Max medal: ${MEDAL_LABELS[features.maxMedalToApply]} and below.`
+                : ""}
+            </p>
         </div>
       </header>
 

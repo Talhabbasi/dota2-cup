@@ -21,25 +21,33 @@ export const metadata = pageMeta(
 
 export default async function AdminAuctionPage() {
   await requireAdmin();
-  const [lots, view, season, teams, accounts, pool] = await Promise.all([
+  const [lots, view, season, teams, accounts] = await Promise.all([
     adminListSoldLots(),
     getWebAuctionView(),
     getLiveSeason(),
     adminListTeamsForPicker(),
     listCaptainAccounts(),
-    prisma.player.findMany({
-      where: { teamId: null },
-      select: {
-        id: true,
-        steamName: true,
-        medal: true,
-        auctionStatus: true,
-        basePrice: true,
-      },
-      orderBy: { steamName: "asc" },
-      take: 80,
-    }),
   ]);
+
+  const poolRows = season
+    ? await prisma.seasonPlayer.findMany({
+        where: { seasonId: season.id, teamId: null },
+        select: {
+          player: {
+            select: {
+              id: true,
+              steamName: true,
+              medal: true,
+              auctionStatus: true,
+              basePrice: true,
+            },
+          },
+        },
+        orderBy: { player: { steamName: "asc" } },
+        take: 80,
+      })
+    : [];
+  const pool = poolRows.map((row) => row.player);
 
   const format = season?.tournamentFormat ?? "AUCTION_BASED";
 

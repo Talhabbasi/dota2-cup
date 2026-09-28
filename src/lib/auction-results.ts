@@ -41,11 +41,9 @@ function medalLabel(medal: string) {
 }
 
 export async function getAuctionResultsBySeason(): Promise<SeasonAuctionBlock[]> {
-  const [lots, teams, current] = await Promise.all([
+  const [lots, memberships, teams, current] = await Promise.all([
     prisma.auctionLot.findMany({
-      where: {
-        AND: [publicAuctionLotWhere, { player: { teamId: { not: null } } }],
-      },
+      where: publicAuctionLotWhere,
       include: {
         player: {
           select: {
@@ -53,23 +51,40 @@ export async function getAuctionResultsBySeason(): Promise<SeasonAuctionBlock[]>
             steamName: true,
             medal: true,
             rolesJson: true,
-            teamId: true,
-            isCaptain: true,
-            team: { select: { id: true, name: true, captainId: true } },
           },
         },
         team: { select: { id: true, name: true, captainId: true } },
         season: { select: { id: true, number: true, name: true, status: true } },
       },
     }),
+    prisma.seasonPlayer.findMany({
+      where: { teamId: { not: null } },
+      select: {
+        seasonId: true,
+        playerId: true,
+        teamId: true,
+        isCaptain: true,
+        team: { select: { id: true, name: true, captainId: true } },
+      },
+    }),
     prisma.team.findMany({
       where: publicTeamWhere,
-      select: { captainId: true },
+      select: { id: true, captainId: true, seasonId: true },
     }),
     getCurrentSeasonSafe(),
   ]);
 
-  const captainIds = new Set(teams.map((team) => team.captainId));
+  const membershipByKey = new Map(
+    memberships.map((row) => [`${row.seasonId}:${row.playerId}`, row] as const),
+  );
+  const captainIdsBySeason = new Map<string, Set<string>>();
+  for (const team of teams) {
+    const sid = team.seasonId ?? "unassigned";
+    const set = captainIdsBySeason.get(sid) ?? new Set();
+    set.add(team.captainId);
+    captainIdsBySeason.set(sid, set);
+  }
+
   const groups = new Map<
     string,
     {
@@ -83,15 +98,23 @@ export async function getAuctionResultsBySeason(): Promise<SeasonAuctionBlock[]>
   >();
 
   for (const lot of lots) {
+    const seasonId = lot.season?.id ?? lot.seasonId ?? "unassigned";
+    const membership = lot.seasonId
+      ? membershipByKey.get(`${lot.seasonId}:${lot.player.id}`)
+      : undefined;
     const rosterTeam =
-      lot.player.team && isLiveCupTeam(lot.player.team) ? lot.player.team : null;
+      membership?.team && isLiveCupTeam(membership.team)
+        ? membership.team
+        : null;
     const lotTeam = lot.team && isLiveCupTeam(lot.team) ? lot.team : null;
     const team = rosterTeam ?? lotTeam;
-    if (!team || !lot.player.teamId) continue;
+    if (!team || !membership?.teamId) continue;
+
+    const seasonCaptains = captainIdsBySeason.get(seasonId) ?? new Set();
     if (
-      lot.player.isCaptain ||
-      lot.player.id === team.captainId ||
-      captainIds.has(lot.player.id)
+      membership.isCaptain ||
+      membership.playerId === team.captainId ||
+      seasonCaptains.has(lot.player.id)
     ) {
       continue;
     }
@@ -102,7 +125,6 @@ export async function getAuctionResultsBySeason(): Promise<SeasonAuctionBlock[]>
         : UNSOLD_LOT_PRICE;
     const soldBid = lot.status === "sold" && lot.soldPrice != null;
 
-    const seasonId = lot.season?.id ?? lot.seasonId ?? "unassigned";
     const number = lot.season?.number ?? 0;
     const name =
       lot.season?.name ?? (number > 0 ? `Season ${number}` : "Unassigned");

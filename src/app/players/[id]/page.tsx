@@ -9,7 +9,7 @@ import {
   TeamBadge,
 } from "@/components/common";
 import { formatDuration, formatRoles, getPlayer, getPlayerMeta } from "@/lib/data";
-import { MEDAL_LABELS, type Medal } from "@/lib/constants";
+import { formatPoints, MEDAL_LABELS, type Medal } from "@/lib/constants";
 import { PLAY_WINDOW_LABELS, playWindowOrBoth } from "@/lib/play-window";
 import {
   heroIconUrl,
@@ -20,6 +20,7 @@ import type { Metadata } from "next";
 import { isMatchStandIn } from "@/lib/stand-in";
 import { CUP_NAME } from "@/lib/brand";
 import { getPublicSeasonContext } from "@/lib/season-page";
+import { cn } from "@/lib/utils";
 
 export const revalidate = 30;
 
@@ -86,15 +87,12 @@ export default async function PlayerPage({
     };
   });
 
-  const wins = games.filter((g) => g.won === true).length;
-  const losses = games.filter((g) => g.won === false).length;
-  const totalKills = games.reduce((n, g) => n + g.kills, 0);
-  const totalDeaths = games.reduce((n, g) => n + g.deaths, 0);
-  const totalAssists = games.reduce((n, g) => n + g.assists, 0);
-  const kda =
-    games.length > 0
-      ? ((totalKills + totalAssists) / Math.max(1, totalDeaths)).toFixed(2)
-      : "—";
+  const focus = player.focusStats;
+  const career = player.career;
+  const wins = focus.wins;
+  const losses = focus.losses;
+  const kda = focus.kda != null ? focus.kda.toFixed(2) : "—";
+  const careerKda = career.kda != null ? career.kda.toFixed(2) : "—";
 
   const heroCounts = new Map<
     string,
@@ -120,6 +118,9 @@ export default async function PlayerPage({
   }
   const topHeroes = [...heroCounts.values()].sort((a, b) => b.plays - a.plays);
 
+  const seasonQuery = (sid: string | null) =>
+    sid ? `/players/${player.id}?season=${sid}` : `/players/${player.id}`;
+
   return (
     <div className="page">
       <Link href="/players" className="back-link">
@@ -129,25 +130,78 @@ export default async function PlayerPage({
       <EsportsCard interactive={false} className="mb-6 overflow-hidden">
         <div className="border-b border-white/10 px-5 py-4">
           <p className="m-0 text-[0.68rem] font-semibold tracking-[0.16em] text-primary uppercase">
-            {player.currentSeason
-              ? `Season ${player.currentSeason.number}`
-              : "Player"}
+            Career profile
           </p>
           <h1 className="mt-2 mb-2 font-display text-3xl tracking-wide text-foreground uppercase">
             {player.steamName}
           </h1>
           <p className="m-0 text-sm text-muted-foreground">
             {MEDAL_LABELS[player.medal as Medal] ?? player.medal}
-            {player.isCaptain ? " · 👑 Captain" : ""}
             {" · "}
             {formatRoles(player.roles)}
-            {player.rosterRole === "sub" ? " · Sub" : ""}
             {" · "}
             {PLAY_WINDOW_LABELS[playWindowOrBoth(player.playWindow)]}
           </p>
-          <div className="mt-3">
+        </div>
+        <ul className="m-0 grid list-none grid-cols-2 gap-3 border-b border-white/10 p-5 sm:grid-cols-4">
+          <li>
+            <StatTile label="Career games" value={career.games || "0"} />
+          </li>
+          <li>
+            <StatTile
+              label="Career record"
+              value={career.games ? `${career.wins}W–${career.losses}L` : "—"}
+            />
+          </li>
+          <li>
+            <StatTile icon={<Swords />} label="Career KDA" value={careerKda} />
+          </li>
+          <li>
+            <StatTile
+              label="Seasons"
+              value={player.seasonHistory.length || "—"}
+            />
+          </li>
+        </ul>
+
+        {player.seasonHistory.length > 0 ? (
+          <div className="flex flex-wrap gap-2 border-b border-white/10 px-5 py-3">
+            {player.seasonHistory.map((row) => {
+              const active = player.focusSeasonId === row.seasonId;
+              return (
+                <Link
+                  key={row.seasonId}
+                  href={seasonQuery(row.seasonId)}
+                  className={cn(
+                    "rounded-md border px-3 py-1.5 text-sm transition",
+                    active
+                      ? "border-amber-500/50 bg-amber-500/15 text-amber-100"
+                      : "border-white/10 text-muted-foreground hover:border-white/25 hover:text-foreground",
+                  )}
+                >
+                  Season {row.number}
+                  {row.live ? " · Live" : ""}
+                </Link>
+              );
+            })}
+          </div>
+        ) : null}
+
+        <div className="border-b border-white/10 px-5 py-4">
+          <p className="m-0 text-[0.68rem] font-semibold tracking-[0.16em] text-primary uppercase">
+            {player.currentSeason
+              ? `Season ${player.currentSeason.number}`
+              : "Season"}
+          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-3">
             {player.team ? (
-              <Link href={`/teams/${player.team.id}`}>
+              <Link
+                href={`/teams/${player.team.id}${
+                  player.focusSeasonId
+                    ? `?season=${player.focusSeasonId}`
+                    : ""
+                }`}
+              >
                 <TeamBadge name={player.team.name} />
               </Link>
             ) : games.length > 0 ? (
@@ -155,6 +209,19 @@ export default async function PlayerPage({
             ) : (
               <span className="text-sm text-muted-foreground">Unsigned</span>
             )}
+            {player.isCaptain ? (
+              <span className="text-sm text-amber-300">👑 Captain</span>
+            ) : null}
+            {player.rosterRole === "sub" ? (
+              <span className="text-sm text-muted-foreground">Sub</span>
+            ) : null}
+            {player.focusSoldPrice != null ? (
+              <span className="font-mono text-sm tabular-nums text-foreground">
+                Sold {formatPoints(player.focusSoldPrice)}
+              </span>
+            ) : player.isCaptain ? (
+              <span className="text-sm text-muted-foreground">Captain seat</span>
+            ) : null}
           </div>
         </div>
         <ul className="m-0 grid list-none grid-cols-2 gap-3 p-5 sm:grid-cols-4">
@@ -176,34 +243,60 @@ export default async function PlayerPage({
         </ul>
       </EsportsCard>
 
-      {player.seasonHistory.length > 0 ? (
+      {player.seasonHistory.length > 1 ? (
         <section className="mb-6">
           <div className="section-head">
-            <h2>Seasons</h2>
+            <h2>Season breakdown</h2>
           </div>
           <div className="grid gap-2">
-            {player.seasonHistory.map((row) => (
-              <EsportsCard key={row.seasonId} className="px-4 py-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="font-medium text-foreground">
-                    Season {row.number}
-                    {row.name !== `Season ${row.number}` ? ` · ${row.name}` : ""}
-                    {row.live ? (
-                      <span className="ml-2 text-[0.65rem] text-amber-400 uppercase">
-                        Live
-                      </span>
-                    ) : null}
-                  </span>
-                  {row.teamId && row.teamName ? (
-                    <Link href={`/teams/${row.teamId}`}>
-                      <TeamBadge name={row.teamName} size="sm" />
-                    </Link>
-                  ) : (
-                    <span className="text-sm text-muted-foreground">Unsigned</span>
-                  )}
-                </div>
-              </EsportsCard>
-            ))}
+            {player.seasonHistory.map((row) => {
+              const active = player.focusSeasonId === row.seasonId;
+              return (
+                <Link key={row.seasonId} href={seasonQuery(row.seasonId)}>
+                  <EsportsCard
+                    className={cn(
+                      "px-4 py-3 transition",
+                      active && "border-amber-500/40",
+                    )}
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="m-0 font-medium text-foreground">
+                          Season {row.number}
+                          {row.name !== `Season ${row.number}`
+                            ? ` · ${row.name}`
+                            : ""}
+                          {row.live ? (
+                            <span className="ml-2 text-[0.65rem] text-amber-400 uppercase">
+                              Live
+                            </span>
+                          ) : null}
+                        </p>
+                        <p className="mt-1 mb-0 text-sm text-muted-foreground">
+                          {row.games
+                            ? `${row.wins}W–${row.losses}L · KDA ${
+                                row.kda?.toFixed(2) ?? "—"
+                              }`
+                            : "No matches"}
+                          {row.soldPrice != null
+                            ? ` · Sold ${formatPoints(row.soldPrice)}`
+                            : row.isCaptain
+                              ? " · Captain"
+                              : ""}
+                        </p>
+                      </div>
+                      {row.teamId && row.teamName ? (
+                        <TeamBadge name={row.teamName} size="sm" />
+                      ) : (
+                        <span className="text-sm text-muted-foreground">
+                          Unsigned
+                        </span>
+                      )}
+                    </div>
+                  </EsportsCard>
+                </Link>
+              );
+            })}
           </div>
         </section>
       ) : null}
@@ -250,12 +343,17 @@ export default async function PlayerPage({
       ) : null}
 
       <div className="section-head">
-        <h2>Match history</h2>
+        <h2>
+          Match history
+          {player.currentSeason
+            ? ` · Season ${player.currentSeason.number}`
+            : ""}
+        </h2>
       </div>
       {games.length === 0 ? (
         <EsportsCard interactive={false} className="p-6">
           <p className="m-0 text-muted-foreground">
-            No posted matches yet for this Steam account.
+            No posted matches yet for this season.
           </p>
         </EsportsCard>
       ) : (

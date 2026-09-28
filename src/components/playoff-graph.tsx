@@ -172,6 +172,7 @@ export function PlayoffGraph({
     pick(view.matches, slot);
   const groupA = groupMatches.filter((row) => row.group === "A");
   const groupB = groupMatches.filter((row) => row.group === "B");
+  const hasPlayIn = view.hasLowerPlayIn;
 
   const stackH = CARD_H * 2 + GAP_Y;
   const colX = (index: number) => SECTION_PAD + index * (CARD_W + JOIN);
@@ -180,17 +181,29 @@ export function PlayoffGraph({
   const lowerBannerY = upperTop + stackH + TIER_GAP;
   const lowerTop = lowerBannerY + LABEL_H + 8;
 
-  const ub1: Box = { x: colX(0), y: upperTop };
-  const ub2: Box = { x: colX(0), y: upperTop + CARD_H + GAP_Y };
-  const uf: Box = { x: colX(1), y: upperTop + (stackH - CARD_H) / 2 };
-  const lb1: Box = { x: colX(0), y: lowerTop };
-  const lb2: Box = { x: colX(0), y: lowerTop + CARD_H + GAP_Y };
-  const lb3: Box = { x: colX(1), y: lowerTop + (stackH - CARD_H) / 2 };
-  const lf: Box = { x: colX(2), y: lb3.y };
-  const gfMid = (midY(uf) + midY(lf)) / 2;
-  const gf: Box = { x: colX(3), y: gfMid - CARD_H / 2 };
+  // With play-ins, lower starts one column earlier; upper aligns with Round 1.
+  const playInCol = hasPlayIn ? 0 : -1;
+  const round1Col = hasPlayIn ? 1 : 0;
+  const round2Col = hasPlayIn ? 2 : 1;
+  const lfCol = hasPlayIn ? 3 : 2;
+  const gfCol = hasPlayIn ? 4 : 3;
 
-  const boardW = colX(3) + CARD_W + SECTION_PAD;
+  const ub1: Box = { x: colX(round1Col), y: upperTop };
+  const ub2: Box = { x: colX(round1Col), y: upperTop + CARD_H + GAP_Y };
+  const uf: Box = { x: colX(round2Col), y: upperTop + (stackH - CARD_H) / 2 };
+  const lb0a: Box = { x: colX(Math.max(playInCol, 0)), y: lowerTop };
+  const lb0b: Box = {
+    x: colX(Math.max(playInCol, 0)),
+    y: lowerTop + CARD_H + GAP_Y,
+  };
+  const lb1: Box = { x: colX(round1Col), y: lowerTop };
+  const lb2: Box = { x: colX(round1Col), y: lowerTop + CARD_H + GAP_Y };
+  const lb3: Box = { x: colX(round2Col), y: lowerTop + (stackH - CARD_H) / 2 };
+  const lf: Box = { x: colX(lfCol), y: lb3.y };
+  const gfMid = (midY(uf) + midY(lf)) / 2;
+  const gf: Box = { x: colX(gfCol), y: gfMid - CARD_H / 2 };
+
+  const boardW = colX(gfCol) + CARD_W + SECTION_PAD;
   const boardH = lowerTop + stackH + SECTION_PAD;
 
   const nodes: {
@@ -199,6 +212,12 @@ export function PlayoffGraph({
     band: ViewFocus;
     showcase?: boolean;
   }[] = [
+    ...(hasPlayIn
+      ? ([
+          { slot: "lb0a" as const, box: lb0a, band: "lower" as const },
+          { slot: "lb0b" as const, box: lb0b, band: "lower" as const },
+        ] as const)
+      : []),
     { slot: "ub1", box: ub1, band: "upper" },
     { slot: "ub2", box: ub2, band: "upper" },
     { slot: "uf", box: uf, band: "upper" },
@@ -218,6 +237,20 @@ export function PlayoffGraph({
       lit: done("ub1") || done("ub2"),
       kind: "advance",
     },
+    ...(hasPlayIn
+      ? [
+          {
+            d: linePath(lb0a, lb1),
+            lit: done("lb0a"),
+            kind: "advance" as const,
+          },
+          {
+            d: linePath(lb0b, lb2),
+            lit: done("lb0b"),
+            kind: "advance" as const,
+          },
+        ]
+      : []),
     {
       d: dropPath(ub1, lb1),
       lit: done("ub1"),
@@ -366,7 +399,7 @@ export function PlayoffGraph({
           </svg>
 
           <TierBanner
-            box={{ x: colX(0), y: upperBannerY }}
+            box={{ x: colX(round1Col), y: upperBannerY }}
             width={CARD_W * 2 + JOIN}
             tone="upper"
           >
@@ -374,11 +407,17 @@ export function PlayoffGraph({
           </TierBanner>
 
           <TierBanner
-            box={{ x: colX(0), y: lowerBannerY }}
-            width={CARD_W * 3 + JOIN * 2}
+            box={{ x: colX(hasPlayIn ? 0 : 0), y: lowerBannerY }}
+            width={
+              hasPlayIn
+                ? CARD_W * 4 + JOIN * 3
+                : CARD_W * 3 + JOIN * 2
+            }
             tone="lower"
           >
-            Lower Bracket · 🔻 Losers drop in from Upper
+            {hasPlayIn
+              ? "Lower Bracket · Play-ins → Round 1 → Round 2 → Final"
+              : "Lower Bracket · 🔻 Losers drop in from Upper"}
           </TierBanner>
 
           <TierBanner

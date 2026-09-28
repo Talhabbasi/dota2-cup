@@ -103,11 +103,13 @@ export const CUP_RULES = {
     {
       name: "Schedule & weekends",
       body: [
-        "8 teams in **2 groups of 4**. Admin: `/playoff groups` then `/schedule groups` (Group A Saturday, Group B Sunday).",
-        "Group stage: **single round-robin** — each team plays **3** best-of-1 matches (6 games per group, 12 total).",
+        "Teams split into **2 equal groups** from the season team count (Admin → Seasons). Classic is **8 → 2×4**; **10 → 2×5**. Admin: `/playoff groups` then `/schedule groups` (Group A Saturday, Group B Sunday).",
+        "Group stage: **single round-robin** — each team plays every other team in its group once (Bo1).",
         "Fixtures are posted in **#matches** (registered players only) and on the website Schedule page.",
-        "When both groups are done, **4th place in each group is eliminated**. **3rd place does not play each other.** Group A 3rd waits for the loser of **A1 vs B2**. Group B 3rd waits for the loser of **B1 vs A2**.",
-        "Upper Round 1 is **A1 vs B2** and **B1 vs A2** (Bo1). Those losers drop into Lower Round 1 against the waiting 3rd-place teams. The two Lower Round 1 winners play, then the Upper Final loser.",
+        "When both groups are done, **last place in each group is eliminated**.",
+        "**8 teams:** 4th out. 3rd does not play each other — Group A 3rd waits for the loser of **A1 vs B2**; Group B 3rd waits for **B1 vs A2**.",
+        "**10 teams:** 5th out. Top 4 advance — **A1 vs B2** / **B1 vs A2** in upper; **A3 vs B4** and **B3 vs A4** play into lower, then face those upper losers.",
+        "Then the same double-elim pattern: Lower Round 2, Upper Final, Lower Final, Grand Final.",
         "Upper Final and Lower Final are Bo1. The **Grand Final is Bo3**.",
         `Every series is **best of ${REGULAR_BEST_OF}** except the grand final (**best of ${FINAL_BEST_OF}**, first to 2).`,
         "Playoff matches are Saturday or Sunday only, **10:00 AM–3:00 AM PKT**. Group-stage nights stay **10:00 PM–6:00 AM PKT**.",
@@ -264,8 +266,8 @@ export function getChannelGuides(): { channelName: ChannelGuideName; embed: Embe
         "Registered players only. The round-robin grid lives here.",
         [
           "Group A plays Saturday, Group B plays Sunday. Every group match is **Bo1**.",
-          "Each team plays **3** group games (6 per group, 12 total).",
-          "After groups: 4th out. 3rd in each group waits for a crossover loser (A3 vs A1–B2 loser, B3 vs B1–A2 loser), then upper/lower playoffs. Grand Final **Bo3**.",
+          "Round-robin: each team plays every other team in its group once.",
+          "After groups: last place out. **8 teams:** 3rd waits for a crossover loser. **10 teams:** A3 vs B4 / B3 vs A4 play into lower, then face upper losers. Then double-elim. Grand Final **Bo3**.",
           "Kickoffs: group stage **10:00 PM–4:00 AM PKT**; playoffs **Saturday/Sunday 10:00 AM–3:00 AM PKT**.",
           "Same fixtures on the website **Schedule** and **Playoffs** pages.",
           "Admin: `/schedule groups` to book the grid, `/playoff open` after groups, `/schedule edit` to move a match.",
@@ -277,10 +279,10 @@ export function getChannelGuides(): { channelName: ChannelGuideName; embed: Embe
       channelName: "schedule",
       embed: guideEmbed(
         "#schedule — Fixtures & match times",
-        "8 teams, 2 groups, then a 6-team double-elimination playoff.",
+        "Two groups from the season team count, then a double-elimination playoff.",
         [
           "Everyone: `/playoff status` or `/schedule list`.",
-          "Admin: `/schedule groups` books the 12-match group round-robin (posts in **#matches**).",
+          "Admin: `/schedule groups` books the group round-robin (posts in **#matches**).",
           "Admin: `/playoff open` after groups finish. `/playoff post` refreshes the bracket in **#matches**.",
           "Admin: `/schedule add` — Saturday or Sunday. Group stage 10pm–6am PKT; playoffs 10am–3am PKT.",
           "Change a booked match with `/schedule edit` (teams or time). Delete one with `/schedule remove`.",

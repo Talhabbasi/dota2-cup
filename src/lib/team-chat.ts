@@ -534,3 +534,44 @@ export async function syncTeamChatChannels(
 
   return results;
 }
+
+/**
+ * After a tournament ends: delete every private team text channel under Team Chat
+ * and every cup season role (Team · …, Captain, Registered, play-window). Admin stays.
+ */
+export async function clearAllTeamChatChannels(guild: Guild): Promise<{
+  channels: number;
+  roles: number;
+}> {
+  await guild.channels.fetch();
+  await guild.roles.fetch();
+
+  const categoryName = teamChatCategoryName().toLowerCase();
+  const category = guild.channels.cache.find(
+    (ch) =>
+      ch.type === ChannelType.GuildCategory &&
+      ch.name.toLowerCase() === categoryName,
+  );
+
+  let channels = 0;
+  if (category?.type === ChannelType.GuildCategory) {
+    for (const child of category.children.cache.values()) {
+      if (child.type !== ChannelType.GuildText) continue;
+      await child.delete("Tournament ended — clear team chats").catch(() => undefined);
+      channels += 1;
+    }
+  }
+
+  const { isCupSeasonRoleToDelete } = await import("./discord-team-cleanup-rest");
+  let roles = 0;
+  for (const role of guild.roles.cache.values()) {
+    if (role.managed || role.id === guild.id) continue;
+    if (!isCupSeasonRoleToDelete(role.name)) continue;
+    await role
+      .delete("Tournament ended — clear cup roles")
+      .catch(() => undefined);
+    roles += 1;
+  }
+
+  return { channels, roles };
+}

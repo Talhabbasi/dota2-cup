@@ -1,18 +1,28 @@
 import { PageHeader } from "@/components/common";
+import { AdminSeasonViewer } from "@/components/admin/season-viewer";
 import { requireAdmin } from "@/lib/admin-auth";
+import { resolveAdminSeasonView } from "@/lib/admin-season-view";
 import { adminListTeamsForPicker } from "@/lib/match-admin";
-import { listRegisteredPlayers } from "@/lib/players-admin";
+import { listPlayersForAdminSeason } from "@/lib/players-admin";
 import { pageMeta } from "@/lib/seo";
 import { AdminTeamsBoard } from "@/components/admin/teams-board";
 
 export const dynamic = "force-dynamic";
 export const metadata = pageMeta("Admin Teams", "Captains and franchise names.");
 
-export default async function AdminTeamsPage() {
+export default async function AdminTeamsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ season?: string }>;
+}) {
   await requireAdmin();
+  const sp = await searchParams;
+  const { view, options, readOnly, publicSeasonParam } =
+    await resolveAdminSeasonView(sp.season);
+
   const [teams, players] = await Promise.all([
-    adminListTeamsForPicker(),
-    listRegisteredPlayers(),
+    adminListTeamsForPicker(view.id),
+    listPlayersForAdminSeason(view.id),
   ]);
   const unsigned = players
     .filter((p) => !p.teamId && !p.isCaptain)
@@ -23,11 +33,22 @@ export default async function AdminTeamsPage() {
       <PageHeader
         eyebrow="Admin"
         title="Teams"
-        subtitle="Click a franchise to open its admin page."
+        subtitle={
+          readOnly
+            ? `Archive Season ${view.number} franchises — read-only.`
+            : "Click a franchise to open its admin page."
+        }
         pills={[
           { value: teams.length, label: "franchises" },
           { value: unsigned.length, label: "unsigned" },
         ]}
+      />
+      <AdminSeasonViewer
+        view={view}
+        options={options}
+        readOnly={readOnly}
+        publicSeasonParam={publicSeasonParam}
+        publicHref="/teams"
       />
       <AdminTeamsBoard
         teams={teams.map((team) => {
@@ -49,6 +70,8 @@ export default async function AdminTeamsPage() {
           steamName: p.steamName,
           teamName: p.team?.name ?? null,
         }))}
+        readOnly={readOnly}
+        publicSeasonParam={publicSeasonParam}
       />
     </div>
   );

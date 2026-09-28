@@ -375,3 +375,32 @@ export async function syncTeamVoiceChannels(
 
   return results;
 }
+
+/**
+ * After a tournament ends: delete every team voice room under Team Voice.
+ */
+export async function clearAllTeamVoiceChannels(guild: Guild): Promise<{
+  channels: number;
+}> {
+  await guild.channels.fetch();
+
+  const categoryName = teamVoiceCategoryName().toLowerCase();
+  const category = guild.channels.cache.find(
+    (ch) =>
+      ch.type === ChannelType.GuildCategory &&
+      ch.name.toLowerCase() === categoryName,
+  );
+
+  let channels = 0;
+  if (category?.type === ChannelType.GuildCategory) {
+    for (const child of category.children.cache.values()) {
+      if (child.type !== ChannelType.GuildVoice) continue;
+      await child
+        .delete("Tournament ended — clear team voice")
+        .catch(() => undefined);
+      channels += 1;
+    }
+  }
+
+  return { channels };
+}

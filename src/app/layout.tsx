@@ -7,12 +7,12 @@ import { SiteChrome } from "@/components/site-chrome";
 import { CUP_ICON_PATH, CUP_TITLE_SUFFIX } from "@/lib/brand";
 import { SITE_DESCRIPTION, SITE_NAME, SITE_URL } from "@/lib/seo";
 import {
+  countCompletedSeasons,
   getCurrentSeasonSafe,
   getLiveSeason,
   listPublicSeasons,
   liveSeasonLabel,
 } from "@/lib/seasons";
-import { resolveViewSeason } from "@/lib/season-view";
 import { currentPlayer } from "@/lib/auth";
 import "./globals.css";
 
@@ -70,19 +70,17 @@ export const viewport: Viewport = {
 };
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
-  const [live, seasons, { player }, view] = await Promise.all([
+  const [live, seasons, { player }, completedCount] = await Promise.all([
     getLiveSeason(),
     listPublicSeasons(),
     currentPlayer(),
-    resolveViewSeason(),
+    countCompletedSeasons(),
   ]);
   const seasonLabel = live
     ? liveSeasonLabel(live)
     : seasons.length > 0
       ? "Season archive"
       : liveSeasonLabel(await getCurrentSeasonSafe());
-
-  const viewSeasonNumber = view?.number ?? live?.number ?? null;
 
   return (
     <html
@@ -95,8 +93,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
           <SiteChrome
             seasonLabel={seasonLabel}
             showRegister={!player}
-            showSeasons={seasons.length > 0}
-            viewSeasonNumber={viewSeasonNumber}
+            showSeasons={completedCount > 0}
             banner={<ClosedBanner />}
           >
             {children}

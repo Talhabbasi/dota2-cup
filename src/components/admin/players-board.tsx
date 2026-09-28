@@ -9,7 +9,10 @@ import {
   adminCardClass,
   adminControlClass,
 } from "@/components/admin/ui";
-import { actionRegisterPlayer } from "@/app/admin/actions";
+import {
+  actionEnrollPlayerInSeason,
+  actionRegisterPlayer,
+} from "@/app/admin/actions";
 import {
   AdminActionForm,
   AdminSubmitButton,
@@ -27,22 +30,37 @@ export type AdminPlayerRow = {
   rosterRole: string | null;
 };
 
+export type LinkablePlayerRow = {
+  id: string;
+  steamName: string;
+  discordId: string;
+  medalLabel: string;
+};
+
 export function AdminPlayersBoard({
   players,
+  linkablePlayers = [],
   medalOptions,
   roleOptions,
   windowOptions,
+  readOnly = false,
+  publicSeasonParam,
 }: {
   players: AdminPlayerRow[];
+  linkablePlayers?: LinkablePlayerRow[];
   teams: { id: string; name: string }[];
   medalOptions: { value: string; label: string }[];
   roleOptions: { value: string; label: string }[];
   windowOptions: { value: string; label: string }[];
+  readOnly?: boolean;
+  publicSeasonParam?: string;
 }) {
   const [showRegister, setShowRegister] = useState(false);
+  const [showLink, setShowLink] = useState(false);
 
   return (
     <div className="space-y-6">
+      {!readOnly ? (
       <div
         className={cn(
           adminCardClass,
@@ -138,13 +156,80 @@ export function AdminPlayersBoard({
           </AdminActionForm>
         ) : null}
       </div>
+      ) : null}
+
+      {!readOnly && linkablePlayers.length > 0 ? (
+        <div
+          className={cn(
+            adminCardClass,
+            !showLink &&
+              "transition hover:border-[#487fff]/35 hover:bg-[#161e2e]",
+          )}
+        >
+          <button
+            type="button"
+            onClick={() => setShowLink((v) => !v)}
+            className={adminActionToggleClass}
+            aria-expanded={showLink}
+          >
+            <span>
+              <span className="block text-sm font-semibold text-foreground">
+                Link past player to this season
+              </span>
+              <span className="text-sm text-muted-foreground">
+                {linkablePlayers.length} career profile
+                {linkablePlayers.length === 1 ? "" : "s"} not in the live
+                season — same Steam ID auto-links on register; use this when
+                they need a manual enroll.
+              </span>
+            </span>
+            <span className="text-primary">{showLink ? "−" : "+"}</span>
+          </button>
+          {showLink ? (
+            <AdminActionForm
+              action={actionEnrollPlayerInSeason}
+              successMessage="Player linked to live season"
+              className="mt-4 grid gap-3 border-t border-white/10 pt-4 sm:grid-cols-[1fr_auto]"
+            >
+              <AdminField label="Player">
+                <select
+                  name="playerId"
+                  required
+                  defaultValue=""
+                  className={adminControlClass}
+                >
+                  <option value="" disabled>
+                    Select…
+                  </option>
+                  {linkablePlayers.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.steamName} · {p.medalLabel} · {p.discordId}
+                    </option>
+                  ))}
+                </select>
+              </AdminField>
+              <AdminSubmitButton className="self-end">
+                Link to season
+              </AdminSubmitButton>
+            </AdminActionForm>
+          ) : null}
+        </div>
+      ) : null}
 
       <AdminDataTable
-        title="Players"
-        hint="Click a player to open their full admin page."
+        title={readOnly ? "Archive roster" : "This season"}
+        hint={
+          readOnly
+            ? "Read-only. Click a player to open their public career page for this season."
+            : "Only players registered or linked for the live season. Click a row for their admin page."
+        }
         items={players}
         getId={(p) => p.id}
-        hrefFor={(p) => `/admin/players/${p.id}`}
+        hrefFor={(p) =>
+          readOnly
+            ? `/players/${p.id}?season=${publicSeasonParam ?? ""}`
+            : `/admin/players/${p.id}`
+        }
         searchPlaceholder="Search name or Discord id…"
         searchText={(p) =>
           `${p.steamName} ${p.discordId} ${p.teamName ?? ""} ${p.medalLabel}`

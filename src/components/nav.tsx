@@ -9,7 +9,6 @@ import { usePathname, useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CUP_ICON_PATH, CUP_NAME } from "@/lib/brand";
-import { SEASON_VIEW_COOKIE } from "@/lib/season-view-cookie";
 import { cn } from "@/lib/utils";
 
 function subscribeNoop() {
@@ -22,22 +21,6 @@ function clientReadySnapshot() {
 
 function serverReadySnapshot() {
   return false;
-}
-
-function seasonHref(path: string, viewSeasonNumber: number | null) {
-  const season =
-    viewSeasonNumber != null
-      ? String(viewSeasonNumber)
-      : typeof document !== "undefined"
-        ? (() => {
-            const match = document.cookie.match(
-              new RegExp(`(?:^|; )${SEASON_VIEW_COOKIE}=([^;]*)`),
-            );
-            return match ? decodeURIComponent(match[1]) : "";
-          })()
-        : "";
-  if (!season || season === "live") return path;
-  return `${path}?season=${encodeURIComponent(season)}`;
 }
 
 const authButtonClass =
@@ -77,14 +60,11 @@ export function Nav({
   showSeasons = false,
   seasonLabel,
   showRegister = true,
-  viewSeasonNumber = null,
 }: {
   showSeasons?: boolean;
   seasonLabel: string;
   /** Keep Register until this Discord account has a player row. */
   showRegister?: boolean;
-  /** When viewing an archive season, keep it on every nav click. */
-  viewSeasonNumber?: number | null;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -109,9 +89,9 @@ export function Nav({
     for (const [href] of LINKS) {
       if (!showSeasons && href === "/seasons") continue;
       if (!showRegister && href === "/register") continue;
-      router.prefetch(seasonHref(href, viewSeasonNumber));
+      router.prefetch(href);
     }
-  }, [router, showSeasons, showRegister, viewSeasonNumber]);
+  }, [router, showSeasons, showRegister]);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -130,7 +110,7 @@ export function Nav({
     <header className="sticky top-0 z-40 border-b border-white/10 bg-[#0c1017]/90 backdrop-blur-md">
       <div className="flex items-center gap-3 px-[max(1rem,env(safe-area-inset-left))] py-2.5 pr-[max(1rem,env(safe-area-inset-right))]">
         <Link
-          href={seasonHref("/", viewSeasonNumber)}
+          href="/"
           className="flex min-w-0 items-center gap-2.5"
           onClick={() => setMenuOpen(false)}
         >
@@ -162,7 +142,7 @@ export function Nav({
           {links.map(([href, label]) => (
             <NavLink
               key={href}
-              href={seasonHref(href, viewSeasonNumber)}
+              href={href}
               label={label}
               active={
                 ready &&
@@ -220,7 +200,7 @@ export function Nav({
         {links.map(([href, label]) => (
           <NavLink
             key={href}
-            href={seasonHref(href, viewSeasonNumber)}
+            href={href}
             label={label}
             active={
               ready &&

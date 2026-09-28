@@ -7,6 +7,7 @@ import { KICKOFF_SHORT } from "@/lib/play-window";
 import { weekendSlotLabel } from "@/lib/match-times";
 import { isPlayoffKind, playoffRoundLabel } from "@/lib/playoff";
 import { formatScheduleWhen, scheduleUtcOffsetHours, asDate } from "@/lib/schedule";
+import { seasonWeekendBlurb } from "@/lib/season-public-copy";
 import { cn } from "@/lib/utils";
 
 type Fixture = {
@@ -99,10 +100,16 @@ export function WeekendScheduleBlock({
         </div>
         <p className="mt-0 mb-5 text-sm text-muted-foreground">
           {isFinal
-            ? "Upper Final winner vs Lower Final winner. Bo3, first to 2."
+            ? (() => {
+                const bo =
+                  fixtures.find((f) => f.kind === "final")?.bestOf ?? 3;
+                return bo >= 3
+                  ? `Upper Final winner vs Lower Final winner. Bo${bo}, first to ${Math.ceil(bo / 2)}.`
+                  : seasonWeekendBlurb("final");
+              })()
             : isPlayoff
-              ? "Saturday and Sunday only. Group stage 10:00 PM–6:00 AM PKT; playoffs 10:00 AM–3:00 AM PKT."
-              : "Saturday and Sunday only. Kickoff slots are 10:00 PM through 6:00 AM PKT."}
+              ? seasonWeekendBlurb("playoff")
+              : seasonWeekendBlurb("group")}
         </p>
 
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">

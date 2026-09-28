@@ -9,6 +9,7 @@ import {
   createScheduledMatch,
   upcomingWeekendDates,
 } from "./schedule-crud";
+import { getLivePlayoffFormat } from "./playoff-format";
 
 const GROUP_A_HOURS = ["22", "23", "0", "2", "3", "4"] as const;
 const GROUP_B_HOURS = ["22", "23", "0", "1", "2", "3"] as const;
@@ -194,16 +195,18 @@ export const getGroupStandings = unstable_cache(
   { tags: [PUBLIC_PAGE_TAG], revalidate: PUBLIC_REVALIDATE_SECONDS },
 );
 
-function groupStandingsFinished(rows: GroupStandingRow[]) {
-  return rows.length === 4 && rows.every((row) => row.played === 3);
-}
-
 export async function groupStageComplete() {
-  const [groupA, groupB] = await Promise.all([
+  const [format, groupA, groupB] = await Promise.all([
+    getLivePlayoffFormat(),
     getGroupStandings("A"),
     getGroupStandings("B"),
   ]);
-  return groupStandingsFinished(groupA) && groupStandingsFinished(groupB);
+  return (
+    groupA.length === format.groupSize &&
+    groupB.length === format.groupSize &&
+    groupA.every((row) => row.played === format.gamesPerTeam) &&
+    groupB.every((row) => row.played === format.gamesPerTeam)
+  );
 }
 
 function formatDayBlock(title: string, matches: BookedGroupMatch[]) {

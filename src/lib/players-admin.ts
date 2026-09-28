@@ -21,7 +21,13 @@ import {
   starterCountOnTeam,
   stringifyRoles,
 } from "./roles";
-import { currentSeasonId, currentSeasonFilter, syncSeasonPlayer, syncSeasonPlayers } from "./seasons";
+import {
+  currentSeasonId,
+  currentSeasonFilter,
+  getLiveSeason,
+  syncSeasonPlayer,
+  syncSeasonPlayers,
+} from "./seasons";
 
 const DUMMY_PREFIX = "test-dummy-";
 const DUMMY_TEAM_PREFIX = "test-dummy-team-";
@@ -494,17 +500,117 @@ export async function rebalanceAllTeamRosters() {
   return { teams: teams.length };
 }
 
+function realPlayerWhere() {
+  return {
+    AND: [
+      { discordId: { not: { startsWith: DUMMY_PREFIX } } },
+      { discordId: { not: { startsWith: DUMMY_TEAM_PREFIX } } },
+    ],
+  };
+}
+
+/** Players enrolled in the live season only (public + admin season pool). */
 export async function listRegisteredPlayers() {
+  const live = await getLiveSeason();
+  if (!live) return [];
+  return listPlayersForAdminSeason(live.id);
+}
+
+/**
+ * Season-scoped admin player list (uses SeasonPlayer roster for that cup).
+ */
+export async function listPlayersForAdminSeason(seasonId: string) {
+  if (!seasonId || seasonId === "__none__") return [];
+
+  const rows = await prisma.seasonPlayer.findMany({
+    where: {
+      seasonId,
+      player: realPlayerWhere(),
+    },
+    orderBy: [{ player: { steamName: "asc" } }],
+    select: {
+      teamId: true,
+      isCaptain: true,
+      rosterRole: true,
+      medal: true,
+      rolesJson: true,
+      paidAt: true,
+      team: { select: { name: true } },
+      player: {
+        select: {
+          id: true,
+          discordId: true,
+          steamName: true,
+          medal: true,
+          rolesJson: true,
+        },
+      },
+    },
+  });
+
+  return rows.map((row) => ({
+    id: row.player.id,
+    discordId: row.player.discordId,
+    steamName: row.player.steamName,
+    medal: row.medal || row.player.medal,
+    rolesJson: row.rolesJson || row.player.rolesJson,
+    teamId: row.teamId,
+    team: row.team,
+    isCaptain: row.isCaptain,
+    rosterRole: row.rosterRole,
+    paidAt: row.paidAt,
+  }));
+}
+
+/** Career profiles not yet linked into the live season — for admin manual enroll. */
+export async function listPlayersNotInLiveSeason() {
+  const live = await getLiveSeason();
+  if (!live) return [];
+
   return prisma.player.findMany({
     where: {
       AND: [
-        { discordId: { not: { startsWith: DUMMY_PREFIX } } },
-        { discordId: { not: { startsWith: DUMMY_TEAM_PREFIX } } },
+        ...realPlayerWhere().AND,
+        { seasons: { none: { seasonId: live.id } } },
       ],
     },
     orderBy: [{ steamName: "asc" }],
-    include: { team: { select: { name: true } } },
+    select: {
+      id: true,
+      steamName: true,
+      discordId: true,
+      discordName: true,
+      medal: true,
+      steam32: true,
+    },
   });
+}
+
+/** Admin manual link: enroll an existing Player into the live season (clean roster/payment). */
+export async function adminEnrollPlayerInLiveSeason(playerId: string) {
+  const live = await getLiveSeason();
+  if (!live) throw new Error("No live season to enroll into.");
+
+  const player = await prisma.player.findUnique({ where: { id: playerId } });
+  if (!player) throw new Error("Player not found.");
+  if (
+    player.discordId.startsWith(DUMMY_PREFIX) ||
+    player.discordId.startsWith(DUMMY_TEAM_PREFIX)
+  ) {
+    throw new Error("Cannot enroll a test dummy into the live season.");
+  }
+
+  const already = await prisma.seasonPlayer.findUnique({
+    where: {
+      seasonId_playerId: { seasonId: live.id, playerId: player.id },
+    },
+  });
+  if (already) {
+    throw new Error(`${player.steamName} is already in ${live.name}.`);
+  }
+
+  await syncSeasonPlayer(player.id);
+  return player;
 }
 
 export function formatPlayerDirectory(

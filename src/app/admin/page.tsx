@@ -17,6 +17,7 @@ import { adminPasswordLoginConfigured } from "@/lib/admin-password";
 import { getCupFeatureSettings } from "@/lib/cup-features";
 import { getAdminInsights } from "@/lib/admin-insights";
 import { getPaymentCollection } from "@/lib/payments";
+import { isRegistrationOpen } from "@/lib/registration-status";
 import { MEDAL_LABELS, adminRoleName, formatPoints } from "@/lib/constants";
 import { isSiteAdmin } from "@/lib/site-admin";
 import { pageMeta } from "@/lib/seo";
@@ -181,10 +182,11 @@ export default async function AdminPage({
     );
   }
 
-  const [settings, insights, payments] = await Promise.all([
+  const [settings, insights, payments, registrationOpen] = await Promise.all([
     getCupFeatureSettings(),
     getAdminInsights(),
     getPaymentCollection(),
+    isRegistrationOpen(),
   ]);
 
   const metrics = [
@@ -274,12 +276,23 @@ export default async function AdminPage({
               settings.predictionsEnabled ? "p1" : "p0",
               settings.completeTeamRequired ? "c1" : "c0",
               settings.maxMedalToApply ?? "none",
+              registrationOpen ? "r1" : "r0",
             ].join("|")}
             action={actionUpdateCupSwitches}
             message="Save cup switch changes? This affects registration, auction, and prediction lock for everyone."
             successMessage="Cup switches saved"
-            className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"
+            className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3"
           >
+            <AdminField label="Registration">
+              <select
+                name="registrationOpen"
+                defaultValue={registrationOpen ? "on" : "off"}
+                className={adminControlClass}
+              >
+                <option value="on">Open — site + Discord</option>
+                <option value="off">Closed</option>
+              </select>
+            </AdminField>
             <AdminField label="Auction">
               <select
                 name="auctionEnabled"
@@ -324,7 +337,7 @@ export default async function AdminPage({
                 <option value="off">Off</option>
               </select>
             </AdminField>
-            <AdminSubmitButton className="sm:col-span-2 xl:col-span-4">
+            <AdminSubmitButton className="sm:col-span-2 xl:col-span-3">
               Save switches
             </AdminSubmitButton>
           </AdminConfirmForm>

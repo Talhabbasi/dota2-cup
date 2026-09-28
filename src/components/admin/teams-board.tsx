@@ -28,15 +28,20 @@ export type AdminTeamRow = {
 export function AdminTeamsBoard({
   teams,
   unsigned,
+  readOnly = false,
+  publicSeasonParam,
 }: {
   teams: AdminTeamRow[];
   unsigned: { discordId: string; steamName: string }[];
   allPlayers: { discordId: string; steamName: string; teamName: string | null }[];
+  readOnly?: boolean;
+  publicSeasonParam?: string;
 }) {
   const [showCreate, setShowCreate] = useState(false);
 
   return (
     <div className="space-y-6">
+      {!readOnly ? (
       <div
         className={cn(
           adminCardClass,
@@ -124,13 +129,22 @@ export function AdminTeamsBoard({
           </div>
         ) : null}
       </div>
+      ) : null}
 
       <AdminDataTable
-        title="Teams"
-        hint="Click a franchise to open its admin page."
+        title={readOnly ? "Archive franchises" : "Teams"}
+        hint={
+          readOnly
+            ? "Read-only. Click a franchise to open the public team page for this season."
+            : "Click a franchise to open its admin page."
+        }
         items={teams}
         getId={(t) => t.id}
-        hrefFor={(t) => `/admin/teams/${t.id}`}
+        hrefFor={(t) =>
+          readOnly
+            ? `/teams/${t.id}?season=${publicSeasonParam ?? ""}`
+            : `/admin/teams/${t.id}`
+        }
         searchPlaceholder="Search team or captain…"
         searchText={(t) => `${t.name} ${t.tag ?? ""} ${t.captainName ?? ""}`}
         emptyLabel="No teams this season."

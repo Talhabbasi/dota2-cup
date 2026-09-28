@@ -1,5 +1,5 @@
 import { prisma } from "./prisma";
-import { FINAL_BEST_OF, REGULAR_BEST_OF, scheduleUtcOffsetHours } from "./schedule";
+import { scheduleUtcOffsetHours } from "./schedule";
 import {
   createScheduledMatch,
   isAllowedPlayoffKickoff,
@@ -9,6 +9,11 @@ import {
   groupStageComplete,
   type GroupStandingRow,
 } from "./group-stage-schedule";
+import {
+  getLivePlayoffFormat,
+  playoffFormatFromTeamCount,
+  type PlayoffFormat,
+} from "./playoff-format";
 import {
   BRACKET_META,
   BRACKET_SLOTS,
@@ -50,13 +55,24 @@ export type {
 export function seedsFromStandings(
   groupA: GroupStandingRow[],
   groupB: GroupStandingRow[],
+  format?: PlayoffFormat,
 ): GroupSeeds | null {
-  if (groupA.length < 4 || groupB.length < 4) return null;
-  if (groupA.some((row) => row.played < 3) || groupB.some((row) => row.played < 3)) {
+  const fmt = format ?? playoffFormatFromTeamCount(8);
+  const { groupSize, gamesPerTeam, hasLowerPlayIn, eliminatePlace } = fmt;
+  if (groupA.length < groupSize || groupB.length < groupSize) return null;
+  if (
+    groupA.some((row) => row.played < gamesPerTeam) ||
+    groupB.some((row) => row.played < gamesPerTeam)
+  ) {
     return null;
   }
-  const a = groupA.slice(0, 4);
-  const b = groupB.slice(0, 4);
+  const a = groupA.slice(0, groupSize);
+  const b = groupB.slice(0, groupSize);
+  const elimA = a[eliminatePlace - 1];
+  const elimB = b[eliminatePlace - 1];
+  if (!elimA || !elimB || !a[0] || !a[1] || !a[2] || !a[3] || !b[0] || !b[1] || !b[2] || !b[3]) {
+    return null;
+  }
   return {
     a1: { id: a[0].id, name: a[0].name },
     a2: { id: a[1].id, name: a[1].name },
@@ -66,6 +82,11 @@ export function seedsFromStandings(
     b2: { id: b[1].id, name: b[1].name },
     b3: { id: b[2].id, name: b[2].name },
     b4: { id: b[3].id, name: b[3].name },
+    eliminated: [
+      { id: elimA.id, name: elimA.name },
+      { id: elimB.id, name: elimB.name },
+    ],
+    hasLowerPlayIn,
   };
 }
 
@@ -170,11 +191,12 @@ function orientNames(a: NamedTeam, b: NamedTeam) {
 
 async function loadSeeds(): Promise<GroupSeeds | null> {
   if (!(await groupStageComplete())) return null;
-  const [groupA, groupB] = await Promise.all([
+  const [format, groupA, groupB] = await Promise.all([
+    getLivePlayoffFormat(),
     getGroupStandings("A"),
     getGroupStandings("B"),
   ]);
-  return seedsFromStandings(groupA, groupB);
+  return seedsFromStandings(groupA, groupB, format);
 }
 
 async function fixturesBySlot() {
@@ -266,18 +288,28 @@ export async function maybeOpenPlayoffsFromGroups() {
   if (!seeds) return { opened: false as const, created: [] as BracketSlot[] };
 
   const bySlot = await fixturesBySlot();
-  if (bySlot.has("ub1") && bySlot.has("ub2")) {
+  const openSlots: BracketSlot[] = seeds.hasLowerPlayIn
+    ? ["ub1", "ub2", "lb0a", "lb0b"]
+    : ["ub1", "ub2"];
+  if (openSlots.every((slot) => bySlot.has(slot))) {
     return { opened: false as const, created: [] as BracketSlot[] };
   }
 
   const first = initialPairings(seeds);
+  const pairings = unlockedPairings(seeds, {});
   const after = await lastGroupKickoff();
   const created: BracketSlot[] = [];
   let cursor = after;
 
-  for (const slot of ["ub1", "ub2"] as const) {
+  for (const slot of openSlots) {
     if (bySlot.has(slot)) continue;
-    const pair = first[slot];
+    const pair =
+      slot === "ub1" || slot === "ub2"
+        ? first[slot]
+        : pairings[slot].left && pairings[slot].right
+          ? { left: pairings[slot].left!, right: pairings[slot].right! }
+          : null;
+    if (!pair) continue;
     const booked = await bookSlot({
       slotKey: slot,
       left: pair.left,
@@ -300,24 +332,32 @@ export async function advanceBracket() {
   const pairings = unlockedPairings(seeds, results);
   const created: BracketSlot[] = [];
 
-  const dependents: BracketSlot[] = ["lb1", "lb2", "lb3", "uf", "lb_final", "final"];
+  const dependents: BracketSlot[] = seeds.hasLowerPlayIn
+    ? ["lb0a", "lb0b", "lb1", "lb2", "lb3", "uf", "lb_final", "final"]
+    : ["lb1", "lb2", "lb3", "uf", "lb_final", "final"];
   for (const slot of dependents) {
     if (bySlot.has(slot)) continue;
     const pair = pairings[slot];
     if (!pair.left || !pair.right) continue;
     const afterTimes = [await lastGroupKickoff()];
     const prereqSlots: BracketSlot[] =
-      slot === "lb1"
-        ? ["ub1"]
-        : slot === "lb2"
-          ? ["ub2"]
-          : slot === "lb3"
-            ? ["lb1", "lb2"]
-            : slot === "uf"
-              ? ["ub1", "ub2"]
-              : slot === "lb_final"
-                ? ["lb3", "uf"]
-                : ["uf", "lb_final"];
+      slot === "lb0a" || slot === "lb0b"
+        ? []
+        : slot === "lb1"
+          ? seeds.hasLowerPlayIn
+            ? ["ub1", "lb0a"]
+            : ["ub1"]
+          : slot === "lb2"
+            ? seeds.hasLowerPlayIn
+              ? ["ub2", "lb0b"]
+              : ["ub2"]
+            : slot === "lb3"
+              ? ["lb1", "lb2"]
+              : slot === "uf"
+                ? ["ub1", "ub2"]
+                : slot === "lb_final"
+                  ? ["lb3", "uf"]
+                  : ["uf", "lb_final"];
     for (const key of prereqSlots) {
       const fixture = bySlot.get(key);
       if (fixture) afterTimes.push(fixture.scheduledAt);
@@ -344,13 +384,23 @@ export async function assertPlayoffMatchAllowed(kind: string) {
     );
   }
 
+  const format = await getLivePlayoffFormat();
   const bySlot = await fixturesBySlot();
   const done = (slot: BracketSlot) => bySlot.get(slot)?.status === "completed";
 
-  if (kind === "lb" && !(done("ub1") || done("ub2"))) {
-    throw new Error(
-      "Lower bracket matches unlock after Upper Round 1. Group A 3rd plays the A1 vs B2 loser; Group B 3rd plays the B1 vs A2 loser.",
-    );
+  if (kind === "lb") {
+    if (format.hasLowerPlayIn) {
+      // Play-ins (lb0) may book immediately; Round 1 still needs an upper loser.
+      if (!(done("ub1") || done("ub2") || done("lb0a") || done("lb0b"))) {
+        throw new Error(
+          "Lower play-ins (A3 vs B4, B3 vs A4) unlock after groups. Lower Round 1 then pairs each play-in winner with an Upper Round 1 loser.",
+        );
+      }
+    } else if (!(done("ub1") || done("ub2"))) {
+      throw new Error(
+        "Lower bracket matches unlock after Upper Round 1. Group A 3rd plays the A1 vs B2 loser; Group B 3rd plays the B1 vs A2 loser.",
+      );
+    }
   }
   if (kind === "ub_final" && !(done("ub1") && done("ub2"))) {
     throw new Error(
@@ -370,19 +420,21 @@ export async function assertPlayoffMatchAllowed(kind: string) {
 }
 
 export async function loadPlayoffSeeds() {
-  const [groupA, groupB] = await Promise.all([
+  const [format, groupA, groupB] = await Promise.all([
+    getLivePlayoffFormat(),
     getGroupStandings("A"),
     getGroupStandings("B"),
   ]);
   const complete =
-    groupA.length === 4 &&
-    groupB.length === 4 &&
-    groupA.every((row) => row.played === 3) &&
-    groupB.every((row) => row.played === 3);
+    groupA.length === format.groupSize &&
+    groupB.length === format.groupSize &&
+    groupA.every((row) => row.played === format.gamesPerTeam) &&
+    groupB.every((row) => row.played === format.gamesPerTeam);
   return {
     groupA,
     groupB,
     complete,
-    seeds: complete ? seedsFromStandings(groupA, groupB) : null,
+    format,
+    seeds: complete ? seedsFromStandings(groupA, groupB, format) : null,
   };
 }

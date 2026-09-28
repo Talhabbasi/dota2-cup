@@ -224,10 +224,15 @@ export async function adminGetMatch(matchId: string) {
   });
 }
 
-export async function adminListRecentMatches(take = 40) {
-  const seasonId = await currentSeasonId();
+export async function adminListRecentMatches(take = 40, seasonId?: string | null) {
+  const resolved =
+    seasonId?.trim() ||
+    (await getLiveSeason())?.id ||
+    (await currentSeasonId().catch(() => null));
+  if (!resolved) return [];
+
   return prisma.match.findMany({
-    where: { seasonId },
+    where: { seasonId: resolved },
     orderBy: { createdAt: "desc" },
     take,
     select: {
@@ -348,10 +353,10 @@ export async function adminListPlayersForPicker() {
   });
 }
 
-export async function adminListTeamsForPicker() {
-  const live = await getLiveSeason();
-  const seasonId =
-    live?.id ??
+export async function adminListTeamsForPicker(seasonId?: string | null) {
+  const resolved =
+    seasonId?.trim() ||
+    (await getLiveSeason())?.id ||
     (
       await prisma.season.findFirst({
         where: { status: "upcoming" },
@@ -359,9 +364,9 @@ export async function adminListTeamsForPicker() {
         select: { id: true },
       })
     )?.id;
-  if (!seasonId) return [];
-  return prisma.team.findMany({
-    where: { seasonId },
+  if (!resolved) return [];
+  const teams = await prisma.team.findMany({
+    where: { seasonId: resolved },
     orderBy: { name: "asc" },
     select: {
       id: true,
@@ -370,18 +375,40 @@ export async function adminListTeamsForPicker() {
       logoUrl: true,
       purse: true,
       captainId: true,
-      players: {
+      // Prefer SeasonPlayer so archive seasons still show rosters after
+      // Player.teamId was cleared for the live cup.
+      seasonPlayers: {
         select: {
-          id: true,
-          steamName: true,
-          discordId: true,
           isCaptain: true,
           rosterRole: true,
+          player: {
+            select: {
+              id: true,
+              steamName: true,
+              discordId: true,
+            },
+          },
         },
-        orderBy: [{ isCaptain: "desc" }, { steamName: "asc" }],
+        orderBy: [{ isCaptain: "desc" }, { player: { steamName: "asc" } }],
       },
     },
   });
+
+  return teams.map((team) => ({
+    id: team.id,
+    name: team.name,
+    tag: team.tag,
+    logoUrl: team.logoUrl,
+    purse: team.purse,
+    captainId: team.captainId,
+    players: team.seasonPlayers.map((row) => ({
+      id: row.player.id,
+      steamName: row.player.steamName,
+      discordId: row.player.discordId,
+      isCaptain: row.isCaptain,
+      rosterRole: row.rosterRole,
+    })),
+  }));
 }
 
 export { syncSeasonPlayer, rebalanceTeamRoster, STARTING_PURSE };

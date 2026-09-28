@@ -15,12 +15,16 @@ import { publicFixtureWhere } from "./dummy";
 import { currentSeasonId, currentSeasonFilter, recordSeasonChampion } from "./seasons";
 import { unstable_cache } from "next/cache";
 import { PUBLIC_PAGE_TAG, PUBLIC_REVALIDATE_SECONDS } from "./cache-tags";
+import {
+  FINAL_BEST_OF,
+  REGULAR_BEST_OF,
+} from "./season-constants";
+
+export { FINAL_BEST_OF, REGULAR_BEST_OF };
 
 export const MAX_GAMES_PER_TEAM_PER_WEEKEND = 2;
 export const MATCHES_PER_WEEKEND = 3;
-export const REGULAR_BEST_OF = 1;
-export const FINAL_BEST_OF = 3;
-export const SERIES_WINS_FOR_FINAL = 2;
+export const SERIES_WINS_FOR_FINAL = Math.ceil(FINAL_BEST_OF / 2);
 
 function fixtureRoundLabel(kind: string, slotKey?: string | null) {
   switch (slotKey) {
@@ -30,14 +34,20 @@ function fixtureRoundLabel(kind: string, slotKey?: string | null) {
       return "Match 1 · Upper Round 1";
     case "ub2":
       return "Match 2 · Upper Round 1";
+    case "lb0a":
+      return "Lower play-in · A3 vs B4";
+    case "lb0b":
+      return "Lower play-in · B3 vs A4";
     case "lb1":
       return "Match 3 · Lower Round 1";
     case "lb2":
-      return "Match 4 · Lower Round 2";
+      return "Match 4 · Lower Round 1";
+    case "lb3":
+      return "Match 6 · Lower Round 2";
     case "uf":
       return "Match 5 · Upper Final";
     case "lb_final":
-      return "Match 6 · Lower Final";
+      return "Match 7 · Lower Final";
     case "final":
       return "Grand Final";
     case "group-a-1":

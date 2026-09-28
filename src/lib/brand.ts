@@ -19,7 +19,15 @@ export const CUP_TITLE_SUFFIX = "Indoor Dota 2 Tournament in Pakistan";
 export const CUP_TAGLINE =
   "Indoor Dota 2 cup in Pakistan. Captains, brackets, and kickoffs in one place.";
 
-export const CUP_KICKER = `Indoor ${COMMUNITY_NAME} · Pakistan · Eight franchises`;
+/** Generic kicker — never hardcode franchise count (that comes from Season.teamCount). */
+export const CUP_KICKER = `Indoor ${COMMUNITY_NAME} · Pakistan`;
+
+export function cupKicker(teamCount?: number | null) {
+  if (teamCount && teamCount > 0) {
+    return `${CUP_KICKER} · ${teamCount} teams`;
+  }
+  return CUP_KICKER;
+}
 
 export const CUP_COMMUNITY_LINE = `${COMMUNITY_NAME} community only`;
 

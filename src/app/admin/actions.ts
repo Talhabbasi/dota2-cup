@@ -12,6 +12,7 @@ import {
 } from "@/lib/captains";
 import {
   adminAddPlayerToTeam,
+  adminEnrollPlayerInLiveSeason,
   adminRemovePlayerFromTeam,
   adminSetRosterSlot,
   adminUpdatePlayerProfile,
@@ -44,6 +45,7 @@ import {
   createSeasonAdmin,
   deleteSeasonAdmin,
   endSeasonArchive,
+  getLiveSeason,
   updateSeasonAdmin,
 } from "@/lib/seasons";
 import {
@@ -208,6 +210,20 @@ export async function actionRegisterPlayer(formData: FormData) {
       steam,
     });
   }
+  revalidateAdmin();
+}
+
+export async function actionEnrollPlayerInSeason(formData: FormData) {
+  const session = await requireAdmin();
+  const playerId = String(formData.get("playerId") ?? "").trim();
+  if (!playerId) throw new Error("Pick a player to link.");
+  const player = await adminEnrollPlayerInLiveSeason(playerId);
+  await note(
+    session,
+    "player.enroll_season",
+    `Linked ${player.steamName} into the live season`,
+    { playerId },
+  );
   revalidateAdmin();
 }
 
@@ -423,6 +439,7 @@ export async function actionUpdateCupSwitches(formData: FormData) {
   const complete = String(formData.get("completeTeamRequired") ?? "");
   const predictions = String(formData.get("predictionsEnabled") ?? "");
   const maxMedal = String(formData.get("maxMedalToApply") ?? "");
+  const registration = String(formData.get("registrationOpen") ?? "");
   const patch: Partial<{
     auctionEnabled: boolean;
     completeTeamRequired: boolean;
@@ -441,7 +458,14 @@ export async function actionUpdateCupSwitches(formData: FormData) {
   if (maxMedal === "none") patch.maxMedalToApply = null;
   else if (maxMedal) patch.maxMedalToApply = maxMedal as Medal;
   await updateCupFeatureSettings(patch);
+  if (registration === "on" || registration === "off") {
+    const { setRegistrationOpen } = await import("@/lib/registration-status");
+    await setRegistrationOpen(registration === "on");
+  }
   const bits: string[] = [];
+  if (registration === "on" || registration === "off") {
+    bits.push(`registration ${registration === "on" ? "open" : "closed"}`);
+  }
   if (patch.predictionsEnabled !== undefined) {
     bits.push(`predictions ${patch.predictionsEnabled ? "unlocked" : "locked"}`);
   }
@@ -458,10 +482,12 @@ export async function actionUpdateCupSwitches(formData: FormData) {
     session,
     "cup.switches",
     bits.length ? `Cup switches: ${bits.join(", ")}` : "Updated cup switches",
-    patch,
+    { ...patch, registrationOpen: registration === "on" || registration === "off" ? registration === "on" : undefined },
   );
   revalidateAdmin();
   revalidatePath("/predictions");
+  revalidatePath("/register");
+  revalidatePath("/");
 }
 
 export async function actionMarkPaid(formData: FormData) {
@@ -704,7 +730,9 @@ export async function actionCreateSeason(formData: FormData) {
   const plannedRaw = String(formData.get("plannedStartAt") ?? "").trim();
   const tournamentFormat = String(formData.get("tournamentFormat") ?? "").trim();
   const teamCount = Number(String(formData.get("teamCount") ?? "8"));
-  const plannedStartAt = plannedRaw ? new Date(`${plannedRaw}T12:00:00`) : null;
+  const plannedStartAt = plannedRaw
+    ? new Date(`${plannedRaw}T12:00:00.000Z`)
+    : null;
   try {
     const season = await createSeasonAdmin({
       name,
@@ -736,7 +764,7 @@ export async function actionUpdateSeason(formData: FormData) {
     const season = await updateSeasonAdmin({
       seasonId,
       name,
-      plannedStartAt: plannedRaw ? new Date(`${plannedRaw}T12:00:00`) : null,
+      plannedStartAt: plannedRaw ? new Date(`${plannedRaw}T12:00:00.000Z`) : null,
       tournamentFormat,
       teamCount,
     });
@@ -777,7 +805,13 @@ export async function actionEndSeasonArchive(formData: FormData) {
   if (!seasonId) throw new Error("Missing season.");
   try {
     const season = await endSeasonArchive(seasonId);
-    await note(session, "season.end", `Archived ${season.name}`, { seasonId });
+    const cleared = await clearTeamDiscordRoomsSafe("season.end");
+    await note(
+      session,
+      "season.end",
+      `Archived ${season.name} · ${cleared.detail}`,
+      { seasonId, ...cleared },
+    );
     revalidateAdmin();
     revalidatePath("/admin/seasons");
     revalidatePath("/");
@@ -788,13 +822,42 @@ export async function actionEndSeasonArchive(formData: FormData) {
   }
 }
 
+async function clearTeamDiscordRoomsSafe(label: string) {
+  try {
+    const { clearAllTeamDiscordRoomsViaRest } = await import(
+      "@/lib/discord-team-cleanup-rest"
+    );
+    const cleared = await clearAllTeamDiscordRoomsViaRest();
+    console.info(`[${label}] ${cleared.detail}`);
+    return cleared;
+  } catch (error) {
+    const detail =
+      error instanceof Error ? error.message : "Discord cleanup failed";
+    console.warn(`[${label}] Discord team-channel cleanup failed:`, detail);
+    return { text: 0, voice: 0, roles: 0, detail };
+  }
+}
+
 export async function actionActivateSeason(formData: FormData) {
   const session = await requireAdmin();
   const seasonId = String(formData.get("seasonId") ?? "").trim();
   if (!seasonId) throw new Error("Missing season.");
   try {
+    const previous = await getLiveSeason();
     const season = await activateSeason(seasonId);
-    await note(session, "season.set_active", `Set active ${season.name}`, { seasonId });
+    // Switching cups (or re-activating) must wipe Season 1 team rooms —
+    // "Set active" used to skip Discord cleanup, which left Team Chat/Voice behind.
+    let clearedDetail = "Discord cleanup skipped (same season)";
+    if (!previous || previous.id !== season.id) {
+      const cleared = await clearTeamDiscordRoomsSafe("season.activate");
+      clearedDetail = cleared.detail;
+    }
+    await note(
+      session,
+      "season.set_active",
+      `Set active ${season.name} · ${clearedDetail}`,
+      { seasonId },
+    );
     revalidateAdmin();
     revalidatePath("/admin/seasons");
     revalidatePath("/");

@@ -1,6 +1,5 @@
 import Image from "next/image";
 import Link from "next/link";
-import { Suspense } from "react";
 import { formatScheduleWhen } from "@/lib/schedule";
 import {
   EsportsCard,
@@ -10,13 +9,33 @@ import {
 } from "@/components/common";
 import { HeroSlideshow } from "@/components/hero-slideshow";
 import { MatchCountdown } from "@/components/match-countdown";
-import { SeasonSwitcher } from "@/components/season-switcher";
 import type { FixturePreview } from "@/lib/data";
 import { toIso } from "@/lib/format";
 import { BRACKET_META, isBracketSlot } from "@/lib/playoff-tree";
-import { CUP_ICON_PATH, CUP_KICKER, cupNameLines } from "@/lib/brand";
-import type { PublicSeasonRow, SeasonChampion } from "@/lib/seasons";
+import { CUP_ICON_PATH, cupKicker, cupNameLines } from "@/lib/brand";
+import type { SeasonChampion } from "@/lib/seasons";
+import {
+  FINAL_BEST_OF,
+  SEASON_PHASE,
+  formatSeasonStartDate,
+  seasonPlanLine,
+  tournamentFormatLabel,
+} from "@/lib/season-constants";
+import {
+  seasonHeroLead,
+  seasonHeroTagline,
+} from "@/lib/season-public-copy";
 import { cn } from "@/lib/utils";
+
+export type HeroSeasonPlan = {
+  number: number;
+  name: string;
+  teamCount: number;
+  plannedStartAt: string | null;
+  startedAt: string | null;
+  phase: string;
+  tournamentFormat: string;
+};
 
 function roundName(kind?: string, slotKey?: string | null) {
   if (slotKey && isBracketSlot(slotKey)) return BRACKET_META[slotKey].round;
@@ -54,19 +73,17 @@ export function HomeHero({
   teamCount,
   matchCount,
   seasonLabel,
+  seasonPlan,
   champion,
   siteMode = "active",
-  seasons = [],
-  viewSeasonNumber = null,
 }: {
   upcoming: FixturePreview | null;
   teamCount: number;
   matchCount: number;
   seasonLabel?: string | null;
+  seasonPlan?: HeroSeasonPlan | null;
   champion?: SeasonChampion | null;
   siteMode?: "active" | "champion" | "upcoming";
-  seasons?: PublicSeasonRow[];
-  viewSeasonNumber?: number | null;
 }) {
   const [titleLead, titleTail] = cupNameLines();
   const crowned = siteMode === "champion" && Boolean(champion);
@@ -74,6 +91,24 @@ export function HomeHero({
   const starters =
     champion?.players.filter((player) => !player.isSub) ?? [];
   const seasonBit = seasonLabel ?? (champion ? champion.seasonName : null);
+  const planLine = seasonPlan
+    ? seasonPlanLine({
+        number: seasonPlan.number,
+        teamCount: seasonPlan.teamCount,
+        plannedStartAt: seasonPlan.plannedStartAt,
+        startedAt: seasonPlan.startedAt,
+        phase: seasonPlan.phase,
+      })
+    : null;
+  const startDisplay =
+    formatSeasonStartDate(seasonPlan?.plannedStartAt) ??
+    formatSeasonStartDate(seasonPlan?.startedAt);
+  const plannedTeams = seasonPlan?.teamCount ?? teamCount;
+  const formatLabel = tournamentFormatLabel(seasonPlan?.tournamentFormat);
+  const preTournament =
+    seasonPlan?.phase === SEASON_PHASE.UPCOMING ||
+    seasonPlan?.phase === SEASON_PHASE.AUCTION_ACTIVE;
+  const brandKicker = cupKicker(seasonPlan?.teamCount ?? plannedTeams);
 
   return (
     <section className={cn("hero-stage", crowned && "hero-stage-champion")}>
@@ -95,16 +130,6 @@ export function HomeHero({
       </div>
 
       <div className="hero-stage-inner">
-        {seasons.length > 0 ? (
-          <div className="mb-4 flex justify-end animate-rise">
-            <Suspense fallback={null}>
-              <SeasonSwitcher
-                seasons={seasons}
-                viewSeasonNumber={viewSeasonNumber}
-              />
-            </Suspense>
-          </div>
-        ) : null}
         <p className="hero-kicker animate-rise">
           <span
             className={cn(
@@ -113,10 +138,12 @@ export function HomeHero({
             )}
           />
           {crowned
-            ? `${seasonBit ?? CUP_KICKER} · Complete`
+            ? `${seasonBit ?? brandKicker} · Complete`
             : upcomingMode
-              ? `${CUP_KICKER} · Upcoming`
-              : CUP_KICKER}
+              ? `${planLine ?? brandKicker} · Upcoming`
+              : planLine
+                ? planLine
+                : brandKicker}
         </p>
         <h1 className="hero-title animate-rise delay-1">
           <Image
@@ -174,7 +201,11 @@ export function HomeHero({
               <li>
                 <StatTile
                   label="Grand Final"
-                  value={champion.finalScore ? `${champion.finalScore}` : "Bo3"}
+                  value={
+                    champion.finalScore
+                      ? `${champion.finalScore}`
+                      : `Bo${FINAL_BEST_OF}`
+                  }
                 />
               </li>
               <li>
@@ -202,34 +233,97 @@ export function HomeHero({
         ) : upcomingMode ? (
           <>
             <p className="hero-tagline animate-rise delay-2">
-              Next season coming soon
+              {planLine ?? "Next season coming soon"}
             </p>
             <p className="hero-lead animate-rise delay-2">
-              The last tournament is in the archive. Organizers will open a new
-              season when registration and auction are ready.
+              {seasonPlan
+                ? seasonHeroLead(
+                    {
+                      number: seasonPlan.number,
+                      name: seasonPlan.name,
+                      teamCount: seasonPlan.teamCount,
+                      tournamentFormat: seasonPlan.tournamentFormat,
+                      plannedStartAt: seasonPlan.plannedStartAt,
+                      startedAt: seasonPlan.startedAt,
+                      phase: seasonPlan.phase,
+                    },
+                    { preTournament: true },
+                  )
+                : "The last tournament is in the archive. Organizers will open a new season when registration and auction are ready."}
             </p>
             <div className="hero-ctas animate-rise delay-3">
-              <Link href="/seasons" className="btn btn-gold">
+              <Link href="/register" className="btn btn-gold">
+                Register
+              </Link>
+              <Link href="/seasons" className="btn">
                 Season archive
               </Link>
-              <Link href="/playoffs" className="btn">
+              <Link href="/playoffs" className="btn btn-ghost">
                 Past brackets
               </Link>
             </div>
+            {seasonPlan ? (
+              <ul className="m-0 mb-6 grid list-none grid-cols-2 gap-3 p-0 sm:grid-cols-4">
+                <li>
+                  <StatTile label="Season" value={`S${seasonPlan.number}`} />
+                </li>
+                <li>
+                  <StatTile label="Teams" value={String(plannedTeams)} />
+                </li>
+                <li>
+                  <StatTile
+                    label={startDisplay ? "Starts" : "Format"}
+                    value={startDisplay ?? formatLabel}
+                  />
+                </li>
+                <li>
+                  <StatTile label="Kickoffs" value="PKT" />
+                </li>
+              </ul>
+            ) : null}
           </>
         ) : (
           <>
             <p className="hero-tagline animate-rise delay-2">
-              Two groups. One bracket. Every night on the clock.
+              {seasonPlan
+                ? seasonHeroTagline({
+                    number: seasonPlan.number,
+                    name: seasonPlan.name,
+                    teamCount: seasonPlan.teamCount,
+                    tournamentFormat: seasonPlan.tournamentFormat,
+                    plannedStartAt: seasonPlan.plannedStartAt,
+                    startedAt: seasonPlan.startedAt,
+                    phase: seasonPlan.phase,
+                  })
+                : planLine ??
+                  "Two groups. One bracket. Every night on the clock."}
             </p>
             <p className="hero-lead animate-rise delay-2">
-              Saturday and Sunday indoor matches, group stage into a live playoff
-              graph. Captains, rosters, and kickoffs — all in one place.
+              {seasonPlan
+                ? seasonHeroLead(
+                    {
+                      number: seasonPlan.number,
+                      name: seasonPlan.name,
+                      teamCount: seasonPlan.teamCount,
+                      tournamentFormat: seasonPlan.tournamentFormat,
+                      plannedStartAt: seasonPlan.plannedStartAt,
+                      startedAt: seasonPlan.startedAt,
+                      phase: seasonPlan.phase,
+                    },
+                    { preTournament },
+                  )
+                : "Saturday and Sunday indoor matches, group stage into a live playoff graph. Captains, rosters, and kickoffs — all in one place."}
             </p>
             <div className="hero-ctas animate-rise delay-3">
-              <Link href="/schedule" className="btn btn-gold">
-                Open schedule
-              </Link>
+              {preTournament ? (
+                <Link href="/register" className="btn btn-gold">
+                  Register
+                </Link>
+              ) : (
+                <Link href="/schedule" className="btn btn-gold">
+                  Open schedule
+                </Link>
+              )}
               <Link href="/playoffs" className="btn">
                 Tournament graph
               </Link>
@@ -240,13 +334,27 @@ export function HomeHero({
 
             <ul className="m-0 mb-6 grid list-none grid-cols-2 gap-3 p-0 sm:grid-cols-4">
               <li>
-                <StatTile label="Teams" value={String(teamCount)} />
+                <StatTile
+                  label="Teams"
+                  value={
+                    teamCount > 0 && teamCount !== plannedTeams
+                      ? `${teamCount}/${plannedTeams}`
+                      : String(plannedTeams)
+                  }
+                />
               </li>
               <li>
-                <StatTile label="Matches logged" value={String(matchCount)} />
+                <StatTile
+                  label={startDisplay ? "Starts" : "Matches logged"}
+                  value={
+                    startDisplay && preTournament
+                      ? startDisplay
+                      : String(matchCount)
+                  }
+                />
               </li>
               <li>
-                <StatTile label="Grand Final" value="Bo3" />
+                <StatTile label="Format" value={formatLabel} />
               </li>
               <li>
                 <StatTile label="Kickoffs" value="PKT" />

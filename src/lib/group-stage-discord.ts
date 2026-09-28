@@ -43,8 +43,8 @@ export function groupStageScheduleEmbeds(result: {
       .setTitle(GROUP_STAGE_POST_TITLE)
       .setDescription(
         [
-          "8 teams · 2 groups of 4 · single round-robin · **Bo1**.",
-          "Each team plays **3** matches. Group A is Saturday; Group B is Sunday.",
+          "Teams · 2 equal groups · single round-robin · **Bo1**.",
+          "Group A is Saturday; Group B is Sunday. Each team plays every other team in its group once.",
           "Kickoff slots: 10:00 PM → 4:00 AM PKT (1 hour between games).",
           "",
           `Full grid: **${site}/schedule**`,

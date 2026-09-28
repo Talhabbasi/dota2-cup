@@ -104,6 +104,61 @@ async function loadPlayers() {
 
 export const getPlayers = cachedPublic("players", loadPlayers);
 
+function seatWon(row: {
+  side: string;
+  match: {
+    radiantWin: boolean | null;
+    winnerTeamId: string | null;
+    radiantTeam: { id: string } | null;
+    direTeam: { id: string } | null;
+  };
+}): boolean | null {
+  const teamId =
+    row.side === "radiant"
+      ? row.match.radiantTeam?.id ?? null
+      : row.match.direTeam?.id ?? null;
+  if (row.match.winnerTeamId && teamId) {
+    return row.match.winnerTeamId === teamId;
+  }
+  if (row.match.radiantWin == null) return null;
+  return row.side === "radiant" ? row.match.radiantWin : !row.match.radiantWin;
+}
+
+function aggregateSeatStats(
+  seats: {
+    kills: number;
+    deaths: number;
+    assists: number;
+    side: string;
+    match: {
+      radiantWin: boolean | null;
+      winnerTeamId: string | null;
+      radiantTeam: { id: string } | null;
+      direTeam: { id: string } | null;
+    };
+  }[],
+) {
+  const games = seats.length;
+  let wins = 0;
+  let losses = 0;
+  let kills = 0;
+  let deaths = 0;
+  let assists = 0;
+  for (const seat of seats) {
+    kills += seat.kills;
+    deaths += seat.deaths;
+    assists += seat.assists;
+    const won = seatWon(seat);
+    if (won === true) wins += 1;
+    else if (won === false) losses += 1;
+  }
+  const kda =
+    games > 0
+      ? Number(((kills + assists) / Math.max(1, deaths)).toFixed(2))
+      : null;
+  return { games, wins, losses, kills, deaths, assists, kda };
+}
+
 export async function getPlayer(
   id: string,
   options?: { seasonId?: string | null },
@@ -114,7 +169,7 @@ export async function getPlayer(
   });
   if (!player || isDummyDiscordId(player.discordId)) return null;
 
-  const [matchPlayers, seasonRows, currentSeason] = await Promise.all([
+  const [matchPlayers, seasonRows, soldLots, currentSeason] = await Promise.all([
     prisma.matchPlayer.findMany({
       where: {
         OR: [{ playerId: player.id }, { steam32: player.steam32 }],
@@ -142,10 +197,41 @@ export async function getPlayer(
       },
       orderBy: { season: { number: "desc" } },
     }),
+    prisma.auctionLot.findMany({
+      where: {
+        playerId: player.id,
+        status: "sold",
+        soldPrice: { not: null },
+      },
+      select: {
+        seasonId: true,
+        soldPrice: true,
+        createdAt: true,
+      },
+      orderBy: { createdAt: "desc" },
+    }),
     getCurrentSeasonSafe(),
   ]);
 
-  // Matches + roster for the viewed/active season only (not career all-time).
+  const soldPriceBySeason = new Map<string, number>();
+  for (const lot of soldLots) {
+    if (!lot.seasonId || lot.soldPrice == null) continue;
+    if (!soldPriceBySeason.has(lot.seasonId)) {
+      soldPriceBySeason.set(lot.seasonId, lot.soldPrice);
+    }
+  }
+
+  const career = aggregateSeatStats(matchPlayers);
+  const seatsBySeason = new Map<string, typeof matchPlayers>();
+  for (const seat of matchPlayers) {
+    const sid = seat.match.seasonId;
+    if (!sid) continue;
+    const list = seatsBySeason.get(sid) ?? [];
+    list.push(seat);
+    seatsBySeason.set(sid, list);
+  }
+
+  // Prefer explicit ?season=; else live; else latest membership.
   const focusSeasonId =
     options?.seasonId ??
     currentSeason?.id ??
@@ -154,7 +240,7 @@ export async function getPlayer(
     null;
   const scopedMatchPlayers = focusSeasonId
     ? matchPlayers.filter((row) => row.match.seasonId === focusSeasonId)
-    : [];
+    : matchPlayers;
 
   const seasonTeamBySeason = new Map(
     seasonRows.map((row) => [row.seasonId, row.teamId] as const),
@@ -168,6 +254,10 @@ export async function getPlayer(
   const currentCaptain = focusMembership?.isCaptain ?? false;
   const currentRosterRole = focusMembership?.rosterRole ?? null;
   const focusSeasonRow = focusMembership?.season ?? null;
+  const focusStats = aggregateSeatStats(scopedMatchPlayers);
+  const focusSoldPrice = focusSeasonId
+    ? (soldPriceBySeason.get(focusSeasonId) ?? null)
+    : null;
 
   const { discordId: _discordId, discordName: _discordName, ...publicPlayer } =
     player;
@@ -185,17 +275,28 @@ export async function getPlayer(
         : null,
     })),
     focusSeasonId,
-    seasonHistory: seasonRows.map((row) => ({
-      seasonId: row.season.id,
-      number: row.season.number,
-      name: row.season.name,
-      status: row.season.status,
-      teamId: row.team?.id ?? null,
-      teamName: row.team?.name ?? null,
-      isCaptain: row.isCaptain,
-      rosterRole: row.rosterRole,
-      live: currentSeason?.id === row.season.id,
-    })),
+    focusStats,
+    focusSoldPrice,
+    career,
+    seasonHistory: seasonRows.map((row) => {
+      const stats = aggregateSeatStats(seatsBySeason.get(row.seasonId) ?? []);
+      return {
+        seasonId: row.season.id,
+        number: row.season.number,
+        name: row.season.name,
+        status: row.season.status,
+        teamId: row.team?.id ?? null,
+        teamName: row.team?.name ?? null,
+        isCaptain: row.isCaptain,
+        rosterRole: row.rosterRole,
+        soldPrice: soldPriceBySeason.get(row.seasonId) ?? null,
+        games: stats.games,
+        wins: stats.wins,
+        losses: stats.losses,
+        kda: stats.kda,
+        live: currentSeason?.id === row.season.id,
+      };
+    }),
     currentSeason: focusSeasonRow
       ? {
           id: focusSeasonRow.id,
@@ -579,7 +680,19 @@ export async function getPlayerMeta(id: string) {
     },
   });
   if (!player || isDummyDiscordId(player.discordId)) return null;
-  return { name: player.steamName, teamName: player.team?.name ?? null };
+
+  const liveMembership = await prisma.seasonPlayer.findFirst({
+    where: {
+      playerId: id,
+      season: { isActive: true },
+    },
+    select: { team: { select: { name: true } } },
+  });
+
+  return {
+    name: player.steamName,
+    teamName: liveMembership?.team?.name ?? player.team?.name ?? null,
+  };
 }
 
 export async function getMatchMeta(id: string) {

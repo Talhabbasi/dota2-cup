@@ -1,5 +1,7 @@
 import { PageHeader } from "@/components/common";
+import { AdminSeasonViewer } from "@/components/admin/season-viewer";
 import { requireAdmin } from "@/lib/admin-auth";
+import { resolveAdminSeasonView } from "@/lib/admin-season-view";
 import { adminListRecentMatches } from "@/lib/match-admin";
 import { formatScheduleWhen } from "@/lib/schedule";
 import { pageMeta } from "@/lib/seo";
@@ -10,9 +12,16 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 export const metadata = pageMeta("Admin Matches", "Fix match OCR and results.");
 
-export default async function AdminMatchesPage() {
+export default async function AdminMatchesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ season?: string }>;
+}) {
   await requireAdmin();
-  const rawMatches = await adminListRecentMatches(40);
+  const sp = await searchParams;
+  const { view, options, readOnly, publicSeasonParam } =
+    await resolveAdminSeasonView(sp.season);
+  const rawMatches = await adminListRecentMatches(80, view.id);
 
   const matches = rawMatches.map((match) => {
     const needsTeam =
@@ -40,7 +49,11 @@ export default async function AdminMatchesPage() {
       <PageHeader
         eyebrow="Admin"
         title="Matches"
-        subtitle="Fix OCR links and stand-ins. To record a new result, open the fixture under Schedule."
+        subtitle={
+          readOnly
+            ? `Archive Season ${view.number} — read-only. Open the public page for full detail.`
+            : "Fix OCR links and stand-ins. To record a new result, open the fixture under Schedule."
+        }
         pills={[
           { value: matches.length, label: "recent" },
           {
@@ -49,7 +62,18 @@ export default async function AdminMatchesPage() {
           },
         ]}
       />
-      <AdminMatchesBoard matches={matches} />
+      <AdminSeasonViewer
+        view={view}
+        options={options}
+        readOnly={readOnly}
+        publicSeasonParam={publicSeasonParam}
+        publicHref="/matches"
+      />
+      <AdminMatchesBoard
+        matches={matches}
+        readOnly={readOnly}
+        publicSeasonParam={publicSeasonParam}
+      />
     </div>
   );
 }

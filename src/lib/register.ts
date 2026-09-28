@@ -1,5 +1,5 @@
 import { prisma } from "./prisma";
-import { syncSeasonPlayer, syncSeasonPlayers } from "./seasons";
+import { getLiveSeason, syncSeasonPlayer, syncSeasonPlayers } from "./seasons";
 import { medalBlockedByMaxRank } from "./cup-features";
 import { parseMedal } from "./constants";
 import { parsePlayWindow } from "./play-window";
@@ -62,7 +62,20 @@ export async function registerPlayer(input: {
 
   if (existingBySteam || existingByDiscord) {
     const current = existingBySteam ?? existingByDiscord!;
-    const locked = Boolean(current.teamId);
+    const liveSeason = await getLiveSeason();
+    const seasonMembership = liveSeason
+      ? await prisma.seasonPlayer.findUnique({
+          where: {
+            seasonId_playerId: {
+              seasonId: liveSeason.id,
+              playerId: current.id,
+            },
+          },
+          select: { teamId: true },
+        })
+      : null;
+    // Lock identity fields once rostered in the *active* season — not past seasons.
+    const locked = Boolean(seasonMembership?.teamId);
     const player = await prisma.player.update({
       where: { id: current.id },
       data: {

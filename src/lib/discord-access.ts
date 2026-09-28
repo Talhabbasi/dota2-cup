@@ -18,12 +18,16 @@ import {
   stripMemberTeamRoles,
   syncTeamChatChannels,
   syncTeamChatForTeam,
+  clearAllTeamChatChannels,
+  teamChatCategoryName,
 } from "./team-chat";
 import {
   removeTeamVoicePresence,
   renameTeamVoiceLabel,
   syncTeamVoiceChannels,
   syncTeamVoiceForTeam,
+  clearAllTeamVoiceChannels,
+  teamVoiceCategoryName,
 } from "./team-voice";
 import {
   PLAY_WINDOW_ROLE_NAMES,
@@ -396,6 +400,48 @@ export async function tryTeardownTeamDiscord(
       error instanceof Error ? error.message : error,
     );
   }
+}
+
+/**
+ * Tournament end: wipe team text/voice rooms and cup roles
+ * (Team · *, Captain, Registered, play-window). Admin role stays.
+ */
+export async function tryClearAllTeamDiscordRooms(guild: Guild | null): Promise<{
+  text: number;
+  voice: number;
+  roles: number;
+} | null> {
+  if (!guild) return null;
+  try {
+    const [chat, voice] = await Promise.all([
+      clearAllTeamChatChannels(guild),
+      clearAllTeamVoiceChannels(guild),
+    ]);
+    return { text: chat.channels, voice: voice.channels, roles: chat.roles };
+  } catch (error) {
+    console.warn(
+      "Could not clear team Discord rooms after season end:",
+      error instanceof Error ? error.message : error,
+    );
+    return null;
+  }
+}
+
+export { clearAllTeamDiscordRoomsViaRest } from "./discord-team-cleanup-rest";
+
+const DISCORD_API = "https://discord.com/api/v10";
+
+async function discordBotFetch(
+  method: string,
+  path: string,
+): Promise<Response | null> {
+  const token = process.env.DISCORD_TOKEN?.trim();
+  if (!token) return null;
+  return fetch(`${DISCORD_API}${path}`, {
+    method,
+    headers: { Authorization: `Bot ${token}` },
+    cache: "no-store",
+  });
 }
 
 export async function tryStripMemberTeamRoles(

@@ -39,12 +39,18 @@ function formatLine(match: PlayoffMatchView) {
   return `**${match.label}**\n${left} vs ${right}\n${bits.join(" · ")}`;
 }
 
-function rankBlock(title: string, rows: PlayoffView["standingsA"], complete: boolean) {
+function rankBlock(
+  title: string,
+  rows: PlayoffView["standingsA"],
+  complete: boolean,
+  eliminatePlace: number,
+) {
   if (rows.length === 0) return `${title}\nNot assigned.`;
+  const elimIndex = eliminatePlace - 1;
   return [
     title,
     ...rows.map((row, index) => {
-      const out = complete && index === 3 ? " — Eliminated" : "";
+      const out = complete && index === elimIndex ? " — Eliminated" : "";
       return `${index + 1}. ${row.name}${out}`;
     }),
   ].join("\n");
@@ -55,12 +61,26 @@ export function playoffEmbeds(view: PlayoffView) {
   const matches = (stage: PlayoffMatchView["stage"]) =>
     view.matches.filter((match) => match.stage === stage).map(formatLine).join("\n\n");
 
-  const overview = [
-    "Same bracket as the website. 4th in each group is eliminated.",
-    "Upper Round 1: **A1 vs B2** and **B1 vs A2**. Each 3rd waits for a loser: **A3 vs Match 1 loser**, **B3 vs Match 2 loser**.",
-    "Every match is **Bo1** except the Grand Final (**Bo3**).",
-    `Full bracket: **${site}/playoffs**`,
-  ];
+  const elimOrdinal =
+    view.eliminatePlace === 5
+      ? "5th"
+      : view.eliminatePlace === 4
+        ? "4th"
+        : `${view.eliminatePlace}th`;
+  const overview = view.hasLowerPlayIn
+    ? [
+        `Same bracket as the website. ${elimOrdinal} in each group is eliminated.`,
+        "Upper Round 1: **A1 vs B2** and **B1 vs A2**.",
+        "Lower play-ins: **A3 vs B4** and **B3 vs A4**, then winners face Upper Round 1 losers.",
+        "Every match is **Bo1** except the Grand Final (**Bo3**).",
+        `Full bracket: **${site}/playoffs**`,
+      ]
+    : [
+        `Same bracket as the website. ${elimOrdinal} in each group is eliminated.`,
+        "Upper Round 1: **A1 vs B2** and **B1 vs A2**. Each 3rd waits for a loser: **A3 vs Match 1 loser**, **B3 vs Match 2 loser**.",
+        "Every match is **Bo1** except the Grand Final (**Bo3**).",
+        `Full bracket: **${site}/playoffs**`,
+      ];
 
   if (view.eliminated.length > 0) {
     overview.push("", `Eliminated after groups: **${view.eliminated.map((team) => team.name).join(", ")}**`);
@@ -80,9 +100,19 @@ export function playoffEmbeds(view: PlayoffView) {
       .setTitle("Final group standings")
       .setDescription(
         [
-          rankBlock("**Group A**", view.standingsA, view.groupStageComplete),
+          rankBlock(
+            "**Group A**",
+            view.standingsA,
+            view.groupStageComplete,
+            view.eliminatePlace,
+          ),
           "",
-          rankBlock("**Group B**", view.standingsB, view.groupStageComplete),
+          rankBlock(
+            "**Group B**",
+            view.standingsB,
+            view.groupStageComplete,
+            view.eliminatePlace,
+          ),
         ].join("\n"),
       ),
     new EmbedBuilder()
