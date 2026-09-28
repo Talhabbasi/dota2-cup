@@ -17,6 +17,7 @@ export function SiteChrome({
   showSeasons = false,
   seasons = [],
   liveSeasonId = null,
+  viewSeasonNumber = null,
   banner,
   children,
 }: {
@@ -25,6 +26,7 @@ export function SiteChrome({
   showSeasons?: boolean;
   seasons?: PublicSeasonRow[];
   liveSeasonId?: string | null;
+  viewSeasonNumber?: number | null;
   banner?: ReactNode;
   children: ReactNode;
 }) {
@@ -39,12 +41,14 @@ export function SiteChrome({
           seasonLabel={seasonLabel}
           showRegister={showRegister}
           showSeasons={showSeasons}
+          viewSeasonNumber={viewSeasonNumber}
           seasonSwitcher={
             showSeasons ? (
               <Suspense fallback={null}>
                 <SeasonSwitcher
                   seasons={seasons}
                   currentSeasonId={liveSeasonId}
+                  viewSeasonNumber={viewSeasonNumber}
                 />
               </Suspense>
             ) : null

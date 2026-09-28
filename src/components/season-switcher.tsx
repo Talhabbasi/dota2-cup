@@ -12,20 +12,47 @@ function phaseLabel(row: PublicSeasonRow) {
   return row.phase;
 }
 
+function readSeasonCookie() {
+  if (typeof document === "undefined") return "";
+  const match = document.cookie.match(
+    new RegExp(`(?:^|; )${SEASON_VIEW_COOKIE}=([^;]*)`),
+  );
+  return match ? decodeURIComponent(match[1]) : "";
+}
+
 export function SeasonSwitcher({
   seasons,
-  currentSeasonId,
+  viewSeasonNumber = null,
 }: {
   seasons: PublicSeasonRow[];
-  currentSeasonId: string | null;
+  currentSeasonId?: string | null;
+  /** Server-resolved season (cookie / query) so the select survives nav without ?season=. */
+  viewSeasonNumber?: number | null;
 }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const selected =
-    searchParams.get("season")?.trim() ||
-    (currentSeasonId && seasons.find((s) => s.isActive)?.number.toString()) ||
-    "";
+
+  const liveNumber = seasons.find((s) => s.isActive)?.number ?? null;
+  const fromQuery = searchParams.get("season")?.trim() || "";
+  const fromCookie = readSeasonCookie();
+  const fromServer =
+    viewSeasonNumber != null ? String(viewSeasonNumber) : "";
+
+  const picked = fromQuery || fromCookie || fromServer;
+  const viewingLive =
+    !picked ||
+    picked === "live" ||
+    (liveNumber != null && picked === String(liveNumber));
+
+  const matched = seasons.find(
+    (s) => String(s.number) === picked || s.id === picked,
+  );
+  const selected = viewingLive
+    ? "live"
+    : matched
+      ? String(matched.number)
+      : "live";
 
   if (seasons.length <= 1) return null;
 
@@ -33,10 +60,10 @@ export function SeasonSwitcher({
     const params = new URLSearchParams(searchParams.toString());
     if (!value || value === "live") {
       params.delete("season");
-      document.cookie = `${SEASON_VIEW_COOKIE}=; path=/; max-age=0`;
+      document.cookie = `${SEASON_VIEW_COOKIE}=; path=/; max-age=0; SameSite=Lax`;
     } else {
       params.set("season", value);
-      document.cookie = `${SEASON_VIEW_COOKIE}=${encodeURIComponent(value)}; path=/; max-age=${60 * 60 * 24 * 180}`;
+      document.cookie = `${SEASON_VIEW_COOKIE}=${encodeURIComponent(value)}; path=/; max-age=${60 * 60 * 24 * 180}; SameSite=Lax`;
     }
     const q = params.toString();
     router.push(q ? `${pathname}?${q}` : pathname);
@@ -48,7 +75,7 @@ export function SeasonSwitcher({
       <span className="hidden text-muted-foreground sm:inline">Season</span>
       <select
         className="max-w-[11rem] rounded-md border border-white/15 bg-black/30 px-2 py-1.5 text-xs text-foreground"
-        value={selected || "live"}
+        value={selected}
         onChange={(event) => onChange(event.target.value)}
         aria-label="Choose season to view"
       >

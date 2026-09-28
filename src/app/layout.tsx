@@ -12,6 +12,7 @@ import {
   listPublicSeasons,
   liveSeasonLabel,
 } from "@/lib/seasons";
+import { resolveViewSeason } from "@/lib/season-view";
 import { currentPlayer } from "@/lib/auth";
 import "./globals.css";
 
@@ -69,16 +70,21 @@ export const viewport: Viewport = {
 };
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
-  const [live, seasons, { player }] = await Promise.all([
+  const [live, seasons, { player }, view] = await Promise.all([
     getLiveSeason(),
     listPublicSeasons(),
     currentPlayer(),
+    resolveViewSeason(),
   ]);
   const seasonLabel = live
     ? liveSeasonLabel(live)
     : seasons.length > 0
       ? "Season archive"
       : liveSeasonLabel(await getCurrentSeasonSafe());
+
+  const viewSeasonNumber =
+    view && !view.isLive ? view.number : null;
+
   return (
     <html
       lang="en"
@@ -93,6 +99,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
             showSeasons={seasons.length > 0}
             seasons={seasons}
             liveSeasonId={live?.id ?? null}
+            viewSeasonNumber={viewSeasonNumber}
             banner={<ClosedBanner />}
           >
             {children}
