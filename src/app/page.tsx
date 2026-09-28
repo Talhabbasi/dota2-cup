@@ -9,14 +9,17 @@ import { StandingsBoard } from "@/components/standings-board";
 import {
   getStandings,
   getRecentMatches,
-  getTeamCount,
-  getMatchCount,
-  getUpcomingFixture,
 } from "@/lib/data";
 import { PlayoffGraphLazy } from "@/components/playoff-graph-lazy";
 import { getPlayoffView } from "@/lib/playoff";
 import { getActiveWeekendBundle } from "@/lib/schedule";
-import { getCurrentSeasonChampion, getCurrentSeasonSafe, getLiveSeason, listPublicSeasons } from "@/lib/seasons";
+import {
+  getCurrentSeasonChampion,
+  getCurrentSeasonSafe,
+  getLiveSeason,
+  listPublicSeasons,
+} from "@/lib/seasons";
+import { getHomepageHeroBanner } from "@/lib/homepage-hero";
 import { SEASON_STATUS } from "@/lib/season-constants";
 import { seasonFormatCards } from "@/lib/season-public-copy";
 import { toIso } from "@/lib/format";
@@ -52,27 +55,23 @@ export default async function Home() {
   const [
     table,
     matches,
-    teamCount,
-    matchCount,
-    upcoming,
     weekend,
     playoff,
     season,
     champion,
     live,
     publicSeasons,
+    heroBanner,
   ] = await Promise.all([
     getStandings(),
     getRecentMatches(5),
-    getTeamCount(),
-    getMatchCount(),
-    getUpcomingFixture(),
     getActiveWeekendBundle(),
     getPlayoffView(),
     getCurrentSeasonSafe(),
     getCurrentSeasonChampion(),
     getLiveSeason(),
     listPublicSeasons(),
+    getHomepageHeroBanner(),
   ]);
 
   const latest = matches[0] ?? null;
@@ -107,13 +106,9 @@ export default async function Home() {
   return (
     <>
       <HomeHero
-        upcoming={siteMode === "active" ? upcoming : null}
-        teamCount={teamCount}
-        matchCount={matchCount}
+        slides={heroBanner.slides}
         seasonLabel={season ? `Season ${season.number}` : null}
         seasonPlan={seasonPlan}
-        champion={crowned ? champion : null}
-        siteMode={siteMode}
       />
 
       <div className="page home-body">

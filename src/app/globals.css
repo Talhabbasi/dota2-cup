@@ -732,6 +732,93 @@ tr:last-child td {
   opacity: 0.22;
 }
 
+.hero-banner-carousel {
+  position: relative;
+  margin-top: 0.25rem;
+}
+
+.hero-banner-panel {
+  animation: hero-banner-in 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes hero-banner-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.hero-banner-slide-grid {
+  display: grid;
+  gap: 1.25rem;
+  align-items: start;
+}
+
+@media (min-width: 960px) {
+  .hero-banner-slide-grid {
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.95fr);
+    gap: 1.75rem;
+  }
+}
+
+.hero-banner-copy {
+  min-width: 0;
+}
+
+.hero-banner-match {
+  min-width: 0;
+}
+
+.hero-banner-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.65rem;
+  margin-top: 1.1rem;
+}
+
+.hero-banner-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.hero-banner-arrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(8, 10, 14, 0.55);
+  color: #fff8e8;
+  cursor: pointer;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease,
+    transform 0.2s ease;
+}
+
+.hero-banner-arrow:hover {
+  background: rgba(245, 158, 11, 0.18);
+  border-color: rgba(245, 158, 11, 0.45);
+}
+
+.hero-banner-arrow:active {
+  transform: scale(0.96);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-banner-panel {
+    animation: none;
+  }
+}
+
 .hero-stage-inner {
   position: relative;
   z-index: 2;
