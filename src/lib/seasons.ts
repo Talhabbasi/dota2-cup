@@ -99,9 +99,9 @@ export async function ensureDefaultSeason(db: Db = prisma) {
     const existing = await db.season.findUnique({
       where: { number: DEFAULT_SEASON_NUMBER },
     });
-    if (existing) {
+    if (existing && existing.status !== SEASON_STATUS.archived) {
       season = existing;
-    } else {
+    } else if (!existing) {
       season = await db.season.create({
         data: {
           number: DEFAULT_SEASON_NUMBER,
@@ -111,6 +111,11 @@ export async function ensureDefaultSeason(db: Db = prisma) {
           startedAt: new Date(),
         },
       });
+    } else {
+      // Season 1 already archived — organizers must create Season 2+ explicitly.
+      throw new Error(
+        "No live season. Create a new season in Admin → Seasons, then activate it.",
+      );
     }
   }
 
@@ -148,6 +153,13 @@ export async function ensureDefaultSeason(db: Db = prisma) {
 export async function currentSeasonId(db: Db = prisma) {
   const live = await getLiveSeason(db);
   if (live?.id) return live.id;
+
+  const upcoming = await db.season.findFirst({
+    where: { status: SEASON_STATUS.upcoming },
+    orderBy: { number: "desc" },
+  });
+  if (upcoming) return upcoming.id;
+
   const season = await ensureDefaultSeason(db);
   return season.id;
 }

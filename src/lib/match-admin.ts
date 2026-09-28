@@ -1,5 +1,5 @@
 import { prisma } from "./prisma";
-import { currentSeasonId, syncSeasonPlayer } from "./seasons";
+import { currentSeasonId, getLiveSeason, syncSeasonPlayer } from "./seasons";
 import { rebalanceTeamRoster } from "./players-admin";
 import { STARTING_PURSE } from "./constants";
 import { addPlayerAlias } from "./player-aliases";
@@ -349,7 +349,17 @@ export async function adminListPlayersForPicker() {
 }
 
 export async function adminListTeamsForPicker() {
-  const seasonId = await currentSeasonId();
+  const live = await getLiveSeason();
+  const seasonId =
+    live?.id ??
+    (
+      await prisma.season.findFirst({
+        where: { status: "upcoming" },
+        orderBy: { number: "desc" },
+        select: { id: true },
+      })
+    )?.id;
+  if (!seasonId) return [];
   return prisma.team.findMany({
     where: { seasonId },
     orderBy: { name: "asc" },
