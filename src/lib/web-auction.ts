@@ -14,6 +14,7 @@ import { getLiveSeason } from "./seasons";
 import { rebalanceTeamRoster } from "./players-admin";
 import { notifySiteRefresh } from "./notify-site";
 import { isDummyDiscordId } from "./dummy";
+import { getCupFeatureSettings } from "./cup-features";
 
 export const AUCTION_PLAYER_STATUS = {
   UNSOLD: "UNSOLD",
@@ -36,11 +37,13 @@ type WebTeam = {
   rosterCount: number;
 };
 
-type WebSale = {
+export type WebSale = {
   playerName: string;
   teamName: string | null;
   price: number | null;
   medal: string;
+  rolesJson: string;
+  balances: { name: string; purse: number; rosterCount: number }[];
 };
 
 export type WebAuctionSession = {
@@ -57,6 +60,8 @@ export type WebAuctionSession = {
   players: Record<string, WebPlayer>;
   teams: Record<string, WebTeam>;
   lastSale: WebSale | null;
+  channelId: string | null;
+  messageId: string | null;
 };
 
 export type WebAuctionView = {
@@ -64,8 +69,10 @@ export type WebAuctionView = {
   medal: string | null;
   medalLabel: string | null;
   secondsLeft: number;
+  endsAt: Date | null;
   currentBid: number;
   currentPlayer: WebPlayer | null;
+  lotId: string | null;
   highBidder: { id: string; name: string } | null;
   remainingInPool: number;
   awaitingDecision: boolean;
@@ -73,6 +80,9 @@ export type WebAuctionView = {
   lastSale: WebSale | null;
   teamBalances: { id: string; name: string; purse: number; rosterCount: number }[];
   seasonId: string | null;
+  channelId: string | null;
+  messageId: string | null;
+  sandbox: false;
 };
 
 function secondsLeft(endsAtMs: number | null) {
@@ -138,6 +148,17 @@ async function writeSession(session: WebAuctionSession) {
   void notifySiteRefresh();
 }
 
+function teamBalanceList(session: WebAuctionSession) {
+  return Object.values(session.teams)
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((t) => ({
+      id: t.id,
+      name: t.name,
+      purse: t.purse,
+      rosterCount: t.rosterCount,
+    }));
+}
+
 function viewFrom(session: WebAuctionSession | null): WebAuctionView {
   if (!session) {
     return {
@@ -145,8 +166,10 @@ function viewFrom(session: WebAuctionSession | null): WebAuctionView {
       medal: null,
       medalLabel: null,
       secondsLeft: 0,
+      endsAt: null,
       currentBid: 0,
       currentPlayer: null,
+      lotId: null,
       highBidder: null,
       remainingInPool: 0,
       awaitingDecision: false,
@@ -154,6 +177,9 @@ function viewFrom(session: WebAuctionSession | null): WebAuctionView {
       lastSale: null,
       teamBalances: [],
       seasonId: null,
+      channelId: null,
+      messageId: null,
+      sandbox: false,
     };
   }
   const current = session.currentPlayerId
@@ -167,22 +193,20 @@ function viewFrom(session: WebAuctionSession | null): WebAuctionView {
     medal: session.medal,
     medalLabel: session.medal ? MEDAL_LABELS[session.medal] : null,
     secondsLeft: secondsLeft(session.endsAtMs),
+    endsAt: session.endsAtMs ? new Date(session.endsAtMs) : null,
     currentBid: session.currentBid,
     currentPlayer: current,
+    lotId: session.currentPlayerId,
     highBidder: bidder ? { id: bidder.id, name: bidder.name } : null,
     remainingInPool: session.queue.length,
     awaitingDecision: session.awaitingDecision,
     event: session.event,
     lastSale: session.lastSale,
-    teamBalances: Object.values(session.teams)
-      .sort((a, b) => a.name.localeCompare(b.name))
-      .map((t) => ({
-        id: t.id,
-        name: t.name,
-        purse: t.purse,
-        rosterCount: t.rosterCount,
-      })),
+    teamBalances: teamBalanceList(session),
     seasonId: session.seasonId,
+    channelId: session.channelId ?? null,
+    messageId: session.messageId ?? null,
+    sandbox: false,
   };
 }
 
@@ -202,6 +226,12 @@ export async function getWebAuctionView(): Promise<WebAuctionView> {
 }
 
 export async function startWebAuction(rankInput: string) {
+  const { auctionEnabled } = await getCupFeatureSettings();
+  if (!auctionEnabled) {
+    throw new Error(
+      "Auction is turned off for this cup. Assign players with `/player add`, or turn auction on with `/cup auction on`.",
+    );
+  }
   const liveSeason = await getLiveSeason();
   if (!liveSeason) throw new Error("No live season. Activate a season first.");
   if (liveSeason.tournamentFormat === "TEAM_BASED") {
@@ -275,6 +305,8 @@ export async function startWebAuction(rankInput: string) {
     players,
     teams: teamMap,
     lastSale: null,
+    channelId: null,
+    messageId: null,
   };
   openLot(session, first);
 
@@ -371,9 +403,17 @@ export async function placeWebBid(input: {
   teamId: string;
   bump?: number;
   amount?: number;
+  lotId?: string | null;
 }) {
   const session = await readSession();
   if (!session) throw new Error("No auction running.");
+  if (
+    input.lotId &&
+    session.currentPlayerId &&
+    input.lotId !== session.currentPlayerId
+  ) {
+    throw new Error("This lot is already over. Use the latest card.");
+  }
   if (session.status !== "running") throw new Error("Auction is paused.");
   if (!session.currentPlayerId) throw new Error("No player on the hammer.");
   if (session.awaitingDecision) {
@@ -432,10 +472,59 @@ export async function placeWebBid(input: {
   return viewFrom(session);
 }
 
-async function settle(kind: "sold" | "unsold") {
+/** Resolve captain Discord id → team and place a live web bid. */
+export async function placeWebBidByDiscord(input: {
+  discordId: string;
+  bump?: number;
+  amount?: number;
+  lotId?: string | null;
+}) {
+  const session = await readSession();
+  if (!session) throw new Error("No auction running.");
+
+  const captain = await prisma.player.findFirst({
+    where: {
+      isCaptain: true,
+      OR: [
+        { discordId: input.discordId },
+        { discordId: { startsWith: `${input.discordId}:` } },
+      ],
+    },
+    select: { teamId: true },
+  });
+  if (!captain?.teamId || !session.teams[captain.teamId]) {
+    throw new Error("Only captains can bid.");
+  }
+  return placeWebBid({
+    teamId: captain.teamId,
+    bump: input.bump,
+    amount: input.amount,
+    lotId: input.lotId,
+  });
+}
+
+export async function saveWebAuctionMessage(channelId: string, messageId: string) {
+  const session = await readSession();
+  if (!session) return;
+  session.channelId = channelId;
+  session.messageId = messageId;
+  await writeSession(session);
+}
+
+export async function clearWebAuctionMessage() {
+  const session = await readSession();
+  if (!session) return;
+  session.messageId = null;
+  await writeSession(session);
+}
+
+async function settle(kind: "sold" | "unsold", lotId?: string | null) {
   const session = await readSession();
   if (!session || !session.currentPlayerId) {
     throw new Error("No lot to settle.");
+  }
+  if (lotId && lotId !== session.currentPlayerId) {
+    throw new Error("This lot is already over. Use the latest card.");
   }
   const playerId = session.currentPlayerId;
   const player = session.players[playerId];
@@ -447,11 +536,24 @@ async function settle(kind: "sold" | "unsold") {
     throw new Error("No high bidder. Use Pass / Unsold.");
   }
 
+  const balances = teamBalanceList(session).map(({ name, purse, rosterCount }) => ({
+    name,
+    purse: kind === "sold" && team && name === team.name
+      ? team.purse - session.currentBid
+      : purse,
+    rosterCount:
+      kind === "sold" && team && name === team.name
+        ? team.rosterCount + 1
+        : rosterCount,
+  }));
+
   session.lastSale = {
     playerName: player?.steamName ?? "Player",
     teamName: kind === "sold" ? team?.name ?? null : null,
     price: kind === "sold" ? session.currentBid : null,
     medal: player?.medal ?? session.medal ?? "",
+    rolesJson: player?.rolesJson ?? "[]",
+    balances,
   };
 
   if (kind === "sold" && team) {
@@ -524,12 +626,12 @@ async function settle(kind: "sold" | "unsold") {
   return viewFrom(session);
 }
 
-export async function confirmWebSold() {
-  return settle("sold");
+export async function confirmWebSold(lotId?: string | null) {
+  return settle("sold", lotId);
 }
 
-export async function passWebUnsold() {
-  return settle("unsold");
+export async function passWebUnsold(lotId?: string | null) {
+  return settle("unsold", lotId);
 }
 
 export async function tickWebAuction() {

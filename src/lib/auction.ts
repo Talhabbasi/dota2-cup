@@ -14,8 +14,23 @@ import {
 import { prisma } from "./prisma";
 import { stringifyRoles } from "./roles";
 import { currentSeasonId, currentSeasonFilter, syncSeasonPlayer } from "./seasons";
-import { getCupFeatureSettings } from "./cup-features";
 import { rebalanceTeamRoster } from "./players-admin";
+import {
+  clearWebAuctionMessage,
+  confirmWebSold,
+  getWebAuctionView,
+  introduceNextWebPlayer,
+  passWebUnsold,
+  pauseWebAuction,
+  placeWebBidByDiscord,
+  resetWebTimer,
+  resumeWebAuction,
+  saveWebAuctionMessage,
+  startWebAuction,
+  startWebTimer,
+  tickWebAuction,
+  type WebAuctionView,
+} from "./web-auction";
 import { notifySiteRefresh } from "./notify-site";
 
 const DUMMY_PLAYER_PREFIX = "test-dummy-";
@@ -78,7 +93,8 @@ type LiveAuction = {
 
 type AuctionOpts = { sandbox?: boolean };
 
-let live: LiveAuction | null = null;
+/** Live cup auction is DB-backed (`web-auction`). Only sandbox stays in memory. */
+const live: LiveAuction | null = null;
 let dummy: LiveAuction | null = null;
 
 const SANDBOX_TEAMS: { id: string; name: string }[] = [
@@ -86,13 +102,6 @@ const SANDBOX_TEAMS: { id: string; name: string }[] = [
   { id: "sandbox-team-og", name: "Test OG" },
   { id: "sandbox-team-secret", name: "Test Secret" },
 ];
-
-function isDummyDiscordId(discordId: string) {
-  return (
-    discordId.startsWith(DUMMY_PLAYER_PREFIX) ||
-    discordId.startsWith(DUMMY_TEAM_PREFIX)
-  );
-}
 
 function session(sandbox?: boolean) {
   return sandbox ? dummy : live;
@@ -142,16 +151,6 @@ function openLotInMemory(auction: LiveAuction, playerId: string) {
     auction.event === "sold" || auction.event === "unsold"
       ? auction.event
       : "lot";
-}
-
-function findCaptain(auction: LiveAuction, discordId: string) {
-  const direct = auction.captains.get(discordId);
-  if (direct) return direct;
-  const snowflake = discordId.split(":")[0];
-  for (const captain of auction.captains.values()) {
-    if (captain.discordId.split(":")[0] === snowflake) return captain;
-  }
-  return null;
 }
 
 function requireLot(auction: LiveAuction, lotId?: string | null) {
@@ -695,123 +694,64 @@ export async function restoreSoldAuctionPlayers(
   return { restored, scores };
 }
 
+function discordViewFromWeb(view: WebAuctionView) {
+  return {
+    sandbox: false as const,
+    status: view.status,
+    medal: view.medal,
+    secondsLeft: view.secondsLeft,
+    endsAt: view.endsAt,
+    currentBid: view.currentBid,
+    currentPlayer: view.currentPlayer
+      ? {
+          id: view.currentPlayer.id,
+          steamName: view.currentPlayer.steamName,
+          medal: view.currentPlayer.medal,
+          rolesJson: view.currentPlayer.rolesJson,
+        }
+      : null,
+    lotId: view.lotId,
+    highBidder: view.highBidder ? { name: view.highBidder.name } : null,
+    remainingInPool: view.remainingInPool,
+    awaitingDecision: view.awaitingDecision,
+    event: view.event,
+    lastSale: view.lastSale,
+    teamBalances: view.teamBalances.map(({ name, purse, rosterCount }) => ({
+      name,
+      purse,
+      rosterCount,
+    })),
+    channelId: view.channelId,
+    messageId: view.messageId,
+  };
+}
+
 export async function startAuction(rankInput: string, options?: AuctionOpts) {
   const sandbox = Boolean(options?.sandbox);
-  if (!sandbox) {
-    const { auctionEnabled } = await getCupFeatureSettings();
-    if (!auctionEnabled) {
-      throw new Error(
-        "Auction is turned off for this cup. Assign players with `/player add`, or turn auction on with `/cup auction on`.",
-      );
-    }
+  if (sandbox) {
+    return startSandboxAuction(rankInput);
   }
-  const current = session(sandbox);
+
+  const view = await startWebAuction(rankInput);
+  return discordViewFromWeb(view);
+}
+
+async function startSandboxAuction(rankInput: string) {
+  const current = session(true);
   if (current && (current.status === "running" || current.status === "paused")) {
     const label = current.medal ? MEDAL_LABELS[current.medal] : "this rank";
     throw new Error(
-      sandbox
-        ? `Test auction already running for ${label}. Pause or finish it first.`
-        : `Auction already running for ${label}. Pause or finish it first.`,
+      `Test auction already running for ${label}. Pause or finish it first.`,
     );
   }
 
   const medal = parseMedal(rankInput);
-  if (!sandbox) {
-    await repairAuctionScores();
-  }
-
-  if (sandbox) {
-    const eligible = buildSandboxPlayers(medal);
-    const playerMap = new Map(eligible.map((p) => [p.id, p]));
-    const queue = eligible.map((p) => p.id);
-    const first = queue.shift()!;
-    dummy = {
-      sandbox: true,
-      status: "running",
-      medal,
-      queue,
-      currentPlayerId: first,
-      currentBid: 0,
-      currentBidderTeamId: null,
-      endsAtMs: null,
-      channelId: null,
-      messageId: null,
-      players: playerMap,
-      teams: buildSandboxTeams(),
-      captains: new Map(),
-      event: "lot",
-      lastSale: null,
-      busy: false,
-      awaitingDecision: false,
-    };
-    openLotInMemory(dummy, first);
-    dummy.event = "lot";
-    return viewFromSession(dummy, true);
-  }
-
-  const [unsigned, teams] = await Promise.all([
-    prisma.player.findMany({
-      where: { teamId: null },
-      orderBy: { steamName: "asc" },
-    }),
-    prisma.team.findMany({
-      include: { players: true },
-    }),
-  ]);
-
-  const eligible = unsigned
-    .filter((p) => !isDummyDiscordId(p.discordId))
-    .filter((p) => p.medal.toLowerCase() === medal);
-  if (eligible.length === 0) {
-    throw new Error(
-      `No unsigned players at **${MEDAL_LABELS[medal]}**.`,
-    );
-  }
-
-  const liveTeams = teams.filter((team) =>
-    team.players.some((p) => !isDummyDiscordId(p.discordId)),
-  );
-
-  const playerMap = new Map(
-    eligible.map((p) => [
-      p.id,
-      {
-        id: p.id,
-        steamName: p.steamName,
-        medal: p.medal,
-        rolesJson: p.rolesJson,
-      },
-    ]),
-  );
-  const teamMap = new Map(
-    liveTeams.map((t) => [
-      t.id,
-      {
-        id: t.id,
-        name: t.name,
-        purse: t.purse,
-        rosterCount: t.players.length,
-      },
-    ]),
-  );
-  const captainMap = new Map<string, LiveCaptain>();
-  for (const team of liveTeams) {
-    const captain = team.players.find((p) => p.isCaptain);
-    if (captain && !isDummyDiscordId(captain.discordId)) {
-      const record = {
-        playerId: captain.id,
-        discordId: captain.discordId,
-        teamId: team.id,
-      };
-      captainMap.set(captain.discordId, record);
-      captainMap.set(captain.discordId.split(":")[0], record);
-    }
-  }
-
+  const eligible = buildSandboxPlayers(medal);
+  const playerMap = new Map(eligible.map((p) => [p.id, p]));
   const queue = eligible.map((p) => p.id);
   const first = queue.shift()!;
-  live = {
-    sandbox: false,
+  dummy = {
+    sandbox: true,
     status: "running",
     medal,
     queue,
@@ -822,62 +762,98 @@ export async function startAuction(rankInput: string, options?: AuctionOpts) {
     channelId: null,
     messageId: null,
     players: playerMap,
-    teams: teamMap,
-    captains: captainMap,
+    teams: buildSandboxTeams(),
+    captains: new Map(),
     event: "lot",
     lastSale: null,
     busy: false,
     awaitingDecision: false,
   };
-  openLotInMemory(live, first);
-  live.event = "lot";
-  return viewFromSession(live, false);
+  openLotInMemory(dummy, first);
+  dummy.event = "lot";
+  return viewFromSession(dummy, true);
 }
 
 export async function pauseAuction(options?: AuctionOpts) {
-  const auction = requireSession(options?.sandbox);
+  if (!options?.sandbox) {
+    return discordViewFromWeb(await pauseWebAuction());
+  }
+  const auction = requireSession(true);
   if (auction.status !== "running") {
-    throw new Error(
-      options?.sandbox
-        ? "No test auction to pause."
-        : "No live auction to pause.",
-    );
+    throw new Error("No test auction to pause.");
   }
   auction.status = "paused";
   auction.event = "bid";
-  return viewFromSession(auction, auction.sandbox);
+  return viewFromSession(auction, true);
 }
 
 export async function resumeAuction(options?: AuctionOpts) {
-  const auction = session(options?.sandbox);
+  if (!options?.sandbox) {
+    return discordViewFromWeb(await resumeWebAuction());
+  }
+  const auction = session(true);
   if (!auction || auction.status !== "paused") {
-    throw new Error(
-      options?.sandbox ? "Test auction is not paused." : "Auction is not paused.",
-    );
+    throw new Error("Test auction is not paused.");
   }
   auction.status = "running";
   if (!auction.awaitingDecision) {
     auction.endsAtMs = nowEndsAt();
   }
   auction.event = "bid";
-  return viewFromSession(auction, auction.sandbox);
+  return viewFromSession(auction, true);
 }
 
 export async function skipLot(options?: AuctionOpts & { lotId?: string | null }) {
-  const auction = requireSession(options?.sandbox);
+  if (!options?.sandbox) {
+    return discordViewFromWeb(await passWebUnsold(options?.lotId));
+  }
+  const auction = requireSession(true);
   requireLot(auction, options?.lotId);
-  await settleCurrent("unsold", options?.sandbox);
-  return getAuctionView(options?.sandbox);
+  await settleCurrent("unsold", true);
+  return getAuctionView(true);
 }
 
 export async function confirmLot(options?: AuctionOpts & { lotId?: string | null }) {
-  const auction = requireSession(options?.sandbox);
+  if (!options?.sandbox) {
+    return discordViewFromWeb(await confirmWebSold(options?.lotId));
+  }
+  const auction = requireSession(true);
   requireLot(auction, options?.lotId);
   if (!auction.currentBidderTeamId) {
     throw new Error("No high bidder. Use **Skip** to pass this player.");
   }
-  await settleCurrent("sold", options?.sandbox);
-  return getAuctionView(options?.sandbox);
+  await settleCurrent("sold", true);
+  return getAuctionView(true);
+}
+
+export async function startAuctionTimer(options?: AuctionOpts) {
+  if (options?.sandbox) {
+    const auction = requireSession(true);
+    if (auction.status !== "running") throw new Error("Test auction is not running.");
+    if (!auction.currentPlayerId) throw new Error("No player on the hammer.");
+    auction.endsAtMs = nowEndsAt();
+    auction.awaitingDecision = false;
+    auction.event = "bid";
+    return viewFromSession(auction, true);
+  }
+  return discordViewFromWeb(await startWebTimer());
+}
+
+export async function resetAuctionTimer(options?: AuctionOpts) {
+  if (options?.sandbox) {
+    return startAuctionTimer({ sandbox: true });
+  }
+  return discordViewFromWeb(await resetWebTimer());
+}
+
+export async function nextAuctionPlayer(options?: AuctionOpts) {
+  if (options?.sandbox) {
+    const auction = requireSession(true);
+    requireLot(auction, undefined);
+    await settleCurrent("unsold", true);
+    return getAuctionView(true);
+  }
+  return discordViewFromWeb(await introduceNextWebPlayer());
 }
 
 export async function undoLastSale(): Promise<never> {
@@ -886,7 +862,7 @@ export async function undoLastSale(): Promise<never> {
   );
 }
 
-export function placeBid(input: {
+export async function placeBid(input: {
   discordId: string;
   amount?: number;
   bump?: number;
@@ -894,15 +870,24 @@ export function placeBid(input: {
   teamName?: string | null;
   lotId?: string | null;
 }) {
-  const auction = requireSession(input.sandbox);
+  if (!input.sandbox) {
+    return discordViewFromWeb(
+      await placeWebBidByDiscord({
+        discordId: input.discordId,
+        amount: input.amount,
+        bump: input.bump,
+        lotId: input.lotId,
+      }),
+    );
+  }
+
+  const auction = requireSession(true);
   requireLot(auction, input.lotId);
   if (auction.busy) {
     throw new Error("This lot is closing. Wait for Confirm/Skip to finish.");
   }
   if (auction.status !== "running") {
-    throw new Error(
-      input.sandbox ? "Test auction is paused." : "Auction is paused. Admin: `/auction resume`.",
-    );
+    throw new Error("Test auction is paused.");
   }
   if (auction.awaitingDecision) {
     throw new Error("Clock ended. Admin must **Confirm** the sale or **Skip**.");
@@ -912,20 +897,7 @@ export function placeBid(input: {
     throw new Error("Clock ended. Admin must **Confirm** the sale or **Skip**.");
   }
 
-  let team: LiveTeam;
-  if (auction.sandbox) {
-    team = pickSandboxTeam(auction, input.discordId, input.teamName);
-  } else {
-    const captain = findCaptain(auction, input.discordId);
-    if (!captain) {
-      throw new Error("Only captains can bid.");
-    }
-    const found = auction.teams.get(captain.teamId);
-    if (!found) {
-      throw new Error("Your team was not found.");
-    }
-    team = found;
-  }
+  let team = pickSandboxTeam(auction, input.discordId, input.teamName);
 
   if (team.rosterCount >= MAX_ROSTER) {
     throw new Error(
@@ -955,20 +927,16 @@ export function placeBid(input: {
   }
 
   if (team.id === auction.currentBidderTeamId) {
-    if (auction.sandbox) {
-      const switched = nextSandboxTeam(auction, team.id, next);
-      if (!switched) {
-        throw new Error("You are already the high bidder.");
-      }
-      team = switched;
-      auction.captains.set(input.discordId, {
-        playerId: `sandbox-admin-${input.discordId}`,
-        discordId: input.discordId,
-        teamId: switched.id,
-      });
-    } else {
+    const switched = nextSandboxTeam(auction, team.id, next);
+    if (!switched) {
       throw new Error("You are already the high bidder.");
     }
+    team = switched;
+    auction.captains.set(input.discordId, {
+      playerId: `sandbox-admin-${input.discordId}`,
+      discordId: input.discordId,
+      teamId: switched.id,
+    });
   }
   if (team.purse < next) {
     throw new Error(
@@ -980,11 +948,15 @@ export function placeBid(input: {
   auction.currentBidderTeamId = team.id;
   auction.endsAtMs = nowEndsAt();
   auction.event = "bid";
-  return viewFromSession(auction, auction.sandbox);
+  return viewFromSession(auction, true);
 }
 
 export async function tickAuction(sandbox = false) {
-  const auction = session(sandbox);
+  if (!sandbox) {
+    const { changed, view } = await tickWebAuction();
+    return { changed, view: discordViewFromWeb(view) };
+  }
+  const auction = session(true);
   if (!auction || auction.busy) {
     return { changed: false };
   }
@@ -1002,19 +974,27 @@ export async function tickAuction(sandbox = false) {
   return { changed: true };
 }
 
-export function saveAuctionMessage(
+export async function saveAuctionMessage(
   channelId: string,
   messageId: string,
   sandbox = false,
 ) {
-  const auction = session(sandbox);
+  if (!sandbox) {
+    await saveWebAuctionMessage(channelId, messageId);
+    return;
+  }
+  const auction = session(true);
   if (!auction) return;
   auction.channelId = channelId;
   auction.messageId = messageId;
 }
 
-export function clearAuctionMessage(sandbox = false) {
-  const auction = session(sandbox);
+export async function clearAuctionMessage(sandbox = false) {
+  if (!sandbox) {
+    await clearWebAuctionMessage();
+    return;
+  }
+  const auction = session(true);
   if (auction) auction.messageId = null;
 }
 
@@ -1040,8 +1020,11 @@ export function patchLivePlayer(
   return { patched: true, bidReset };
 }
 
-export function getAuctionView(sandbox = false) {
-  return viewFromSession(session(sandbox), sandbox);
+export async function getAuctionView(sandbox = false) {
+  if (!sandbox) {
+    return discordViewFromWeb(await getWebAuctionView());
+  }
+  return viewFromSession(session(true), true);
 }
 
 export function markAuctionAnnounced(sandbox = false) {
@@ -1051,3 +1034,4 @@ export function markAuctionAnnounced(sandbox = false) {
     auction.event = auction.status === "running" ? "bid" : "idle";
   }
 }
+

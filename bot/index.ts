@@ -92,15 +92,18 @@ import {
   confirmLot,
   getAuctionView,
   markAuctionAnnounced,
+  nextAuctionPlayer,
   patchLivePlayer,
   pauseAuction,
   placeBid,
   repairAuctionScores,
+  resetAuctionTimer,
   revertSoldAuctionPlayers,
   resumeAuction,
   saveAuctionMessage,
   skipLot,
   startAuction,
+  startAuctionTimer,
   tickAuction,
   undoLastSale,
   hydrateAuctionClock,
@@ -811,6 +814,22 @@ const commands = [
       s
         .setName("confirm")
         .setDescription("Sell the current player to the high bidder"),
+    )
+    .addSubcommand((s) =>
+      s.setName("timer").setDescription("Start / restart the bid clock on the current lot"),
+    )
+    .addSubcommand((s) =>
+      s.setName("reset_timer").setDescription("Reset the bid clock to full duration"),
+    )
+    .addSubcommand((s) =>
+      s
+        .setName("next")
+        .setDescription("Introduce the next player (or pass current without a sale)"),
+    )
+    .addSubcommand((s) =>
+      s
+        .setName("board")
+        .setDescription("Post / refresh the live lot card in this channel (syncs with web)"),
     )
     .addSubcommand((s) =>
       s
@@ -1529,7 +1548,7 @@ function sandboxFromChannel(channel: unknown) {
   return isDummyAuctionChannel(channelNameOf(channel));
 }
 
-function lotEmbed(view: ReturnType<typeof getAuctionView>) {
+function lotEmbed(view: Awaited<ReturnType<typeof getAuctionView>>) {
   const embed = new EmbedBuilder()
     .setColor(view.status === "running" ? 0xd4a24c : 0x6b7280)
     .setTitle(
@@ -1605,7 +1624,7 @@ function purseLines(
     .join("\n");
 }
 
-function saleEmbed(view: ReturnType<typeof getAuctionView>) {
+function saleEmbed(view: Awaited<ReturnType<typeof getAuctionView>>) {
   const sale = view.lastSale;
   const balances = sale?.balances ?? view.teamBalances;
   if (!sale) {
@@ -1652,7 +1671,7 @@ function saleEmbed(view: ReturnType<typeof getAuctionView>) {
     );
 }
 
-function doneEmbed(view: ReturnType<typeof getAuctionView>) {
+function doneEmbed(view: Awaited<ReturnType<typeof getAuctionView>>) {
   const medal = view.lastSale?.medal ?? view.medal;
   const label = medal ? medalLabel(medal) : null;
   return new EmbedBuilder()
@@ -1669,7 +1688,7 @@ function doneEmbed(view: ReturnType<typeof getAuctionView>) {
     );
 }
 
-function lotActionRows(view: ReturnType<typeof getAuctionView>) {
+function lotActionRows(view: Awaited<ReturnType<typeof getAuctionView>>) {
   const lotId = view.lotId ?? "none";
   const canBid =
     view.status === "running" &&
@@ -1736,7 +1755,7 @@ async function closeLotMessage(
   }
 }
 
-async function postNewLot(channel: TextChannel, view: ReturnType<typeof getAuctionView>) {
+async function postNewLot(channel: TextChannel, view: Awaited<ReturnType<typeof getAuctionView>>) {
   const sent = await channel.send({
     embeds: [lotEmbed(view)],
     components:
@@ -1744,17 +1763,17 @@ async function postNewLot(channel: TextChannel, view: ReturnType<typeof getAucti
         ? lotActionRows(view)
         : [],
   });
-  saveAuctionMessage(channel.id, sent.id, view.sandbox);
+  await saveAuctionMessage(channel.id, sent.id, view.sandbox);
 }
 
-async function publishLot(channel: TextChannel, view: ReturnType<typeof getAuctionView>) {
+async function publishLot(channel: TextChannel, view: Awaited<ReturnType<typeof getAuctionView>>) {
   if (view.event === "sold" || view.event === "unsold" || view.event === "done") {
     await closeLotMessage(
       channel,
       view.messageId,
       view.event === "sold" ? "Sold" : view.event === "unsold" ? "Unsold" : "Ended",
     );
-    clearAuctionMessage(view.sandbox);
+    await clearAuctionMessage(view.sandbox);
     await channel.send({ embeds: [saleEmbed(view)] });
     if (view.event === "done" || !view.currentPlayer) {
       await channel.send({ embeds: [doneEmbed(view)] });
@@ -1768,7 +1787,7 @@ async function publishLot(channel: TextChannel, view: ReturnType<typeof getAucti
 
   if (view.event === "lot" || !view.messageId || view.channelId !== channel.id) {
     await closeLotMessage(channel, view.messageId);
-    clearAuctionMessage(view.sandbox);
+    await clearAuctionMessage(view.sandbox);
     await postNewLot(channel, view);
     markAuctionAnnounced(view.sandbox);
     return;
@@ -2673,7 +2692,7 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
     if (name === "purse") {
       const sandbox = sandboxFromChannel(interaction.channel);
       if (sandbox) {
-        const view = getAuctionView(true);
+        const view = await getAuctionView(true);
         await interaction.reply({
           content:
             view.teamBalances.length === 0
@@ -2693,7 +2712,7 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
 
     if (name === "roster") {
       if (sandboxFromChannel(interaction.channel)) {
-        const view = getAuctionView(true);
+        const view = await getAuctionView(true);
         await interaction.reply({
           content:
             view.teamBalances.length === 0
@@ -2751,6 +2770,16 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
         view = await skipLot({ sandbox });
       } else if (sub === "confirm") {
         view = await confirmLot({ sandbox });
+      } else if (sub === "timer") {
+        view = await startAuctionTimer({ sandbox });
+      } else if (sub === "reset_timer") {
+        view = await resetAuctionTimer({ sandbox });
+      } else if (sub === "next") {
+        view = await nextAuctionPlayer({ sandbox });
+      } else if (sub === "board") {
+        view = await getAuctionView(sandbox);
+        // Force a fresh post in this channel
+        view = { ...view, event: "lot" as const, channelId: null, messageId: null };
       } else if (sub === "revert") {
         const user = interaction.options.getUser("user");
         const nameOpt = interaction.options.getString("name");
