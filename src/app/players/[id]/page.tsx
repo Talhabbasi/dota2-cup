@@ -19,6 +19,7 @@ import {
 import type { Metadata } from "next";
 import { isMatchStandIn } from "@/lib/stand-in";
 import { CUP_NAME } from "@/lib/brand";
+import { getPublicSeasonContext } from "@/lib/season-page";
 
 export const revalidate = 30;
 
@@ -52,11 +53,15 @@ function playerWon(
 
 export default async function PlayerPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ season?: string }>;
 }) {
   const { id } = await params;
-  const player = await getPlayer(id);
+  const sp = await searchParams;
+  const { seasonId } = await getPublicSeasonContext(sp);
+  const player = await getPlayer(id, { seasonId });
   if (!player) notFound();
 
   const catalog = await loadHeroCatalog();

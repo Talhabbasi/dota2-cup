@@ -1,22 +1,18 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { Suspense } from "react";
 import { usePathname } from "next/navigation";
 import { Nav } from "@/components/nav";
 import { SiteFooter } from "@/components/site-footer";
-import { SeasonSwitcher } from "@/components/season-switcher";
-import type { PublicSeasonRow } from "@/lib/seasons";
 
 /**
  * Public chrome (top nav + footer). Hidden on /admin so the organizer shell stands alone.
+ * Season switcher lives on the home hero only — not in the nav.
  */
 export function SiteChrome({
   seasonLabel,
   showRegister,
   showSeasons = false,
-  seasons = [],
-  liveSeasonId = null,
   viewSeasonNumber = null,
   banner,
   children,
@@ -24,8 +20,6 @@ export function SiteChrome({
   seasonLabel: string;
   showRegister: boolean;
   showSeasons?: boolean;
-  seasons?: PublicSeasonRow[];
-  liveSeasonId?: string | null;
   viewSeasonNumber?: number | null;
   banner?: ReactNode;
   children: ReactNode;
@@ -42,17 +36,6 @@ export function SiteChrome({
           showRegister={showRegister}
           showSeasons={showSeasons}
           viewSeasonNumber={viewSeasonNumber}
-          seasonSwitcher={
-            showSeasons ? (
-              <Suspense fallback={null}>
-                <SeasonSwitcher
-                  seasons={seasons}
-                  currentSeasonId={liveSeasonId}
-                  viewSeasonNumber={viewSeasonNumber}
-                />
-              </Suspense>
-            ) : null
-          }
         />
       ) : null}
       <main className="flex-1">{children}</main>

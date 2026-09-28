@@ -96,8 +96,6 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
             seasonLabel={seasonLabel}
             showRegister={!player}
             showSeasons={seasons.length > 0}
-            seasons={seasons}
-            liveSeasonId={live?.id ?? null}
             viewSeasonNumber={viewSeasonNumber}
             banner={<ClosedBanner />}
           >

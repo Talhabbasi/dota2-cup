@@ -4,7 +4,12 @@ import {
   type FormDot,
   type TeamCardView,
 } from "@/components/teams-grid";
-import { getStandings, getTeams } from "@/lib/data";
+import { SeasonArchiveBannerServer } from "@/components/season-archive-banner-server";
+import {
+  loadStandingsForSeason,
+  loadTeamsForSeason,
+} from "@/lib/season-data";
+import { getPublicSeasonContext } from "@/lib/season-page";
 import { isRosterSub } from "@/lib/roles";
 import { pageMeta } from "@/lib/seo";
 import { CUP_NAME } from "@/lib/brand";
@@ -13,7 +18,7 @@ export const revalidate = 30;
 
 export const metadata = pageMeta(
   "Teams & Rosters",
-  `Meet the eight ${CUP_NAME} franchises, captains, and rosters for this indoor Dota 2 season in Pakistan.`,
+  `Meet the ${CUP_NAME} franchises, captains, and rosters for this indoor Dota 2 season in Pakistan.`,
 );
 
 /** Approximate recent form from W/L totals when match history isn't on the list. */
@@ -29,8 +34,20 @@ function formFromRecord(wins: number, losses: number): FormDot[] {
   return slots;
 }
 
-export default async function TeamsPage() {
-  const [teams, table] = await Promise.all([getTeams(), getStandings()]);
+export default async function TeamsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ season?: string }>;
+}) {
+  const sp = await searchParams;
+  const { view, seasonId } = await getPublicSeasonContext(sp);
+  const [teams, table] = seasonId
+    ? await Promise.all([
+        loadTeamsForSeason(seasonId),
+        loadStandingsForSeason(seasonId),
+      ])
+    : [[], []];
+
   const rankById = new Map(table.map((row, i) => [row.id, i + 1]));
   const recordById = new Map(table.map((row) => [row.id, row]));
 
@@ -59,8 +76,9 @@ export default async function TeamsPage() {
 
   return (
     <div className="page teams-list-page">
+      <SeasonArchiveBannerServer season={sp.season} />
       <PageHeader
-        eyebrow="Franchises"
+        eyebrow={view ? `Season ${view.number}` : "Franchises"}
         title="Teams"
         pills={
           cards.length > 0
@@ -81,7 +99,9 @@ export default async function TeamsPage() {
             🏆
           </span>
           <p className="muted" style={{ margin: 0 }}>
-            No teams yet.
+            {view
+              ? `No teams for Season ${view.number}.`
+              : "No teams yet."}
           </p>
         </div>
       ) : (

@@ -1,12 +1,14 @@
 import { Crown, Gem, Users } from "lucide-react";
 import { PageHeader, StatTile } from "@/components/common";
 import { PlayersGrid, type PlayerCardView } from "@/components/players-grid";
+import { SeasonArchiveBannerServer } from "@/components/season-archive-banner-server";
 import { MEDAL_LABELS, MEDALS, type Medal } from "@/lib/constants";
-import { getPlayers, formatRoles } from "@/lib/data";
+import { formatRoles } from "@/lib/data";
 import { toIso } from "@/lib/format";
 import { PLAY_WINDOW_SHORT, playWindowOrBoth } from "@/lib/play-window";
 import { isRosterSub } from "@/lib/roles";
-import { getCurrentSeasonSafe } from "@/lib/seasons";
+import { loadPlayersForSeason } from "@/lib/season-data";
+import { getPublicSeasonContext } from "@/lib/season-page";
 import { pageMeta } from "@/lib/seo";
 import { CUP_NAME } from "@/lib/brand";
 
@@ -22,8 +24,14 @@ function medalRank(medal: string) {
   return i === -1 ? MEDALS.length : i;
 }
 
-export default async function PlayersPage() {
-  const [players, season] = await Promise.all([getPlayers(), getCurrentSeasonSafe()]);
+export default async function PlayersPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ season?: string }>;
+}) {
+  const sp = await searchParams;
+  const { view, seasonId } = await getPublicSeasonContext(sp);
+  const players = seasonId ? await loadPlayersForSeason(seasonId) : [];
 
   const views: PlayerCardView[] = players.map((p) => ({
     id: p.id,
@@ -37,7 +45,7 @@ export default async function PlayersPage() {
     isSub: isRosterSub(p.rosterRole),
     basePrice: p.basePrice,
     playWindowLabel: PLAY_WINDOW_SHORT[playWindowOrBoth(p.playWindow)],
-    createdAt: toIso(p.createdAt),
+    createdAt: typeof p.createdAt === "string" ? p.createdAt : toIso(p.createdAt),
   }));
 
   const unsigned = views.filter((p) => !p.teamId).length;
@@ -49,9 +57,10 @@ export default async function PlayersPage() {
 
   return (
     <div className="page players-list-page">
+      <SeasonArchiveBannerServer season={sp.season} />
       <PageHeader
         className="players-list-hero"
-        eyebrow={season ? `Season ${season.number}` : "Pool"}
+        eyebrow={view ? `Season ${view.number}` : "Pool"}
         title="Players"
         pills={
           views.length > 0
@@ -99,7 +108,9 @@ export default async function PlayersPage() {
             👤
           </span>
           <p className="muted" style={{ margin: 0 }}>
-            No players registered.
+            {view
+              ? `No players registered for Season ${view.number}.`
+              : "No players registered."}
           </p>
         </div>
       ) : (

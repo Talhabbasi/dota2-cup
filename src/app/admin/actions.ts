@@ -42,7 +42,9 @@ import type { Medal } from "@/lib/constants";
 import {
   activateSeason,
   createSeasonAdmin,
+  deleteSeasonAdmin,
   endSeasonArchive,
+  updateSeasonAdmin,
 } from "@/lib/seasons";
 import {
   adminCreateManualTeam,
@@ -722,6 +724,53 @@ export async function actionCreateSeason(formData: FormData) {
   }
 }
 
+export async function actionUpdateSeason(formData: FormData) {
+  const session = await requireAdmin();
+  const seasonId = String(formData.get("seasonId") ?? "").trim();
+  const name = String(formData.get("name") ?? "").trim();
+  const plannedRaw = String(formData.get("plannedStartAt") ?? "").trim();
+  const tournamentFormat = String(formData.get("tournamentFormat") ?? "").trim();
+  const teamCount = Number(String(formData.get("teamCount") ?? "8"));
+  if (!seasonId) throw new Error("Missing season.");
+  try {
+    const season = await updateSeasonAdmin({
+      seasonId,
+      name,
+      plannedStartAt: plannedRaw ? new Date(`${plannedRaw}T12:00:00`) : null,
+      tournamentFormat,
+      teamCount,
+    });
+    await note(session, "season.update", `Updated ${season.name}`, { seasonId });
+    revalidateAdmin();
+    revalidatePath("/admin/seasons");
+    revalidatePath("/seasons");
+    revalidatePublicPages();
+  } catch (error) {
+    throw error instanceof Error ? error : new Error("Could not update season.");
+  }
+}
+
+export async function actionDeleteSeason(formData: FormData) {
+  const session = await requireAdmin();
+  const seasonId = String(formData.get("seasonId") ?? "").trim();
+  const force = String(formData.get("force") ?? "") === "1";
+  if (!seasonId) throw new Error("Missing season.");
+  try {
+    const season = await deleteSeasonAdmin(seasonId, { force });
+    await note(session, "season.delete", `Deleted ${season.name}`, {
+      seasonId,
+      force,
+    });
+    revalidateAdmin();
+    revalidatePath("/admin/seasons");
+    revalidatePath("/");
+    revalidatePath("/seasons");
+    revalidatePublicPages();
+  } catch (error) {
+    throw error instanceof Error ? error : new Error("Could not delete season.");
+  }
+}
+
 export async function actionEndSeasonArchive(formData: FormData) {
   const session = await requireAdmin();
   const seasonId = String(formData.get("seasonId") ?? "").trim();
@@ -745,13 +794,18 @@ export async function actionActivateSeason(formData: FormData) {
   if (!seasonId) throw new Error("Missing season.");
   try {
     const season = await activateSeason(seasonId);
-    await note(session, "season.activate", `Activated ${season.name}`, { seasonId });
+    await note(session, "season.set_active", `Set active ${season.name}`, { seasonId });
     revalidateAdmin();
     revalidatePath("/admin/seasons");
     revalidatePath("/");
+    revalidatePath("/predictions");
+    revalidatePath("/playoffs");
+    revalidatePath("/schedule");
+    revalidatePath("/player-insight");
+    revalidatePath("/seasons");
     revalidatePublicPages();
   } catch (error) {
-    throw error instanceof Error ? error : new Error("Could not activate season.");
+    throw error instanceof Error ? error : new Error("Could not set active season.");
   }
 }
 

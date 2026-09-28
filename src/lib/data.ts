@@ -104,7 +104,10 @@ async function loadPlayers() {
 
 export const getPlayers = cachedPublic("players", loadPlayers);
 
-export async function getPlayer(id: string) {
+export async function getPlayer(
+  id: string,
+  options?: { seasonId?: string | null },
+) {
   const player = await prisma.player.findFirst({
     where: { id, ...publicPlayerWhere },
     include: { team: { select: { id: true, name: true } } },
@@ -133,7 +136,7 @@ export async function getPlayer(id: string) {
       where: { playerId: player.id },
       include: {
         season: {
-          select: { id: true, number: true, name: true, status: true },
+          select: { id: true, number: true, name: true, status: true, isActive: true },
         },
         team: { select: { id: true, name: true } },
       },
@@ -142,29 +145,29 @@ export async function getPlayer(id: string) {
     getCurrentSeasonSafe(),
   ]);
 
+  // Matches + roster for the viewed/active season only (not career all-time).
+  const focusSeasonId =
+    options?.seasonId ??
+    currentSeason?.id ??
+    seasonRows.find((row) => row.season.isActive)?.seasonId ??
+    seasonRows[0]?.seasonId ??
+    null;
+  const scopedMatchPlayers = focusSeasonId
+    ? matchPlayers.filter((row) => row.match.seasonId === focusSeasonId)
+    : [];
+
   const seasonTeamBySeason = new Map(
     seasonRows.map((row) => [row.seasonId, row.teamId] as const),
   );
 
-  const liveMembership = currentSeason
-    ? seasonRows.find((row) => row.seasonId === currentSeason.id)
+  const focusMembership = focusSeasonId
+    ? seasonRows.find((row) => row.seasonId === focusSeasonId)
     : undefined;
-  const currentTeam = liveMembership?.team ?? (currentSeason ? null : player.team);
-  const currentTeamId = liveMembership
-    ? liveMembership.teamId
-    : currentSeason
-      ? null
-      : player.teamId;
-  const currentCaptain = liveMembership
-    ? liveMembership.isCaptain
-    : currentSeason
-      ? false
-      : player.isCaptain;
-  const currentRosterRole = liveMembership
-    ? liveMembership.rosterRole
-    : currentSeason
-      ? null
-      : player.rosterRole;
+  const currentTeam = focusMembership?.team ?? null;
+  const currentTeamId = focusMembership?.teamId ?? null;
+  const currentCaptain = focusMembership?.isCaptain ?? false;
+  const currentRosterRole = focusMembership?.rosterRole ?? null;
+  const focusSeasonRow = focusMembership?.season ?? null;
 
   const { discordId: _discordId, discordName: _discordName, ...publicPlayer } =
     player;
@@ -175,12 +178,13 @@ export async function getPlayer(id: string) {
     teamId: currentTeamId,
     isCaptain: currentCaptain,
     rosterRole: currentRosterRole,
-    matchPlayers: matchPlayers.map((row) => ({
+    matchPlayers: scopedMatchPlayers.map((row) => ({
       ...row,
       seasonTeamId: row.match.seasonId
         ? (seasonTeamBySeason.get(row.match.seasonId) ?? null)
         : null,
     })),
+    focusSeasonId,
     seasonHistory: seasonRows.map((row) => ({
       seasonId: row.season.id,
       number: row.season.number,
@@ -192,13 +196,19 @@ export async function getPlayer(id: string) {
       rosterRole: row.rosterRole,
       live: currentSeason?.id === row.season.id,
     })),
-    currentSeason: currentSeason
+    currentSeason: focusSeasonRow
       ? {
-          id: currentSeason.id,
-          number: currentSeason.number,
-          name: currentSeason.name,
+          id: focusSeasonRow.id,
+          number: focusSeasonRow.number,
+          name: focusSeasonRow.name,
         }
-      : null,
+      : currentSeason
+        ? {
+            id: currentSeason.id,
+            number: currentSeason.number,
+            name: currentSeason.name,
+          }
+        : null,
     roles: parseRolesJson(player.rolesJson),
     basePrice: basePriceFor(player.medal),
   };
@@ -237,7 +247,12 @@ export const getTeamCount = cachedPublic("team-count", async () => {
 export async function getTeam(id: string) {
   const team = await prisma.team.findFirst({
     where: { id, ...publicTeamWhere },
-    include: {
+    select: {
+      id: true,
+      name: true,
+      purse: true,
+      groupKey: true,
+      seasonId: true,
       players: {
         where: publicPlayerWhere,
         select: {
@@ -253,29 +268,93 @@ export async function getTeam(id: string) {
         },
         orderBy: [{ isCaptain: "desc" }, { steamName: "asc" }],
       },
+      seasonPlayers: {
+        where: { player: publicPlayerWhere },
+        select: {
+          isCaptain: true,
+          rosterRole: true,
+          medal: true,
+          rolesJson: true,
+          playWindow: true,
+          teamJoinedAt: true,
+          player: {
+            select: {
+              id: true,
+              steamName: true,
+              medal: true,
+              rolesJson: true,
+              playWindow: true,
+              createdAt: true,
+            },
+          },
+        },
+        orderBy: [{ isCaptain: "desc" }, { player: { steamName: "asc" } }],
+      },
       radiantMatches: {
         where: publicMatchWhere,
-        include: {
+        select: {
+          id: true,
+          seasonId: true,
+          openDotaId: true,
+          duration: true,
+          radiantWin: true,
+          createdAt: true,
           radiantTeam: teamRefSelect,
           direTeam: teamRefSelect,
           winnerTeam: teamRefSelect,
         },
         orderBy: { createdAt: "desc" },
-        take: 8,
+        take: 30,
       },
       direMatches: {
         where: publicMatchWhere,
-        include: {
+        select: {
+          id: true,
+          seasonId: true,
+          openDotaId: true,
+          duration: true,
+          radiantWin: true,
+          createdAt: true,
           radiantTeam: teamRefSelect,
           direTeam: teamRefSelect,
           winnerTeam: teamRefSelect,
         },
         orderBy: { createdAt: "desc" },
-        take: 8,
+        take: 30,
       },
     },
   });
-  return team;
+  if (!team) return null;
+
+  const seasonId = team.seasonId;
+  const rosterFromSeason =
+    seasonId && team.seasonPlayers.length > 0
+      ? team.seasonPlayers.map((row) => ({
+          id: row.player.id,
+          steamName: row.player.steamName,
+          medal: row.medal ?? row.player.medal,
+          rolesJson: row.rolesJson ?? row.player.rolesJson,
+          playWindow: row.playWindow ?? row.player.playWindow,
+          isCaptain: row.isCaptain,
+          rosterRole: row.rosterRole,
+          createdAt: row.player.createdAt,
+          teamJoinedAt: row.teamJoinedAt,
+        }))
+      : team.players;
+
+  const radiantScoped = seasonId
+    ? team.radiantMatches.filter((m) => m.seasonId === seasonId)
+    : team.radiantMatches;
+  const direScoped = seasonId
+    ? team.direMatches.filter((m) => m.seasonId === seasonId)
+    : team.direMatches;
+
+  return {
+    ...team,
+    players: rosterFromSeason,
+    radiantMatches: radiantScoped.slice(0, 8),
+    direMatches: direScoped.slice(0, 8),
+  };
 }
 
 export const getMatches = cachedPublic("matches", async () => {

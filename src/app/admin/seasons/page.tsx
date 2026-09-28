@@ -6,7 +6,17 @@ import { pageMeta } from "@/lib/seo";
 import { AdminSeasonsBoard } from "@/components/admin/seasons-board";
 
 export const dynamic = "force-dynamic";
-export const metadata = pageMeta("Admin Seasons", "Create, activate, and archive cup seasons.");
+export const metadata = pageMeta(
+  "Admin Seasons",
+  "Create, edit, activate, archive, and delete cup seasons.",
+);
+
+function toDateInput(value: Date | null) {
+  if (!value) return null;
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString().slice(0, 10);
+}
 
 export default async function AdminSeasonsPage() {
   await requireAdmin();
@@ -21,13 +31,19 @@ export default async function AdminSeasonsPage() {
     name: row.name,
     status: row.status,
     phase: row.phase,
-    plannedStartAt: row.plannedStartAt,
+    plannedStartAt: toDateInput(row.plannedStartAt),
     startedAt: row.startedAt,
     endedAt: row.endedAt,
     tournamentFormat: row.tournamentFormat,
     teamCount: row.teamCount,
     championName: row.championTeam?.name ?? null,
-    isLivePointer: settings?.currentSeasonId === row.id,
+    isActive: Boolean(row.isActive),
+    isLivePointer: settings?.currentSeasonId === row.id || Boolean(row.isActive),
+    hasData:
+      row._count.teams > 0 ||
+      row._count.matches > 0 ||
+      row._count.fixtures > 0 ||
+      row._count.players > 0,
   }));
 
   return (
@@ -35,9 +51,14 @@ export default async function AdminSeasonsPage() {
       <PageHeader
         eyebrow="Admin"
         title="Seasons"
-        subtitle="Create upcoming seasons, go live, or end & archive. Ending clears the active homepage until the next season is activated."
+        subtitle="Full CRUD — create, edit, set active, end & archive, delete. Homepage and live boards follow the Active season."
       />
-      <AdminSeasonsBoard seasons={rows} liveSeasonId={settings?.currentSeasonId ?? null} />
+      <AdminSeasonsBoard
+        seasons={rows}
+        liveSeasonId={
+          seasons.find((s) => s.isActive)?.id ?? settings?.currentSeasonId ?? null
+        }
+      />
     </div>
   );
 }

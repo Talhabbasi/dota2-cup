@@ -8,6 +8,8 @@ import {
   type TeamPlayerView,
 } from "@/components/team-profile";
 import { getStandings, getTeam, getTeamName, formatRoles } from "@/lib/data";
+import { loadStandingsForSeason } from "@/lib/season-data";
+import { getPublicSeasonContext } from "@/lib/season-page";
 import {
   PLAY_WINDOW_SHORT,
   deriveTeamPlayWindow,
@@ -56,12 +58,25 @@ function toPlayerView(player: {
 
 export default async function TeamPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ season?: string }>;
 }) {
   const { id } = await params;
-  const [team, standings] = await Promise.all([getTeam(id), getStandings()]);
+  const sp = await searchParams;
+  const { seasonId } = await getPublicSeasonContext(sp);
+  const [team, standings] = await Promise.all([
+    getTeam(id),
+    seasonId
+      ? loadStandingsForSeason(seasonId)
+      : getStandings(),
+  ]);
   if (!team) notFound();
+  // Hide teams that belong to another season when viewing a specific season.
+  if (seasonId && team.seasonId && team.seasonId !== seasonId) {
+    notFound();
+  }
 
   const captain = team.players.find((p) => p.isCaptain);
   const ordered = sortTeamRoster(team.players);

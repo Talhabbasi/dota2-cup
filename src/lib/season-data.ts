@@ -1,8 +1,97 @@
 import { prisma } from "./prisma";
-import { publicMatchWhere, publicTeamWhere } from "./dummy";
+import { publicMatchWhere, publicPlayerWhere, publicTeamWhere } from "./dummy";
+import { basePriceFor } from "./constants";
+import { parseRolesJson } from "./roles";
+import { toIso } from "./format";
 import type { GroupStandingRow } from "./group-stage-schedule";
 
 const seasonWhere = (seasonId: string) => ({ seasonId });
+
+export async function loadPlayersForSeason(seasonId: string) {
+  if (!seasonId || seasonId === "__none__") return [];
+
+  const rows = await prisma.seasonPlayer.findMany({
+    where: {
+      seasonId,
+      player: publicPlayerWhere,
+    },
+    select: {
+      teamId: true,
+      isCaptain: true,
+      rosterRole: true,
+      medal: true,
+      rolesJson: true,
+      playWindow: true,
+      team: { select: { id: true, name: true } },
+      player: {
+        select: {
+          id: true,
+          steamName: true,
+          medal: true,
+          rolesJson: true,
+          playWindow: true,
+          createdAt: true,
+        },
+      },
+    },
+    orderBy: [{ team: { name: "asc" } }, { player: { steamName: "asc" } }],
+  });
+
+  return rows.map((row) => {
+    const medal = row.medal ?? row.player.medal;
+    const rolesJson = row.rolesJson ?? row.player.rolesJson;
+    return {
+      id: row.player.id,
+      steamName: row.player.steamName,
+      medal,
+      playWindow: row.playWindow ?? row.player.playWindow,
+      createdAt: toIso(row.player.createdAt),
+      team: row.team,
+      teamId: row.teamId,
+      isCaptain: row.isCaptain,
+      rosterRole: row.rosterRole,
+      roles: parseRolesJson(rolesJson),
+      basePrice: basePriceFor(medal),
+    };
+  });
+}
+
+export async function loadTeamsForSeason(seasonId: string) {
+  if (!seasonId || seasonId === "__none__") return [];
+
+  const teams = await prisma.team.findMany({
+    where: { ...publicTeamWhere, ...seasonWhere(seasonId) },
+    select: {
+      id: true,
+      name: true,
+      purse: true,
+      groupKey: true,
+      seasonPlayers: {
+        where: { player: publicPlayerWhere },
+        select: {
+          isCaptain: true,
+          rosterRole: true,
+          player: { select: { id: true, steamName: true } },
+        },
+        orderBy: [{ isCaptain: "desc" }, { player: { steamName: "asc" } }],
+      },
+    },
+    orderBy: { name: "asc" },
+  });
+
+  return teams.map((team) => ({
+    id: team.id,
+    name: team.name,
+    purse: team.purse,
+    groupKey: team.groupKey,
+    players: team.seasonPlayers.map((row) => ({
+      id: row.player.id,
+      steamName: row.player.steamName,
+      isCaptain: row.isCaptain,
+      rosterRole: row.rosterRole,
+    })),
+  }));
+}
 
 export async function loadStandingsForSeason(seasonId: string) {
   const season = seasonWhere(seasonId);

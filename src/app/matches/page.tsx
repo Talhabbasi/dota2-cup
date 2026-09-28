@@ -1,7 +1,6 @@
 import { PageHeader } from "@/components/common";
 import { MatchesGrid, type MatchListView } from "@/components/matches-grid";
 import { SeasonArchiveBannerServer } from "@/components/season-archive-banner-server";
-import { getMatches } from "@/lib/data";
 import { loadMatchesForSeason } from "@/lib/season-data";
 import { matchKillTotals } from "@/lib/match-score";
 import { getPublicSeasonContext } from "@/lib/season-page";
@@ -22,9 +21,7 @@ export default async function MatchesPage({
 }) {
   const sp = await searchParams;
   const { view, seasonId } = await getPublicSeasonContext(sp);
-  const matches = seasonId
-    ? await loadMatchesForSeason(seasonId)
-    : await getMatches();
+  const matches = seasonId ? await loadMatchesForSeason(seasonId) : [];
 
   const views: MatchListView[] = matches.map((m) => {
     const { radiantKills, direKills } = matchKillTotals(m.players, {

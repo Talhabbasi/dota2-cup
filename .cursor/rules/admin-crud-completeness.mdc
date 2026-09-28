@@ -1,0 +1,26 @@
+---
+description: Admin entities must ship full CRUD (create, read/list, edit/update, delete) — never create-only.
+alwaysApply: true
+---
+
+# Admin CRUD completeness
+
+When adding or extending any admin-managed entity (seasons, teams, players, fixtures, auction lots, payments, etc.):
+
+## Required
+
+1. **Create** — form or action to add a row.
+2. **Read / list** — admin table or detail view for that entity.
+3. **Update / edit** — change mutable fields without recreating the row.
+4. **Delete** — remove with confirmation; clear FKs / cascade safely; never leave orphan pointers (`CupSettings.currentSeasonId`, `isActive`, etc.).
+
+## Seasons specifically
+
+- Admin → Seasons must support: create, edit (name / planned start / format / team count), set-active, end-archive, and delete.
+- Only one season may be `isActive`; deleting the active season clears the live pointer.
+- Prefer blocking delete when the season still has teams/matches unless the admin explicitly confirms a destructive wipe.
+
+## Do not
+
+- Ship “create season” (or any create flow) without edit + delete in the same feature pass.
+- Leave half-CRUD UIs that force organizers to use scripts or the DB to fix mistakes.

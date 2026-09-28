@@ -52,12 +52,14 @@ export async function listSeasons() {
 }
 
 async function loadCurrentSeasonWith(db: Db) {
-  const [settings, seasons] = await Promise.all([
+  const seasons = await db.season.findMany({ orderBy: { number: "desc" } });
+  const flagged = seasons.find((season) => season.isActive);
+  if (flagged) return flagged;
+
+  const settings =
     db === prisma
-      ? getCupSettings()
-      : db.cupSettings.findUnique({ where: { id: "singleton" } }),
-    db.season.findMany({ orderBy: { number: "desc" } }),
-  ]);
+      ? await getCupSettings()
+      : await db.cupSettings.findUnique({ where: { id: "singleton" } });
   if (settings?.currentSeasonId) {
     const pointed = seasons.find((season) => season.id === settings.currentSeasonId);
     if (pointed && pointed.status !== SEASON_STATUS.archived) return pointed;
@@ -108,6 +110,7 @@ export async function ensureDefaultSeason(db: Db = prisma) {
           name: DEFAULT_SEASON_NAME,
           status: SEASON_STATUS.live,
           phase: SEASON_PHASE.IN_PROGRESS,
+          isActive: true,
           startedAt: new Date(),
         },
       });
@@ -120,14 +123,9 @@ export async function ensureDefaultSeason(db: Db = prisma) {
   }
 
   if (season.number === DEFAULT_SEASON_NUMBER && season.status === SEASON_STATUS.upcoming) {
-    season = await db.season.update({
-      where: { id: season.id },
-      data: {
-        status: SEASON_STATUS.live,
-        phase: SEASON_PHASE.IN_PROGRESS,
-        startedAt: season.startedAt ?? new Date(),
-      },
-    });
+    season = await setActiveSeason(season.id, db);
+  } else if (!season.isActive) {
+    season = await setActiveSeason(season.id, db);
   }
 
   const settings = await db.cupSettings.findUnique({
@@ -232,6 +230,163 @@ export async function createSeasonAdmin(input: CreateSeasonAdminInput) {
   });
 }
 
+export type UpdateSeasonAdminInput = {
+  seasonId: string;
+  name: string;
+  plannedStartAt?: Date | null;
+  tournamentFormat?: string;
+  teamCount?: number;
+};
+
+export async function updateSeasonAdmin(input: UpdateSeasonAdminInput) {
+  const season = await prisma.season.findUnique({ where: { id: input.seasonId } });
+  if (!season) throw new Error("Season not found.");
+
+  const name = input.name?.trim();
+  if (!name) throw new Error("Season name is required.");
+
+  const format =
+    input.tournamentFormat === TOURNAMENT_FORMAT.TEAM_BASED
+      ? TOURNAMENT_FORMAT.TEAM_BASED
+      : input.tournamentFormat === TOURNAMENT_FORMAT.AUCTION_BASED
+        ? TOURNAMENT_FORMAT.AUCTION_BASED
+        : season.tournamentFormat;
+
+  const teamCount = input.teamCount ?? season.teamCount;
+  if (!(ALLOWED_TEAM_COUNTS as readonly number[]).includes(teamCount)) {
+    throw new Error("Team count must be 8, 10, or 12.");
+  }
+
+  return prisma.season.update({
+    where: { id: season.id },
+    data: {
+      name: seasonName(season.number, name),
+      plannedStartAt:
+        input.plannedStartAt === undefined
+          ? season.plannedStartAt
+          : input.plannedStartAt,
+      tournamentFormat: format,
+      teamCount,
+    },
+  });
+}
+
+/**
+ * Delete a season. Empty seasons delete cleanly.
+ * Seasons with teams require force=true (wipes season-scoped teams after detaching players).
+ */
+export async function deleteSeasonAdmin(
+  seasonId: string,
+  options?: { force?: boolean },
+) {
+  const season = await prisma.season.findUnique({
+    where: { id: seasonId },
+    include: {
+      _count: {
+        select: { teams: true, matches: true, fixtures: true, players: true },
+      },
+    },
+  });
+  if (!season) throw new Error("Season not found.");
+
+  const hasData =
+    season._count.teams > 0 ||
+    season._count.matches > 0 ||
+    season._count.fixtures > 0 ||
+    season._count.players > 0;
+
+  if (hasData && !options?.force) {
+    throw new Error(
+      `${formatSeasonLabel(season)} still has teams/matches/players. Confirm force delete to wipe season-scoped data.`,
+    );
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.cupSettings.updateMany({
+      where: { currentSeasonId: seasonId },
+      data: { currentSeasonId: null },
+    });
+
+    await tx.season.update({
+      where: { id: seasonId },
+      data: { championTeamId: null, isActive: false },
+    });
+
+    const teams = await tx.team.findMany({
+      where: { seasonId },
+      select: { id: true },
+    });
+    const teamIds = teams.map((t) => t.id);
+
+    if (teamIds.length > 0) {
+      await tx.player.updateMany({
+        where: { teamId: { in: teamIds } },
+        data: { teamId: null, isCaptain: false, rosterRole: null },
+      });
+      await tx.seasonPlayer.updateMany({
+        where: { seasonId },
+        data: { teamId: null },
+      });
+      await tx.matchPrediction.deleteMany({
+        where: {
+          OR: [{ seasonId }, { predictedTeamId: { in: teamIds } }],
+        },
+      });
+      await tx.bracketPick.deleteMany({
+        where: {
+          OR: [{ seasonId }, { predictedTeamId: { in: teamIds } }],
+        },
+      });
+      await tx.match.updateMany({
+        where: {
+          OR: [
+            { seasonId },
+            { radiantTeamId: { in: teamIds } },
+            { direTeamId: { in: teamIds } },
+            { winnerTeamId: { in: teamIds } },
+          ],
+        },
+        data: {
+          seasonId: null,
+          radiantTeamId: null,
+          direTeamId: null,
+          winnerTeamId: null,
+        },
+      });
+      await tx.captainAccount.deleteMany({ where: { seasonId } });
+      await tx.auctionLot.deleteMany({ where: { seasonId } });
+      // Fixtures cascade from team delete.
+      await tx.team.deleteMany({ where: { seasonId } });
+    } else {
+      await tx.matchPrediction.deleteMany({ where: { seasonId } });
+      await tx.bracketPick.deleteMany({ where: { seasonId } });
+      await tx.match.updateMany({
+        where: { seasonId },
+        data: { seasonId: null },
+      });
+      await tx.scheduledFixture.updateMany({
+        where: { seasonId },
+        data: { seasonId: null },
+      });
+    }
+
+    await tx.seasonPlayer.deleteMany({ where: { seasonId } });
+    await tx.seasonSnapshot.deleteMany({ where: { seasonId } });
+    await tx.payment.updateMany({
+      where: { seasonId },
+      data: { seasonId: null },
+    });
+    await tx.auctionLot.updateMany({
+      where: { seasonId },
+      data: { seasonId: null },
+    });
+
+    await tx.season.delete({ where: { id: seasonId } });
+  });
+
+  return season;
+}
+
 export type PublicSeasonRow = {
   id: string;
   number: number;
@@ -289,7 +444,7 @@ export async function getSeasonByIdOrNumber(
     plannedStartAt: row.plannedStartAt,
     startedAt: row.startedAt,
     endedAt: row.endedAt,
-    isActive: live?.id === row.id,
+    isActive: Boolean(row.isActive) || live?.id === row.id,
     championName: row.championTeam?.name ?? null,
   };
 }
@@ -299,31 +454,45 @@ export async function listSeasonsForAdmin() {
     orderBy: { number: "desc" },
     include: {
       championTeam: { select: { id: true, name: true } },
+      _count: {
+        select: { teams: true, matches: true, fixtures: true, players: true },
+      },
     },
   });
 }
 
-export async function activateSeason(seasonId: string) {
-  const target = await prisma.season.findUnique({ where: { id: seasonId } });
+/**
+ * Mark exactly one season as the site-wide active cup.
+ * Clears isActive on all others and points CupSettings.currentSeasonId at the target.
+ * You can flip freely between Season 1, Season 2, etc. (including re-activating an archived season).
+ */
+export async function setActiveSeason(seasonId: string, db: Db = prisma) {
+  const target = await db.season.findUnique({ where: { id: seasonId } });
   if (!target) throw new Error("Season not found.");
-  if (target.status === SEASON_STATUS.archived) {
-    throw new Error("Cannot activate an archived season.");
-  }
-  const live = await getLiveSeason();
-  if (live && live.id !== target.id) {
-    throw new Error(
-      `End or archive **${formatSeasonLabel(live)}** before activating another season.`,
-    );
-  }
 
-  await prisma.$transaction(async (tx) => {
+  const promoteFromArchive = target.status === SEASON_STATUS.archived;
+  const promoteFromUpcoming = target.status === SEASON_STATUS.upcoming;
+
+  await db.$transaction(async (tx) => {
+    await tx.season.updateMany({ data: { isActive: false } });
     await tx.season.update({
       where: { id: target.id },
       data: {
-        status: SEASON_STATUS.live,
-        phase: SEASON_PHASE.IN_PROGRESS,
+        isActive: true,
+        status:
+          promoteFromArchive || promoteFromUpcoming
+            ? SEASON_STATUS.live
+            : target.status === SEASON_STATUS.live
+              ? SEASON_STATUS.live
+              : target.status,
+        phase:
+          promoteFromArchive ||
+          promoteFromUpcoming ||
+          target.phase === SEASON_PHASE.COMPLETED
+            ? SEASON_PHASE.IN_PROGRESS
+            : target.phase,
         startedAt: target.startedAt ?? new Date(),
-        endedAt: null,
+        endedAt: promoteFromArchive ? null : target.endedAt,
       },
     });
     await tx.cupSettings.upsert({
@@ -333,7 +502,18 @@ export async function activateSeason(seasonId: string) {
     });
   });
 
-  return prisma.season.findUniqueOrThrow({ where: { id: target.id } });
+  // Mirror this season's payment ledger onto Player.paidAt for legacy readers.
+  if (db === prisma) {
+    const { hydratePlayerPaymentsFromSeason } = await import("./payments");
+    await hydratePlayerPaymentsFromSeason(target.id);
+  }
+
+  return db.season.findUniqueOrThrow({ where: { id: target.id } });
+}
+
+/** @deprecated Prefer setActiveSeason — kept for admin action name compatibility. */
+export async function activateSeason(seasonId: string) {
+  return setActiveSeason(seasonId);
 }
 
 export async function endSeasonArchive(seasonId: string) {
@@ -403,6 +583,7 @@ export async function endSeasonArchive(seasonId: string) {
       data: {
         status: SEASON_STATUS.archived,
         phase: SEASON_PHASE.COMPLETED,
+        isActive: false,
         endedAt: now,
         championTeamId: championId ?? undefined,
       },
@@ -471,8 +652,7 @@ export async function syncSeasonPlayer(playerId: string, db: Db = prisma) {
       medal: player.medal,
       rolesJson: player.rolesJson,
       playWindow: player.playWindow,
-      paidAt: player.paidAt,
-      paymentAmount: player.paymentAmount,
+      // Keep season-scoped payment fields; do not overwrite from global Player.
     },
   });
 }

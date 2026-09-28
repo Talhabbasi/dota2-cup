@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import { Suspense } from "react";
 import { formatScheduleWhen } from "@/lib/schedule";
 import {
   EsportsCard,
@@ -9,11 +10,12 @@ import {
 } from "@/components/common";
 import { HeroSlideshow } from "@/components/hero-slideshow";
 import { MatchCountdown } from "@/components/match-countdown";
+import { SeasonSwitcher } from "@/components/season-switcher";
 import type { FixturePreview } from "@/lib/data";
 import { toIso } from "@/lib/format";
 import { BRACKET_META, isBracketSlot } from "@/lib/playoff-tree";
 import { CUP_ICON_PATH, CUP_KICKER, cupNameLines } from "@/lib/brand";
-import type { SeasonChampion } from "@/lib/seasons";
+import type { PublicSeasonRow, SeasonChampion } from "@/lib/seasons";
 import { cn } from "@/lib/utils";
 
 function roundName(kind?: string, slotKey?: string | null) {
@@ -54,6 +56,8 @@ export function HomeHero({
   seasonLabel,
   champion,
   siteMode = "active",
+  seasons = [],
+  viewSeasonNumber = null,
 }: {
   upcoming: FixturePreview | null;
   teamCount: number;
@@ -61,6 +65,8 @@ export function HomeHero({
   seasonLabel?: string | null;
   champion?: SeasonChampion | null;
   siteMode?: "active" | "champion" | "upcoming";
+  seasons?: PublicSeasonRow[];
+  viewSeasonNumber?: number | null;
 }) {
   const [titleLead, titleTail] = cupNameLines();
   const crowned = siteMode === "champion" && Boolean(champion);
@@ -89,6 +95,16 @@ export function HomeHero({
       </div>
 
       <div className="hero-stage-inner">
+        {seasons.length > 0 ? (
+          <div className="mb-4 flex justify-end animate-rise">
+            <Suspense fallback={null}>
+              <SeasonSwitcher
+                seasons={seasons}
+                viewSeasonNumber={viewSeasonNumber}
+              />
+            </Suspense>
+          </div>
+        ) : null}
         <p className="hero-kicker animate-rise">
           <span
             className={cn(

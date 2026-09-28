@@ -1,6 +1,11 @@
 import { prisma } from "./prisma";
 import { isRosterSub } from "./roles";
-import { currentSeasonId, syncSeasonPlayer } from "./seasons";
+import {
+  currentSeasonFilter,
+  getLiveSeason,
+  requireCurrentSeason,
+  syncSeasonPlayer,
+} from "./seasons";
 import {
   entryFeePkr,
   formatEntryFee,
@@ -22,39 +27,105 @@ export async function findPlayerByDiscord(discordId: string) {
   });
 }
 
+/** Mirror SeasonPlayer payment fields onto the global Player row for the active season. */
+async function mirrorSeasonPaymentToPlayer(
+  playerId: string,
+  paidAt: Date | null,
+  paymentAmount: number,
+) {
+  return prisma.player.update({
+    where: { id: playerId },
+    data: { paidAt, paymentAmount },
+    include: { team: { select: { id: true, name: true } } },
+  });
+}
+
+/**
+ * After switching the active season, copy that season's payment state onto Player rows
+ * so legacy reads of Player.paidAt match the active cup.
+ */
+export async function hydratePlayerPaymentsFromSeason(seasonId: string) {
+  const rows = await prisma.seasonPlayer.findMany({
+    where: { seasonId },
+    select: { playerId: true, paidAt: true, paymentAmount: true },
+  });
+  const paidIds = new Set(rows.map((r) => r.playerId));
+
+  await prisma.$transaction([
+    ...rows.map((row) =>
+      prisma.player.update({
+        where: { id: row.playerId },
+        data: {
+          paidAt: row.paidAt,
+          paymentAmount: row.paymentAmount,
+        },
+      }),
+    ),
+    prisma.player.updateMany({
+      where: {
+        id: { notIn: [...paidIds] },
+        paidAt: { not: null },
+      },
+      data: { paidAt: null, paymentAmount: 0 },
+    }),
+  ]);
+}
+
 export async function recordPlayerPayment(input: {
   discordId: string;
   discordName: string;
   amount?: number;
   verifiedBy?: string;
 }) {
+  const season = await requireCurrentSeason();
   const player = await findPlayerByDiscord(input.discordId);
   if (!player) {
     throw new Error(
       `You are not registered in ${CUP_NAME}. Ask an admin to add you with /player register.`,
     );
   }
-  if (!playerMustPay(player.rosterRole)) {
+
+  const membership = await syncSeasonPlayer(player.id);
+  const rosterRole = membership?.rosterRole ?? player.rosterRole;
+  if (!playerMustPay(rosterRole)) {
     return { player, skipped: true as const, reason: "sub" as const, alreadyPaid: false };
   }
 
   const amount = input.amount ?? entryFeePkr();
-  const alreadyPaid = Boolean(player.paidAt);
+  const alreadyPaid = Boolean(membership?.paidAt ?? player.paidAt);
   if (alreadyPaid) {
     return { player, skipped: false as const, reason: null, alreadyPaid: true };
   }
 
-  const updated = await prisma.player.update({
-    where: { id: player.id },
-    data: {
-      paidAt: new Date(),
+  const now = new Date();
+  await prisma.seasonPlayer.upsert({
+    where: {
+      seasonId_playerId: { seasonId: season.id, playerId: player.id },
+    },
+    create: {
+      seasonId: season.id,
+      playerId: player.id,
+      teamId: player.teamId,
+      rosterRole: player.rosterRole,
+      teamJoinedAt: player.teamJoinedAt,
+      isCaptain: player.isCaptain,
+      medal: player.medal,
+      rolesJson: player.rolesJson,
+      playWindow: player.playWindow,
+      paidAt: now,
       paymentAmount: amount,
     },
-    include: { team: { select: { id: true, name: true } } },
+    update: {
+      paidAt: now,
+      paymentAmount: amount,
+    },
   });
+
+  const updated = await mirrorSeasonPaymentToPlayer(player.id, now, amount);
+
   await prisma.payment.create({
     data: {
-      seasonId: await currentSeasonId(),
+      seasonId: season.id,
       playerId: player.id,
       discordId: input.discordId,
       discordName: input.discordName,
@@ -64,7 +135,7 @@ export async function recordPlayerPayment(input: {
       amount,
     },
   });
-  await syncSeasonPlayer(updated.id);
+
   return { player: updated, skipped: false as const, reason: null, alreadyPaid: false };
 }
 
@@ -77,17 +148,44 @@ export async function adminMarkPaid(discordId: string, verifiedBy = "slash") {
 }
 
 export async function adminClearPaid(discordId: string) {
+  const season = await requireCurrentSeason();
   const player = await findPlayerByDiscord(discordId);
   if (!player) throw new Error("Player not found.");
-  if (!player.paidAt) {
+
+  const membership = await prisma.seasonPlayer.findUnique({
+    where: {
+      seasonId_playerId: { seasonId: season.id, playerId: player.id },
+    },
+  });
+  const wasPaid = Boolean(membership?.paidAt ?? player.paidAt);
+  if (!wasPaid) {
     return { player, cleared: false as const };
   }
-  const updated = await prisma.player.update({
-    where: { id: player.id },
-    data: { paidAt: null, paymentAmount: 0 },
-    include: { team: { select: { id: true, name: true } } },
+
+  await prisma.seasonPlayer.upsert({
+    where: {
+      seasonId_playerId: { seasonId: season.id, playerId: player.id },
+    },
+    create: {
+      seasonId: season.id,
+      playerId: player.id,
+      teamId: player.teamId,
+      rosterRole: player.rosterRole,
+      teamJoinedAt: player.teamJoinedAt,
+      isCaptain: player.isCaptain,
+      medal: player.medal,
+      rolesJson: player.rolesJson,
+      playWindow: player.playWindow,
+      paidAt: null,
+      paymentAmount: 0,
+    },
+    update: {
+      paidAt: null,
+      paymentAmount: 0,
+    },
   });
-  await syncSeasonPlayer(updated.id);
+
+  const updated = await mirrorSeasonPaymentToPlayer(player.id, null, 0);
   return { player: updated, cleared: true as const };
 }
 
@@ -105,42 +203,52 @@ export type AdminPaymentPlayerRow = {
 };
 
 export async function adminListPaymentPlayers(): Promise<AdminPaymentPlayerRow[]> {
+  const season = await getLiveSeason();
+  if (!season) return [];
+
   const fee = entryFeePkr();
-  const players = await prisma.player.findMany({
+  const rows = await prisma.seasonPlayer.findMany({
     where: {
-      AND: [
-        { discordId: { not: { startsWith: DUMMY_PREFIX } } },
-        { discordId: { not: { startsWith: DUMMY_TEAM_PREFIX } } },
-      ],
+      seasonId: season.id,
+      player: {
+        AND: [
+          { discordId: { not: { startsWith: DUMMY_PREFIX } } },
+          { discordId: { not: { startsWith: DUMMY_TEAM_PREFIX } } },
+        ],
+      },
     },
     select: {
-      id: true,
-      steamName: true,
-      discordId: true,
       rosterRole: true,
       isCaptain: true,
       paidAt: true,
       paymentAmount: true,
       team: { select: { name: true } },
+      player: {
+        select: {
+          id: true,
+          steamName: true,
+          discordId: true,
+        },
+      },
     },
-    orderBy: [{ team: { name: "asc" } }, { steamName: "asc" }],
+    orderBy: [{ team: { name: "asc" } }, { player: { steamName: "asc" } }],
   });
 
-  return players.map((p) => {
-    const mustPay = playerMustPay(p.rosterRole);
-    const paid = Boolean(p.paidAt);
+  return rows.map((row) => {
+    const mustPay = playerMustPay(row.rosterRole);
+    const paid = Boolean(row.paidAt);
     return {
-      id: p.id,
-      discordId: p.discordId,
-      steamName: p.steamName,
-      teamName: p.team?.name ?? null,
-      rosterRole: p.rosterRole,
-      isCaptain: p.isCaptain,
+      id: row.player.id,
+      discordId: row.player.discordId,
+      steamName: row.player.steamName,
+      teamName: row.team?.name ?? null,
+      rosterRole: row.rosterRole,
+      isCaptain: row.isCaptain,
       mustPay,
       paid,
-      amount: paid ? p.paymentAmount || fee : mustPay ? fee : 0,
-      paidAtLabel: p.paidAt
-        ? p.paidAt.toLocaleDateString("en-PK", {
+      amount: paid ? row.paymentAmount || fee : mustPay ? fee : 0,
+      paidAtLabel: row.paidAt
+        ? row.paidAt.toLocaleDateString("en-PK", {
             day: "numeric",
             month: "short",
           })
@@ -176,23 +284,44 @@ function unpaidRequired(player: PlayerPayRow) {
 }
 
 export async function listUnpaidPlayers() {
-  const players = await prisma.player.findMany({
+  const season = await getLiveSeason();
+  if (!season) return [];
+
+  const rows = await prisma.seasonPlayer.findMany({
+    where: { seasonId: season.id },
     select: {
-      id: true,
-      steamName: true,
-      discordName: true,
-      discordId: true,
       rosterRole: true,
       isCaptain: true,
       paidAt: true,
       paymentAmount: true,
       team: { select: { id: true, name: true } },
+      player: {
+        select: {
+          id: true,
+          steamName: true,
+          discordName: true,
+          discordId: true,
+        },
+      },
     },
-    orderBy: [{ team: { name: "asc" } }, { steamName: "asc" }],
+    orderBy: [{ team: { name: "asc" } }, { player: { steamName: "asc" } }],
   });
-  return players.filter(
-    (player) => !isDummyDiscordId(player.discordId) && unpaidRequired(player),
-  );
+
+  return rows
+    .map((row) => ({
+      id: row.player.id,
+      steamName: row.player.steamName,
+      discordName: row.player.discordName,
+      discordId: row.player.discordId,
+      rosterRole: row.rosterRole,
+      isCaptain: row.isCaptain,
+      paidAt: row.paidAt,
+      paymentAmount: row.paymentAmount,
+      team: row.team,
+    }))
+    .filter(
+      (player) => !isDummyDiscordId(player.discordId) && unpaidRequired(player),
+    );
 }
 
 export type TeamPaymentRow = {
@@ -234,27 +363,52 @@ export function summarizeTeamPayments(
 }
 
 export async function listTeamPayments(): Promise<TeamPaymentRow[]> {
+  const seasonFilter = await currentSeasonFilter();
   const teams = await prisma.team.findMany({
+    where: seasonFilter,
     include: {
-      players: {
+      seasonPlayers: {
         select: {
-          id: true,
-          steamName: true,
-          discordName: true,
-          discordId: true,
           rosterRole: true,
           isCaptain: true,
           paidAt: true,
           paymentAmount: true,
+          player: {
+            select: {
+              id: true,
+              steamName: true,
+              discordName: true,
+              discordId: true,
+            },
+          },
           team: { select: { id: true, name: true } },
         },
       },
     },
     orderBy: { name: "asc" },
   });
+
   return teams
-    .filter((team) => team.players.some((p) => !isDummyDiscordId(p.discordId)))
-    .map((team) => summarizeTeamPayments(team.name, team.id, team.players));
+    .map((team) => {
+      const players: PlayerPayRow[] = team.seasonPlayers.map((row) => ({
+        id: row.player.id,
+        steamName: row.player.steamName,
+        discordName: row.player.discordName,
+        discordId: row.player.discordId,
+        rosterRole: row.rosterRole,
+        isCaptain: row.isCaptain,
+        paidAt: row.paidAt,
+        paymentAmount: row.paymentAmount,
+        team: row.team ?? { id: team.id, name: team.name },
+      }));
+      return { team, players };
+    })
+    .filter(({ players }) =>
+      players.some((p) => !isDummyDiscordId(p.discordId)),
+    )
+    .map(({ team, players }) =>
+      summarizeTeamPayments(team.name, team.id, players),
+    );
 }
 
 export function formatPaymentPlayerLine(player: {
@@ -344,27 +498,64 @@ export function formatTeamPaymentsList(rows: TeamPaymentRow[]) {
 }
 
 export async function getPaymentCollection() {
-  const players = await prisma.player.findMany({
+  const season = await getLiveSeason();
+  if (!season) {
+    return {
+      collected: 0,
+      expected: 0,
+      owed: 0,
+      paidCount: 0,
+      unpaidCount: 0,
+      starterCount: 0,
+      teamsAllowed: 0,
+      teamCount: 0,
+      paid: [] as { steamName: string; team: { name: string } | null }[],
+      unpaid: [] as { steamName: string; team: { name: string } | null }[],
+      teams: [] as TeamPaymentRow[],
+      seasonName: null as string | null,
+    };
+  }
+
+  const fee = entryFeePkr();
+  const rows = await prisma.seasonPlayer.findMany({
     where: {
-      AND: [
-        { discordId: { not: { startsWith: DUMMY_PREFIX } } },
-        { discordId: { not: { startsWith: DUMMY_TEAM_PREFIX } } },
-      ],
+      seasonId: season.id,
+      player: {
+        AND: [
+          { discordId: { not: { startsWith: DUMMY_PREFIX } } },
+          { discordId: { not: { startsWith: DUMMY_TEAM_PREFIX } } },
+        ],
+      },
     },
     select: {
-      steamName: true,
       rosterRole: true,
       paidAt: true,
       paymentAmount: true,
+      player: { select: { steamName: true } },
       team: { select: { name: true } },
     },
-    orderBy: [{ steamName: "asc" }],
+    orderBy: [{ player: { steamName: "asc" } }],
   });
 
-  const fee = entryFeePkr();
-  const starters = players.filter((p) => playerMustPay(p.rosterRole));
-  const paid = starters.filter((p) => p.paidAt);
-  const unpaid = starters.filter((p) => !p.paidAt);
+  const starters = rows.filter((p) => playerMustPay(p.rosterRole));
+  const paid = starters
+    .filter((p) => p.paidAt)
+    .map((p) => ({
+      steamName: p.player.steamName,
+      rosterRole: p.rosterRole,
+      paidAt: p.paidAt,
+      paymentAmount: p.paymentAmount,
+      team: p.team,
+    }));
+  const unpaid = starters
+    .filter((p) => !p.paidAt)
+    .map((p) => ({
+      steamName: p.player.steamName,
+      rosterRole: p.rosterRole,
+      paidAt: p.paidAt,
+      paymentAmount: p.paymentAmount,
+      team: p.team,
+    }));
   const collected = paid.reduce(
     (sum, p) => sum + (p.paymentAmount || fee),
     0,
@@ -386,6 +577,7 @@ export async function getPaymentCollection() {
     paid,
     unpaid,
     teams,
+    seasonName: season.name,
   };
 }
 
@@ -393,7 +585,7 @@ export function formatPaymentCollection(
   data: Awaited<ReturnType<typeof getPaymentCollection>>,
 ) {
   const lines = [
-    "**Money collected**",
+    data.seasonName ? `**Money collected** · ${data.seasonName}` : "**Money collected**",
     `**In: ${data.collected.toLocaleString("en-PK")} PKR** (${data.paidCount} paid)`,
     `Still owed: **${data.owed.toLocaleString("en-PK")} PKR** (${data.unpaidCount} unpaid)`,
     `Expected from registered starters: **${data.expected.toLocaleString("en-PK")} PKR** (${data.starterCount} × ${formatEntryFee()})`,
@@ -414,4 +606,19 @@ export function formatPaymentCollection(
   }
 
   return lines.join("\n");
+}
+
+/** Active-season payment state for a player (admin detail). */
+export async function getActiveSeasonPaymentForPlayer(playerId: string) {
+  const season = await getLiveSeason();
+  if (!season) return null;
+  return prisma.seasonPlayer.findUnique({
+    where: {
+      seasonId_playerId: { seasonId: season.id, playerId },
+    },
+    include: {
+      season: { select: { id: true, number: true, name: true } },
+      team: { select: { id: true, name: true } },
+    },
+  });
 }

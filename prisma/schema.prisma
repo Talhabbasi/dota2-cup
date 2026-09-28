@@ -15,6 +15,8 @@ model Season {
   status    String    @default("upcoming")
   /// UPCOMING | AUCTION_ACTIVE | IN_PROGRESS | COMPLETED
   phase     String    @default("UPCOMING")
+  /// Exactly one season should be true — drives homepage / live cup surfaces.
+  isActive  Boolean   @default(false)
   plannedStartAt DateTime?
   /// AUCTION_BASED | TEAM_BASED
   tournamentFormat String @default("AUCTION_BASED")
@@ -36,6 +38,8 @@ model Season {
   bracketPicks BracketPick[]
   snapshot     SeasonSnapshot?
   captainAccounts CaptainAccount[]
+
+  @@index([isActive])
 }
 
 /// Frozen bracket / insights when a season is archived.

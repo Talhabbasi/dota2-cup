@@ -629,18 +629,23 @@ const emptyLeaderboard: PredictionLeaderboardView = {
 
 export async function getPredictionLeaderboard(
   youPlayerId?: string | null,
-  options?: { forAdmin?: boolean },
+  options?: { forAdmin?: boolean; seasonId?: string },
 ) {
-  const season = await getCurrentSeasonSafe();
+  const season = options?.seasonId
+    ? await prisma.season.findUnique({ where: { id: options.seasonId } })
+    : await getCurrentSeasonSafe();
   if (!season) return emptyLeaderboard;
 
-  const seasonFilter = await currentSeasonFilter();
+  const seasonFilter = { seasonId: season.id };
   const fixtures = await prisma.scheduledFixture.findMany({
     where: { ...publicFixtureWhere, ...seasonFilter },
     select: { kind: true, status: true },
   });
   const revealed =
-    options?.forAdmin === true || groupStageIsComplete(fixtures);
+    options?.forAdmin === true ||
+    season.status === "archived" ||
+    season.phase === "COMPLETED" ||
+    groupStageIsComplete(fixtures);
 
   if (!revealed) {
     try {

@@ -16,7 +16,8 @@ import {
 import { PlayoffGraphLazy } from "@/components/playoff-graph-lazy";
 import { getPlayoffView } from "@/lib/playoff";
 import { getActiveWeekendBundle } from "@/lib/schedule";
-import { getCurrentSeasonChampion, getCurrentSeasonSafe, getLiveSeason } from "@/lib/seasons";
+import { getCurrentSeasonChampion, getCurrentSeasonSafe, getLiveSeason, listPublicSeasons } from "@/lib/seasons";
+import { resolveViewSeason } from "@/lib/season-view";
 
 export const revalidate = 30;
 
@@ -57,6 +58,8 @@ export default async function Home() {
     season,
     champion,
     live,
+    seasons,
+    view,
   ] = await Promise.all([
     getStandings(),
     getRecentMatches(5),
@@ -68,12 +71,15 @@ export default async function Home() {
     getCurrentSeasonSafe(),
     getCurrentSeasonChampion(),
     getLiveSeason(),
+    listPublicSeasons(),
+    resolveViewSeason(),
   ]);
 
   const latest = matches[0] ?? null;
   const recent = latest ? matches.slice(1, 5) : matches.slice(0, 4);
   const crowned = Boolean(live && champion);
   const siteMode = crowned ? "champion" : live ? "active" : "upcoming";
+  const viewSeasonNumber = view?.number ?? live?.number ?? null;
 
   return (
     <>
@@ -84,6 +90,8 @@ export default async function Home() {
         seasonLabel={season ? `Season ${season.number}` : null}
         champion={crowned ? champion : null}
         siteMode={siteMode}
+        seasons={seasons}
+        viewSeasonNumber={viewSeasonNumber}
       />
 
       <div className="page home-body">

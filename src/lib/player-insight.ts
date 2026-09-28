@@ -94,22 +94,27 @@ function pickPot(totals: Totals[]): (Totals & { score: number }) | null {
   );
 }
 
-export async function getPublicPlayerInsight(): Promise<PublicPlayerInsight> {
-  const live = await getLiveSeason();
-  if (!live) {
-    return {
-      mostKills: null,
-      mostAssists: null,
-      mostDeaths: null,
-      mostTeamKills: null,
-      mostTeamDeaths: null,
-      highestBid: null,
-      mostCorrectPredictions: null,
-      predictionsRevealed: false,
-      playerOfTournament: null,
-    };
+export async function getPublicPlayerInsight(options?: {
+  seasonId?: string | null;
+}): Promise<PublicPlayerInsight> {
+  const empty: PublicPlayerInsight = {
+    mostKills: null,
+    mostAssists: null,
+    mostDeaths: null,
+    mostTeamKills: null,
+    mostTeamDeaths: null,
+    highestBid: null,
+    mostCorrectPredictions: null,
+    predictionsRevealed: false,
+    playerOfTournament: null,
+  };
+
+  let seasonId = options?.seasonId?.trim() || null;
+  if (!seasonId) {
+    const live = await getLiveSeason();
+    seasonId = live?.id ?? null;
   }
-  const seasonId = live.id;
+  if (!seasonId) return empty;
 
   const [seats, topLot, board] = await Promise.all([
     prisma.matchPlayer.findMany({
@@ -161,7 +166,11 @@ export async function getPublicPlayerInsight(): Promise<PublicPlayerInsight> {
         team: { select: { name: true } },
       },
     }),
-    getPredictionLeaderboard(null),
+    getPredictionLeaderboard(null, {
+      seasonId,
+      // Archive / explicit season views always show scored boards when data exists.
+      forAdmin: Boolean(options?.seasonId),
+    }),
   ]);
 
   /** One map, but roster vs stand-in (+ team) stay separate keys so they never merge. */
