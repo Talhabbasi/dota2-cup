@@ -356,6 +356,8 @@ export async function adminListTeamsForPicker() {
     select: {
       id: true,
       name: true,
+      tag: true,
+      logoUrl: true,
       purse: true,
       captainId: true,
       players: {

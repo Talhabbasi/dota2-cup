@@ -44,6 +44,23 @@ import {
   createSeasonAdmin,
   endSeasonArchive,
 } from "@/lib/seasons";
+import {
+  adminCreateManualTeam,
+  adminUpdateTeamMeta,
+  createCaptainAccount,
+  revokeCaptainAccount,
+  adminSetPlayerAuctionMeta,
+} from "@/lib/captain-accounts";
+import {
+  startWebAuction,
+  pauseWebAuction,
+  resumeWebAuction,
+  startWebTimer,
+  resetWebTimer,
+  confirmWebSold,
+  passWebUnsold,
+  introduceNextWebPlayer,
+} from "@/lib/web-auction";
 
 function revalidateAdmin() {
   revalidatePublicPages();
@@ -736,4 +753,147 @@ export async function actionActivateSeason(formData: FormData) {
   } catch (error) {
     throw error instanceof Error ? error : new Error("Could not activate season.");
   }
+}
+
+export async function actionCreateManualTeam(formData: FormData) {
+  const session = await requireAdmin();
+  const team = await adminCreateManualTeam({
+    name: String(formData.get("name") ?? ""),
+    tag: String(formData.get("tag") ?? "") || null,
+    logoUrl: String(formData.get("logoUrl") ?? "") || null,
+    captainDiscordId: String(formData.get("captainDiscordId") ?? "") || null,
+    captainPlayerId: String(formData.get("captainPlayerId") ?? "") || null,
+    purse: Number(formData.get("purse") || 0),
+  });
+  await note(session, "team.create_manual", `Created ${team.name}`, {
+    teamId: team.id,
+  });
+  revalidateAdmin();
+  revalidatePath("/admin/teams");
+  revalidatePath("/teams");
+}
+
+export async function actionUpdateTeamMeta(formData: FormData) {
+  const session = await requireAdmin();
+  const teamId = String(formData.get("teamId") ?? "").trim();
+  const team = await adminUpdateTeamMeta({
+    teamId,
+    tag: String(formData.get("tag") ?? "") || null,
+    logoUrl: String(formData.get("logoUrl") ?? "") || null,
+    name: String(formData.get("name") ?? "") || null,
+  });
+  await note(session, "team.update_meta", `Updated ${team.name}`, { teamId });
+  revalidateAdmin();
+  revalidatePath(`/admin/teams/${teamId}`);
+  revalidatePath("/teams");
+}
+
+export async function actionCreateCaptainAccount(formData: FormData) {
+  const session = await requireAdmin();
+  const teamId = String(formData.get("teamId") ?? "").trim();
+  const loginName = String(formData.get("loginName") ?? "").trim() || undefined;
+  const passcode = String(formData.get("passcode") ?? "").trim() || undefined;
+  const created = await createCaptainAccount({ teamId, loginName, passcode });
+  await note(
+    session,
+    "captain.credential",
+    `Captain login ${created.loginName} for ${created.teamName}`,
+    { teamId, accountId: created.accountId },
+  );
+  revalidatePath("/admin/auction");
+  revalidatePath("/admin/teams");
+  return created;
+}
+
+export async function actionRevokeCaptainAccount(formData: FormData) {
+  const session = await requireAdmin();
+  const accountId = String(formData.get("accountId") ?? "").trim();
+  await revokeCaptainAccount(accountId);
+  await note(session, "captain.revoke", `Revoked captain login`, { accountId });
+  revalidatePath("/admin/auction");
+}
+
+export async function actionSetPlayerAuctionMeta(formData: FormData) {
+  const session = await requireAdmin();
+  const playerId = String(formData.get("playerId") ?? "").trim();
+  const auctionStatus = String(formData.get("auctionStatus") ?? "").trim();
+  const baseRaw = String(formData.get("basePrice") ?? "").trim();
+  await adminSetPlayerAuctionMeta({
+    playerId,
+    auctionStatus: auctionStatus || undefined,
+    basePrice: baseRaw === "" ? undefined : Number(baseRaw),
+  });
+  await note(session, "player.auction_meta", `Updated auction meta`, {
+    playerId,
+    auctionStatus,
+  });
+  revalidatePath("/admin/auction");
+  revalidatePath("/admin/players");
+}
+
+export async function actionWebAuctionStart(formData: FormData) {
+  const session = await requireAdmin();
+  const medal = String(formData.get("medal") ?? "divine").trim();
+  await startWebAuction(medal);
+  await note(session, "auction.web_start", `Started web auction (${medal})`, {
+    medal,
+  });
+  revalidatePath("/admin/auction");
+  revalidatePath("/auction");
+  revalidatePath("/auction/live");
+}
+
+export async function actionWebAuctionPause() {
+  await requireAdmin();
+  await pauseWebAuction();
+  revalidatePath("/admin/auction");
+  revalidatePath("/auction/live");
+}
+
+export async function actionWebAuctionResume() {
+  await requireAdmin();
+  await resumeWebAuction();
+  revalidatePath("/admin/auction");
+  revalidatePath("/auction/live");
+}
+
+export async function actionWebAuctionTimer() {
+  await requireAdmin();
+  await startWebTimer();
+  revalidatePath("/admin/auction");
+  revalidatePath("/auction/live");
+}
+
+export async function actionWebAuctionResetTimer() {
+  await requireAdmin();
+  await resetWebTimer();
+  revalidatePath("/admin/auction");
+  revalidatePath("/auction/live");
+}
+
+export async function actionWebAuctionSold() {
+  const session = await requireAdmin();
+  const view = await confirmWebSold();
+  await note(session, "auction.web_sold", `Sold lot on web auction`, {
+    player: view.lastSale?.playerName ?? view.currentPlayer?.steamName,
+  });
+  revalidatePath("/admin/auction");
+  revalidatePath("/auction");
+  revalidatePath("/auction/live");
+  revalidatePublicPages();
+}
+
+export async function actionWebAuctionPass() {
+  const session = await requireAdmin();
+  await passWebUnsold();
+  await note(session, "auction.web_pass", `Passed / unsold on web auction`);
+  revalidatePath("/admin/auction");
+  revalidatePath("/auction/live");
+}
+
+export async function actionWebAuctionNext() {
+  await requireAdmin();
+  await introduceNextWebPlayer();
+  revalidatePath("/admin/auction");
+  revalidatePath("/auction/live");
 }

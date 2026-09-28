@@ -8,7 +8,7 @@ import {
   adminCardClass,
   adminControlClass,
 } from "@/components/admin/ui";
-import { actionAddCaptain } from "@/app/admin/actions";
+import { actionAddCaptain, actionCreateManualTeam } from "@/app/admin/actions";
 import {
   AdminActionForm,
   AdminSubmitButton,
@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils";
 export type AdminTeamRow = {
   id: string;
   name: string;
+  tag: string | null;
   purse: number;
   captainName: string | null;
   playerCount: number;
@@ -60,28 +61,67 @@ export function AdminTeamsBoard({
           <span className="text-primary">{showCreate ? "−" : "+"}</span>
         </button>
         {showCreate ? (
-          <AdminActionForm
-            action={actionAddCaptain}
-            successMessage="Team created"
-            className="mt-4 grid gap-3 border-t border-white/10 pt-4 sm:grid-cols-3"
-          >
-            <AdminField label="Team name">
-              <input name="teamName" required className={adminControlClass} />
-            </AdminField>
-            <AdminField label="Captain">
-              <select name="discordId" required className={adminControlClass}>
-                <option value="">Unsigned player…</option>
-                {unsigned.map((p) => (
-                  <option key={p.discordId} value={p.discordId}>
-                    {p.steamName}
-                  </option>
-                ))}
-              </select>
-            </AdminField>
-            <AdminSubmitButton className="self-end">
-              Create team
-            </AdminSubmitButton>
-          </AdminActionForm>
+          <div className="mt-4 grid gap-6 border-t border-white/10 pt-4">
+            <AdminActionForm
+              action={actionAddCaptain}
+              successMessage="Team created"
+              className="grid gap-3 sm:grid-cols-3"
+            >
+              <AdminField label="Team name (auction)">
+                <input name="teamName" required className={adminControlClass} />
+              </AdminField>
+              <AdminField label="Captain">
+                <select name="discordId" required className={adminControlClass}>
+                  <option value="">Unsigned player…</option>
+                  {unsigned.map((p) => (
+                    <option key={p.discordId} value={p.discordId}>
+                      {p.steamName}
+                    </option>
+                  ))}
+                </select>
+              </AdminField>
+              <AdminSubmitButton className="self-end">
+                Create (auction purse)
+              </AdminSubmitButton>
+            </AdminActionForm>
+
+            <AdminActionForm
+              action={actionCreateManualTeam}
+              successMessage="Team-based franchise created"
+              className="grid gap-3 border-t border-white/10 pt-4 sm:grid-cols-2 lg:grid-cols-3"
+            >
+              <AdminField label="Team name (team-based)">
+                <input name="name" required className={adminControlClass} />
+              </AdminField>
+              <AdminField label="Tag">
+                <input name="tag" placeholder="TOJI" className={adminControlClass} />
+              </AdminField>
+              <AdminField label="Logo URL">
+                <input name="logoUrl" placeholder="https://…" className={adminControlClass} />
+              </AdminField>
+              <AdminField label="Captain">
+                <select name="captainDiscordId" required className={adminControlClass}>
+                  <option value="">Player…</option>
+                  {unsigned.map((p) => (
+                    <option key={p.discordId} value={p.discordId}>
+                      {p.steamName}
+                    </option>
+                  ))}
+                </select>
+              </AdminField>
+              <AdminField label="Starting purse">
+                <input
+                  name="purse"
+                  type="number"
+                  defaultValue={0}
+                  className={adminControlClass}
+                />
+              </AdminField>
+              <AdminSubmitButton className="self-end">
+                Create (manual roster)
+              </AdminSubmitButton>
+            </AdminActionForm>
+          </div>
         ) : null}
       </div>
 
@@ -92,7 +132,7 @@ export function AdminTeamsBoard({
         getId={(t) => t.id}
         hrefFor={(t) => `/admin/teams/${t.id}`}
         searchPlaceholder="Search team or captain…"
-        searchText={(t) => `${t.name} ${t.captainName ?? ""}`}
+        searchText={(t) => `${t.name} ${t.tag ?? ""} ${t.captainName ?? ""}`}
         emptyLabel="No teams this season."
         filters={[
           {
@@ -130,7 +170,16 @@ export function AdminTeamsBoard({
           {
             key: "name",
             header: "Franchise",
-            cell: (t) => <span className="font-medium">{t.name}</span>,
+            cell: (t) => (
+              <span className="font-medium">
+                {t.name}
+                {t.tag ? (
+                  <span className="ml-2 text-xs text-muted-foreground">
+                    [{t.tag}]
+                  </span>
+                ) : null}
+              </span>
+            ),
           },
           {
             key: "captain",

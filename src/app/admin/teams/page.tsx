@@ -37,6 +37,7 @@ export default async function AdminTeamsPage() {
           return {
             id: team.id,
             name: team.name,
+            tag: team.tag ?? null,
             purse: team.purse,
             captainName: captain?.steamName ?? null,
             playerCount: team.players.length,

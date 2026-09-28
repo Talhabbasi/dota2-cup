@@ -86,7 +86,7 @@ const SECTIONS = [
   {
     href: "/admin/auction",
     label: "Auction",
-    note: "Fix sold prices",
+    note: "Live desk, captains, prices",
     icon: Gavel,
     tone: "rose",
   },
@@ -118,6 +118,7 @@ const TONE_ICON: Record<(typeof SECTIONS)[number]["tone"], string> = {
   violet: "bg-violet-500/15 text-violet-300",
   cyan: "bg-cyan-500/15 text-cyan-300",
   amber: "bg-amber-500/15 text-amber-300",
+  gold: "bg-primary/15 text-primary",
   green: "bg-emerald-500/15 text-emerald-300",
   rose: "bg-rose-500/15 text-rose-300",
 };

@@ -255,6 +255,7 @@ async function persistSale(auction: LiveAuction, kind: "sold" | "unsold") {
           teamId: team.id,
           teamJoinedAt: new Date(),
           rosterRole: team.rosterCount > MIN_ROSTER ? "sub" : null,
+          auctionStatus: "SOLD",
         },
       }),
       prisma.auctionLot.create({

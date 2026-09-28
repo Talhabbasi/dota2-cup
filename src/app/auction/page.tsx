@@ -85,7 +85,19 @@ export default async function AuctionPage() {
       <PageHeader
         eyebrow="Transfer market"
         title="Auction"
-        subtitle="Who sold, which franchise won the lot, and the winning bid — season by season. Captains are not in the auction."
+        subtitle={
+          <>
+            Who sold, which franchise won the lot, and the winning bid — season by
+            season.{" "}
+            <a href="/auction/live" className="text-link">
+              Live board
+            </a>{" "}
+            ·{" "}
+            <a href="/auction/captain" className="text-link">
+              Captain desk
+            </a>
+          </>
+        }
         pills={
           soldCount > 0
             ? [
