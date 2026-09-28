@@ -2,7 +2,7 @@ import { prisma } from "./prisma";
 import { publicPlayerWhere } from "./dummy";
 import { formatPoints } from "./constants";
 import { getPredictionLeaderboard } from "./predictions";
-import { currentSeasonId, getLiveSeason } from "./seasons";
+import { getLiveSeason } from "./seasons";
 
 export type PlayerInsightAward = {
   playerId: string | null;
