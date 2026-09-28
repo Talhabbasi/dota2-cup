@@ -2,7 +2,7 @@ import { prisma } from "./prisma";
 import { publicPlayerWhere } from "./dummy";
 import { formatPoints } from "./constants";
 import { getPredictionLeaderboard } from "./predictions";
-import { currentSeasonId } from "./seasons";
+import { currentSeasonId, getLiveSeason } from "./seasons";
 
 export type PlayerInsightAward = {
   playerId: string | null;
@@ -95,7 +95,21 @@ function pickPot(totals: Totals[]): (Totals & { score: number }) | null {
 }
 
 export async function getPublicPlayerInsight(): Promise<PublicPlayerInsight> {
-  const seasonId = await currentSeasonId();
+  const live = await getLiveSeason();
+  if (!live) {
+    return {
+      mostKills: null,
+      mostAssists: null,
+      mostDeaths: null,
+      mostTeamKills: null,
+      mostTeamDeaths: null,
+      highestBid: null,
+      mostCorrectPredictions: null,
+      predictionsRevealed: false,
+      playerOfTournament: null,
+    };
+  }
+  const seasonId = live.id;
 
   const [seats, topLot, board] = await Promise.all([
     prisma.matchPlayer.findMany({

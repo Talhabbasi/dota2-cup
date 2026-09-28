@@ -3,6 +3,7 @@ import { SEASON_VIEW_COOKIE } from "./season-view-cookie";
 import {
   getLiveSeason,
   getSeasonByIdOrNumber,
+  listPublicSeasons,
   type PublicSeasonRow,
 } from "./seasons";
 
@@ -18,7 +19,7 @@ export type ResolvedViewSeason = {
   championName: string | null;
 };
 
-/** Parse `?season=` (id or number). Empty → use cookie → live season. */
+/** Parse `?season=` (id or number). Empty → cookie → live → newest. */
 export async function resolveViewSeason(input?: {
   season?: string | null;
 }): Promise<ResolvedViewSeason | null> {
@@ -37,9 +38,14 @@ export async function resolveViewSeason(input?: {
   }
 
   const live = await getLiveSeason();
-  if (!live) return null;
-  const row = await getSeasonByIdOrNumber(String(live.number));
-  return row ? toResolved(row) : null;
+  if (live) {
+    const row = await getSeasonByIdOrNumber(String(live.number));
+    return row ? toResolved(row) : null;
+  }
+
+  const seasons = await listPublicSeasons();
+  const newest = seasons[0] ?? null;
+  return newest ? toResolved(newest) : null;
 }
 
 function toResolved(row: PublicSeasonRow): ResolvedViewSeason {
@@ -54,11 +60,11 @@ function toResolved(row: PublicSeasonRow): ResolvedViewSeason {
   };
 }
 
-/** Prisma `where` spread for public reads. */
+/** Prisma `where` spread for public live-cup reads (never all seasons). */
 export async function seasonScopeForRead(
   viewSeasonId?: string | null,
-): Promise<{ seasonId?: string }> {
+): Promise<{ seasonId: string }> {
   if (viewSeasonId) return { seasonId: viewSeasonId };
   const live = await getLiveSeason();
-  return live?.id ? { seasonId: live.id } : {};
+  return { seasonId: live?.id ?? "__none__" };
 }

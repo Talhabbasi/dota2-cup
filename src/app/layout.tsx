@@ -82,8 +82,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
       ? "Season archive"
       : liveSeasonLabel(await getCurrentSeasonSafe());
 
-  const viewSeasonNumber =
-    view && !view.isLive ? view.number : null;
+  const viewSeasonNumber = view?.number ?? live?.number ?? null;
 
   return (
     <html

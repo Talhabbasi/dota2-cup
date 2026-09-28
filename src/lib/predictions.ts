@@ -297,6 +297,7 @@ export async function saveBracketPicks(
   const fixtures = await prisma.scheduledFixture.findMany({
     where: {
       ...publicFixtureWhere,
+      seasonId,
       slotKey: { in: [...BRACKET_SLOTS] },
     },
     include: {
@@ -390,11 +391,24 @@ export async function getInternationalPickem(
   }
 
   const season = await getCurrentSeasonSafe();
+  if (!season) {
+    return {
+      unlocked: false,
+      treeLocked: true,
+      lockLabel: "No live season",
+      seeds: null,
+      actual: {},
+      lockedSlots: [],
+      savedPicks: {},
+      slots: [],
+    };
+  }
   const { predictionsEnabled } = await getCupFeatureSettings();
   const treeLocked = picksClosedForOrganizer(predictionsEnabled);
   const fixtures = await prisma.scheduledFixture.findMany({
     where: {
       ...publicFixtureWhere,
+      seasonId: season.id,
       slotKey: { in: [...BRACKET_SLOTS] },
     },
     include: {

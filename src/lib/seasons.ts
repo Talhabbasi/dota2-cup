@@ -484,12 +484,13 @@ export async function syncSeasonPlayers(playerIds: string[], db: Db = prisma) {
   }
 }
 
-export async function currentSeasonFilter(): Promise<{ seasonId?: string }> {
+export async function currentSeasonFilter(): Promise<{ seasonId: string }> {
   try {
-    const season = await getCurrentSeason();
-    return season?.id ? { seasonId: season.id } : {};
+    const season = await getLiveSeason();
+    // Never omit seasonId — an empty filter returns every season's data.
+    return { seasonId: season?.id ?? "__none__" };
   } catch {
-    return {};
+    return { seasonId: "__none__" };
   }
 }
 

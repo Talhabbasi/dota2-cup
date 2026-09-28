@@ -161,7 +161,8 @@ export default async function Home() {
           </section>
         ) : null}
 
-        {playoff.groupA.length + playoff.groupB.length > 0 ? (
+        {siteMode === "active" &&
+        playoff.groupA.length + playoff.groupB.length > 0 ? (
           <section className="home-playoff-link">
             <div className="weekend-board home-groups-board">
               <div className="section-head row">
@@ -186,7 +187,7 @@ export default async function Home() {
           />
         ) : null}
 
-        {table.length > 0 ? (
+        {siteMode === "active" && table.length > 0 ? (
           <section className="home-standings">
             <div className="section-head row">
               <h2>Standings</h2>
@@ -209,7 +210,7 @@ export default async function Home() {
           </section>
         ) : null}
 
-        {recent.length > 0 ? (
+        {siteMode === "active" && recent.length > 0 ? (
           <section className="home-recent">
             <div className="section-head row">
               <h2>Recent matches</h2>

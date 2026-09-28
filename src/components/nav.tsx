@@ -25,16 +25,19 @@ function serverReadySnapshot() {
 }
 
 function seasonHref(path: string, viewSeasonNumber: number | null) {
-  if (viewSeasonNumber == null) {
-    if (typeof document === "undefined") return path;
-    const match = document.cookie.match(
-      new RegExp(`(?:^|; )${SEASON_VIEW_COOKIE}=([^;]*)`),
-    );
-    const raw = match ? decodeURIComponent(match[1]) : "";
-    if (!raw || raw === "live") return path;
-    return `${path}?season=${encodeURIComponent(raw)}`;
-  }
-  return `${path}?season=${viewSeasonNumber}`;
+  const season =
+    viewSeasonNumber != null
+      ? String(viewSeasonNumber)
+      : typeof document !== "undefined"
+        ? (() => {
+            const match = document.cookie.match(
+              new RegExp(`(?:^|; )${SEASON_VIEW_COOKIE}=([^;]*)`),
+            );
+            return match ? decodeURIComponent(match[1]) : "";
+          })()
+        : "";
+  if (!season || season === "live") return path;
+  return `${path}?season=${encodeURIComponent(season)}`;
 }
 
 const authButtonClass =

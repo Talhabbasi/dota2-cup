@@ -28,6 +28,28 @@ export default async function PredictionsPage() {
     getCurrentSeasonSafe(),
     getCupFeatureSettings(),
   ]);
+
+  if (!season) {
+    return (
+      <div className="page pred-page">
+        <PageHeader
+          eyebrow="Pick’em"
+          title="Predictions"
+          subtitle="Match predictions open when a season is live."
+        />
+        <EsportsCard interactive={false} className="p-5">
+          <p className="m-0 text-sm text-muted-foreground">
+            No live tournament right now. Browse the{" "}
+            <Link href="/seasons" className="text-link">
+              season archive
+            </Link>{" "}
+            for past cups.
+          </p>
+        </EsportsCard>
+      </div>
+    );
+  }
+
   const [stages, board, pickem] = await Promise.all([
     getPredictionBoard(player?.id),
     getPredictionLeaderboard(player?.id),
