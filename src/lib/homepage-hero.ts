@@ -302,9 +302,7 @@ async function buildActiveSlide(): Promise<HeroActiveSlide | null> {
     primaryCta: preTournament
       ? { href: "/register", label: "Register" }
       : { href: "/playoffs", label: "View Live Bracket" },
-    secondaryCta: preTournament
-      ? { href: "/auction", label: "Auction Desk" }
-      : { href: "/predictions", label: "Predictions" },
+    secondaryCta: { href: "/predictions", label: "Predictions" },
     upcoming: serializeUpcoming(upcoming),
   };
 }

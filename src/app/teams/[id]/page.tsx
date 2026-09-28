@@ -65,18 +65,28 @@ export default async function TeamPage({
 }) {
   const { id } = await params;
   const sp = await searchParams;
+  const explicitSeason = Boolean(sp.season?.trim());
   const { seasonId } = await getPublicSeasonContext(sp);
-  const [team, standings] = await Promise.all([
-    getTeam(id),
-    seasonId
-      ? loadStandingsForSeason(seasonId)
-      : getStandings(),
-  ]);
+  const team = await getTeam(id);
   if (!team) notFound();
-  // Hide teams that belong to another season when viewing a specific season.
-  if (seasonId && team.seasonId && team.seasonId !== seasonId) {
+
+  // Only 404 on season mismatch when the visitor picked an archive season.
+  // Bare /teams/:id must still open Season 1 champions while Season 2 is live.
+  if (
+    explicitSeason &&
+    seasonId &&
+    team.seasonId &&
+    team.seasonId !== seasonId
+  ) {
     notFound();
   }
+
+  const standingsSeasonId = explicitSeason
+    ? seasonId
+    : (team.seasonId ?? seasonId);
+  const standings = standingsSeasonId
+    ? await loadStandingsForSeason(standingsSeasonId)
+    : await getStandings();
 
   const captain = team.players.find((p) => p.isCaptain);
   const ordered = sortTeamRoster(team.players);

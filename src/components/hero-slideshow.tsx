@@ -1,8 +1,9 @@
 "use client";
 
 import Image from "next/image";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { CUP_NAME } from "@/lib/brand";
+import { useHeroSlideSync } from "@/components/hero-slide-sync";
 
 const SLIDES = [
   {
@@ -42,58 +43,28 @@ const SLIDES = [
   },
 ] as const;
 
-const HOLD_MS = 7000;
 const HERO_SIZES = "(max-width: 768px) 100vw, (max-width: 1280px) 100vw, 1200px";
 
 export function HeroSlideshow() {
-  const [index, setIndex] = useState(0);
+  const { step, setPaused, goToStep } = useHeroSlideSync();
+  const index = step % SLIDES.length;
   const [ready, setReady] = useState(false);
-  const [paused, setPaused] = useState(false);
-  const [mounted, setMounted] = useState(() => new Set([0]));
-  const indexRef = useRef(0);
+  const [mounted, setMounted] = useState(() => new Set([0, 1 % SLIDES.length]));
 
-  const go = useCallback((next: number) => {
-    const wrapped = (next + SLIDES.length) % SLIDES.length;
-    if (wrapped === indexRef.current) return;
-    indexRef.current = wrapped;
-    setIndex(wrapped);
-    setMounted((prev) => {
-      const prefetch = (wrapped + 1) % SLIDES.length;
-      if (prev.has(wrapped) && prev.has(prefetch)) return prev;
-      const nextSet = new Set(prev);
-      nextSet.add(wrapped);
-      nextSet.add(prefetch);
-      return nextSet;
-    });
-  }, []);
-
-  useEffect(() => {
-    // Warm the slide after the LCP image so transitions stay smooth.
-    const prefetch = 1 % SLIDES.length;
-    const id = window.setTimeout(() => {
-      setMounted((prev) => {
-        if (prev.has(prefetch)) return prev;
-        const nextSet = new Set(prev);
-        nextSet.add(prefetch);
-        return nextSet;
-      });
-    }, 2500);
-    return () => window.clearTimeout(id);
-  }, []);
+  // Adjust mounted set during render when the active slide changes (allowed
+  // React pattern for derived cache state).
+  const prefetch = (index + 1) % SLIDES.length;
+  if (!mounted.has(index) || !mounted.has(prefetch)) {
+    const next = new Set(mounted);
+    next.add(index);
+    next.add(prefetch);
+    setMounted(next);
+  }
 
   useEffect(() => {
     const id = window.requestAnimationFrame(() => setReady(true));
     return () => window.cancelAnimationFrame(id);
   }, []);
-
-  useEffect(() => {
-    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)");
-    if (reduce.matches || paused) return;
-    const id = window.setInterval(() => {
-      go(indexRef.current + 1);
-    }, HOLD_MS);
-    return () => window.clearInterval(id);
-  }, [go, paused]);
 
   return (
     <div
@@ -135,7 +106,7 @@ export function HeroSlideshow() {
             aria-label={slide.alt}
             aria-selected={i === index}
             className={i === index ? "hero-slide-dot is-active" : "hero-slide-dot"}
-            onClick={() => go(i)}
+            onClick={() => goToStep(i)}
           />
         ))}
       </div>
