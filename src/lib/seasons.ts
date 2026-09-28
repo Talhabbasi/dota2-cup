@@ -334,18 +334,25 @@ export async function recordSeasonChampion(
 ) {
   const season = await prisma.season.findUnique({
     where: { id: seasonId },
-    select: { id: true, championTeamId: true },
+    select: { id: true, championTeamId: true, endedAt: true },
   });
   if (!season) return null;
-  if (season.championTeamId) return season.championTeamId;
 
-  const winnerId = winnerTeamId ?? (await inferSeasonChampionTeamId(seasonId));
+  const winnerId =
+    season.championTeamId ??
+    winnerTeamId ??
+    (await inferSeasonChampionTeamId(seasonId));
   if (!winnerId) return null;
 
-  await prisma.season.update({
-    where: { id: seasonId },
-    data: { championTeamId: winnerId },
-  });
+  if (!season.championTeamId || !season.endedAt) {
+    await prisma.season.update({
+      where: { id: seasonId },
+      data: {
+        championTeamId: winnerId,
+        endedAt: season.endedAt ?? new Date(),
+      },
+    });
+  }
   return winnerId;
 }
 
@@ -355,6 +362,90 @@ export type SeasonHistoryRosterPlayer = {
   isCaptain: boolean;
   isSub: boolean;
 };
+
+export type SeasonChampion = {
+  seasonId: string;
+  seasonNumber: number;
+  seasonName: string;
+  team: { id: string; name: string };
+  players: SeasonHistoryRosterPlayer[];
+  finalScore: string | null;
+};
+
+/** Current season champion + roster when the Grand Final (or stored crown) is set. */
+export const getCurrentSeasonChampion = cache(
+  async (): Promise<SeasonChampion | null> => {
+    try {
+      const season = await getCurrentSeason();
+      if (!season) return null;
+
+      let teamId = season.championTeamId;
+      if (!teamId) {
+        teamId = await inferSeasonChampionTeamId(season.id);
+        if (teamId) await recordSeasonChampion(season.id, teamId);
+      }
+      if (!teamId) return null;
+
+      const [team, memberships, final] = await Promise.all([
+        prisma.team.findUnique({
+          where: { id: teamId },
+          select: { id: true, name: true },
+        }),
+        prisma.seasonPlayer.findMany({
+          where: {
+            seasonId: season.id,
+            teamId,
+            player: publicPlayerWhere,
+          },
+          select: {
+            isCaptain: true,
+            rosterRole: true,
+            teamJoinedAt: true,
+            createdAt: true,
+            player: { select: { id: true, steamName: true } },
+          },
+        }),
+        prisma.scheduledFixture.findFirst({
+          where: {
+            seasonId: season.id,
+            status: "completed",
+            ...FINAL_WHERE,
+            ...publicFixtureWhere,
+          },
+          select: { radiantWins: true, direWins: true },
+          orderBy: { scheduledAt: "desc" },
+        }),
+      ]);
+      if (!team) return null;
+
+      const ordered = sortTeamRoster(
+        memberships.map((row) => ({
+          ...row,
+          createdAt: row.createdAt,
+          teamJoinedAt: row.teamJoinedAt,
+        })),
+      );
+
+      return {
+        seasonId: season.id,
+        seasonNumber: season.number,
+        seasonName: seasonName(season.number, season.name),
+        team,
+        players: ordered.map((row) => ({
+          id: row.player.id,
+          steamName: row.player.steamName,
+          isCaptain: row.isCaptain,
+          isSub: isRosterSub(row.rosterRole),
+        })),
+        finalScore: final
+          ? `${Math.max(final.radiantWins, final.direWins)}–${Math.min(final.radiantWins, final.direWins)}`
+          : null,
+      };
+    } catch {
+      return null;
+    }
+  },
+);
 
 export type SeasonHistoryRow = {
   id: string;

@@ -13,6 +13,7 @@ import type { FixturePreview } from "@/lib/data";
 import { toIso } from "@/lib/format";
 import { BRACKET_META, isBracketSlot } from "@/lib/playoff-tree";
 import { CUP_ICON_PATH, CUP_KICKER, cupNameLines } from "@/lib/brand";
+import type { SeasonChampion } from "@/lib/seasons";
 import { cn } from "@/lib/utils";
 
 function roundName(kind?: string, slotKey?: string | null) {
@@ -51,15 +52,22 @@ export function HomeHero({
   teamCount,
   matchCount,
   seasonLabel,
+  champion,
 }: {
   upcoming: FixturePreview | null;
   teamCount: number;
   matchCount: number;
   seasonLabel?: string | null;
+  champion?: SeasonChampion | null;
 }) {
   const [titleLead, titleTail] = cupNameLines();
+  const crowned = Boolean(champion);
+  const starters =
+    champion?.players.filter((player) => !player.isSub) ?? [];
+  const seasonBit = seasonLabel ?? (champion ? champion.seasonName : null);
+
   return (
-    <section className="hero-stage">
+    <section className={cn("hero-stage", crowned && "hero-stage-champion")}>
       <HeroSlideshow />
       <div
         className="hero-stage-shade bg-gradient-to-t from-[#0a0d14] via-[#0a0d14]/75 to-transparent"
@@ -79,8 +87,15 @@ export function HomeHero({
 
       <div className="hero-stage-inner">
         <p className="hero-kicker animate-rise">
-          <span className="hero-kicker-dot" />
-          {CUP_KICKER}
+          <span
+            className={cn(
+              "hero-kicker-dot",
+              crowned && "hero-kicker-dot-complete",
+            )}
+          />
+          {crowned
+            ? `${seasonBit ?? CUP_KICKER} · Complete`
+            : CUP_KICKER}
         </p>
         <h1 className="hero-title animate-rise delay-1">
           <Image
@@ -95,88 +110,156 @@ export function HomeHero({
             <span>{titleLead}</span>
             <span>
               {titleTail}
-              {seasonLabel ? ` ${seasonLabel}` : ""}
+              {seasonBit && !crowned ? ` ${seasonBit}` : ""}
             </span>
           </span>
         </h1>
-        <p className="hero-tagline animate-rise delay-2">
-          Two groups. One bracket. Every night on the clock.
-        </p>
-        <p className="hero-lead animate-rise delay-2">
-          Saturday and Sunday indoor matches, group stage into a live playoff
-          graph. Captains, rosters, and kickoffs — all in one place.
-        </p>
-        <div className="hero-ctas animate-rise delay-3">
-          <Link href="/schedule" className="btn btn-gold">
-            Open schedule
-          </Link>
-          <Link href="/playoffs" className="btn">
-            Tournament graph
-          </Link>
-          <Link href="/teams" className="btn btn-ghost">
-            Franchises
-          </Link>
-        </div>
 
-        <ul className="m-0 mb-6 grid list-none grid-cols-2 gap-3 p-0 sm:grid-cols-4">
-          <li>
-            <StatTile label="Teams" value={String(teamCount)} />
-          </li>
-          <li>
-            <StatTile label="Matches logged" value={String(matchCount)} />
-          </li>
-          <li>
-            <StatTile label="Grand Final" value="Bo3" />
-          </li>
-          <li>
-            <StatTile label="Kickoffs" value="PKT" />
-          </li>
-        </ul>
-
-        {upcoming ? (
-          <EsportsCard className="animate-rise delay-3 overflow-hidden bg-[#121824]/85 backdrop-blur-md">
-            <div className="border-b border-white/10 px-5 py-3">
-              <p className="m-0 text-[0.68rem] font-semibold tracking-[0.18em] text-primary uppercase">
-                Next series
-              </p>
+        {crowned && champion ? (
+          <>
+            <p className="hero-tagline hero-champion-line animate-rise delay-2">
+              {champion.team.name} wins
+            </p>
+            <p className="hero-lead animate-rise delay-2">
+              Tournament complete
+              {champion.finalScore
+                ? ` · Grand Final ${champion.finalScore}`
+                : " · Grand Final champions"}
+              . Season {champion.seasonNumber} crown goes to{" "}
+              <Link
+                href={`/teams/${champion.team.id}`}
+                className="hero-champion-link"
+              >
+                {champion.team.name}
+              </Link>
+              .
+            </p>
+            <div className="hero-ctas animate-rise delay-3">
+              <Link href={`/teams/${champion.team.id}`} className="btn btn-gold">
+                Champion roster
+              </Link>
+              <Link href="/playoffs" className="btn">
+                Final bracket
+              </Link>
+              <Link href="/seasons" className="btn btn-ghost">
+                Season archive
+              </Link>
             </div>
-            <div className="relative px-5 py-5">
-              <span
-                className="pointer-events-none absolute inset-y-0 left-0 w-1/3 bg-[radial-gradient(ellipse_at_left,rgba(34,197,94,0.16),transparent_70%)]"
-                aria-hidden
-              />
-              <span
-                className="pointer-events-none absolute inset-y-0 right-0 w-1/3 bg-[radial-gradient(ellipse_at_right,rgba(239,68,68,0.16),transparent_70%)]"
-                aria-hidden
-              />
-              <div className="relative grid items-center gap-6 md:grid-cols-[1fr_auto_1fr]">
-                <ShowdownSide
-                  name={upcoming.radiantTeam.name}
-                  href={`/teams/${upcoming.radiantTeam.id}`}
-                  side="radiant"
+
+            <ul className="m-0 mb-6 grid list-none grid-cols-2 gap-3 p-0 sm:grid-cols-4">
+              <li>
+                <StatTile label="Champion" value={champion.team.name.replace(/^Team\s+/i, "")} />
+              </li>
+              <li>
+                <StatTile
+                  label="Grand Final"
+                  value={champion.finalScore ? `${champion.finalScore}` : "Bo3"}
                 />
-                <div className="flex flex-col items-center gap-2 text-center">
-                  <span className="inline-flex rounded-full border border-primary/40 bg-[#0a0d14]/80 px-3 py-1 font-display text-sm font-bold tracking-[0.22em] text-primary shadow-[0_0_18px_rgba(245,158,11,0.25)]">
-                    VS
+              </li>
+              <li>
+                <StatTile label="Matches logged" value={String(matchCount)} />
+              </li>
+              <li>
+                <StatTile label="Teams" value={String(teamCount)} />
+              </li>
+            </ul>
+
+            {starters.length > 0 ? (
+              <p className="hero-champion-roster animate-rise delay-3">
+                {starters.map((player, index) => (
+                  <span key={player.id}>
+                    {index > 0 ? " · " : ""}
+                    <Link href={`/players/${player.id}`}>
+                      {player.steamName}
+                      {player.isCaptain ? " (C)" : ""}
+                    </Link>
                   </span>
-                  <p className="m-0 text-center text-[0.72rem] tracking-wide text-muted-foreground uppercase md:whitespace-nowrap">
-                    {seriesFormat(upcoming)}
+                ))}
+              </p>
+            ) : null}
+          </>
+        ) : (
+          <>
+            <p className="hero-tagline animate-rise delay-2">
+              Two groups. One bracket. Every night on the clock.
+            </p>
+            <p className="hero-lead animate-rise delay-2">
+              Saturday and Sunday indoor matches, group stage into a live playoff
+              graph. Captains, rosters, and kickoffs — all in one place.
+            </p>
+            <div className="hero-ctas animate-rise delay-3">
+              <Link href="/schedule" className="btn btn-gold">
+                Open schedule
+              </Link>
+              <Link href="/playoffs" className="btn">
+                Tournament graph
+              </Link>
+              <Link href="/teams" className="btn btn-ghost">
+                Franchises
+              </Link>
+            </div>
+
+            <ul className="m-0 mb-6 grid list-none grid-cols-2 gap-3 p-0 sm:grid-cols-4">
+              <li>
+                <StatTile label="Teams" value={String(teamCount)} />
+              </li>
+              <li>
+                <StatTile label="Matches logged" value={String(matchCount)} />
+              </li>
+              <li>
+                <StatTile label="Grand Final" value="Bo3" />
+              </li>
+              <li>
+                <StatTile label="Kickoffs" value="PKT" />
+              </li>
+            </ul>
+
+            {upcoming ? (
+              <EsportsCard className="animate-rise delay-3 overflow-hidden bg-[#121824]/85 backdrop-blur-md">
+                <div className="border-b border-white/10 px-5 py-3">
+                  <p className="m-0 text-[0.68rem] font-semibold tracking-[0.18em] text-primary uppercase">
+                    Next series
                   </p>
                 </div>
-                <ShowdownSide
-                  name={upcoming.direTeam.name}
-                  href={`/teams/${upcoming.direTeam.id}`}
-                  side="dire"
-                />
-              </div>
-              {upcoming.scheduledAt ? (
-                <div className="relative mt-6 flex justify-center">
-                  <MatchCountdown at={toIso(upcoming.scheduledAt)} />
+                <div className="relative px-5 py-5">
+                  <span
+                    className="pointer-events-none absolute inset-y-0 left-0 w-1/3 bg-[radial-gradient(ellipse_at_left,rgba(34,197,94,0.16),transparent_70%)]"
+                    aria-hidden
+                  />
+                  <span
+                    className="pointer-events-none absolute inset-y-0 right-0 w-1/3 bg-[radial-gradient(ellipse_at_right,rgba(239,68,68,0.16),transparent_70%)]"
+                    aria-hidden
+                  />
+                  <div className="relative grid items-center gap-6 md:grid-cols-[1fr_auto_1fr]">
+                    <ShowdownSide
+                      name={upcoming.radiantTeam.name}
+                      href={`/teams/${upcoming.radiantTeam.id}`}
+                      side="radiant"
+                    />
+                    <div className="flex flex-col items-center gap-2 text-center">
+                      <span className="inline-flex rounded-full border border-primary/40 bg-[#0a0d14]/80 px-3 py-1 font-display text-sm font-bold tracking-[0.22em] text-primary shadow-[0_0_18px_rgba(245,158,11,0.25)]">
+                        VS
+                      </span>
+                      <p className="m-0 text-center text-[0.72rem] tracking-wide text-muted-foreground uppercase md:whitespace-nowrap">
+                        {seriesFormat(upcoming)}
+                      </p>
+                    </div>
+                    <ShowdownSide
+                      name={upcoming.direTeam.name}
+                      href={`/teams/${upcoming.direTeam.id}`}
+                      side="dire"
+                    />
+                  </div>
+                  {upcoming.scheduledAt ? (
+                    <div className="relative mt-6 flex justify-center">
+                      <MatchCountdown at={toIso(upcoming.scheduledAt)} />
+                    </div>
+                  ) : null}
                 </div>
-              ) : null}
-            </div>
-          </EsportsCard>
-        ) : null}
+              </EsportsCard>
+            ) : null}
+          </>
+        )}
       </div>
     </section>
   );

@@ -12,7 +12,8 @@ export const metadata = pageMeta(
   `Past ${CUP_NAME} seasons and champions from this indoor Dota 2 tournament in Pakistan.`,
 );
 
-function statusLabel(status: string, live: boolean) {
+function statusLabel(status: string, live: boolean, hasChampion: boolean) {
+  if (hasChampion) return "Champions";
   if (live) return "Live";
   if (status === "archived") return "Champion";
   if (status === "upcoming") return "Upcoming";
@@ -61,9 +62,12 @@ export default async function SeasonsPage() {
               <article key={season.id} className="season-history-card">
                 <header>
                   <p className="eyebrow">
-                    {statusLabel(season.status, season.live)}
-                    {season.live ? (
+                    {statusLabel(season.status, season.live, Boolean(season.champion))}
+                    {season.live && !season.champion ? (
                       <span className="badge badge-gold">Now</span>
+                    ) : null}
+                    {season.champion ? (
+                      <span className="badge badge-gold">Complete</span>
                     ) : null}
                   </p>
                   <h2>

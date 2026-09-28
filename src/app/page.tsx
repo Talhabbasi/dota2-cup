@@ -16,7 +16,7 @@ import {
 import { PlayoffGraphLazy } from "@/components/playoff-graph-lazy";
 import { getPlayoffView } from "@/lib/playoff";
 import { getActiveWeekendBundle } from "@/lib/schedule";
-import { getCurrentSeasonSafe } from "@/lib/seasons";
+import { getCurrentSeasonChampion, getCurrentSeasonSafe } from "@/lib/seasons";
 
 export const revalidate = 30;
 
@@ -46,28 +46,40 @@ function HomeGroupColumn({
 }
 
 export default async function Home() {
-  const [table, matches, teamCount, matchCount, upcoming, weekend, playoff, season] =
-    await Promise.all([
-      getStandings(),
-      getRecentMatches(5),
-      getTeamCount(),
-      getMatchCount(),
-      getUpcomingFixture(),
-      getActiveWeekendBundle(),
-      getPlayoffView(),
-      getCurrentSeasonSafe(),
-    ]);
+  const [
+    table,
+    matches,
+    teamCount,
+    matchCount,
+    upcoming,
+    weekend,
+    playoff,
+    season,
+    champion,
+  ] = await Promise.all([
+    getStandings(),
+    getRecentMatches(5),
+    getTeamCount(),
+    getMatchCount(),
+    getUpcomingFixture(),
+    getActiveWeekendBundle(),
+    getPlayoffView(),
+    getCurrentSeasonSafe(),
+    getCurrentSeasonChampion(),
+  ]);
 
   const latest = matches[0] ?? null;
   const recent = latest ? matches.slice(1, 5) : matches.slice(0, 4);
+  const crowned = Boolean(champion);
 
   return (
     <>
       <HomeHero
-        upcoming={upcoming}
+        upcoming={crowned ? null : upcoming}
         teamCount={teamCount}
         matchCount={matchCount}
         seasonLabel={season ? `Season ${season.number}` : null}
+        champion={champion}
       />
 
       <div className="page home-body">
@@ -75,24 +87,57 @@ export default async function Home() {
           <LoginErrorBanner />
         </Suspense>
 
-        <section
-          className="mb-7 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"
-          aria-label="Cup format"
-        >
-          {[
-            ["01", "Group stage", "Two groups of four. Round-robin Bo1. Fourth place is out."],
-            ["02", "Crossovers", "A1 vs B2 and B1 vs A2. Each 3rd waits for a loser."],
-            ["03", "Playoffs", "Double-elim graph. Grand Final is Bo3. Everything else Bo1."],
-          ].map(([index, title, copy]) => (
-            <EsportsCard key={index} className="px-5 py-5">
-              <p className="m-0 font-mono text-lg font-bold text-amber-500">{index}</p>
-              <h2 className="mt-2 mb-1.5 font-display text-lg tracking-wide text-foreground uppercase">
-                {title}
+        {crowned && champion ? (
+          <section className="mb-8" aria-label="Season champion">
+            <EsportsCard className="overflow-hidden px-5 py-6 sm:px-7">
+              <p className="m-0 font-mono text-sm font-bold tracking-[0.18em] text-amber-500 uppercase">
+                Season {champion.seasonNumber} champions
+              </p>
+              <h2 className="mt-2 mb-2 font-display text-3xl tracking-wide text-foreground uppercase sm:text-4xl">
+                <Link href={`/teams/${champion.team.id}`}>
+                  {champion.team.name}
+                </Link>
               </h2>
-              <p className="m-0 text-sm leading-relaxed text-muted-foreground">{copy}</p>
+              <p className="m-0 mb-4 text-sm text-muted-foreground">
+                Tournament ended
+                {champion.finalScore
+                  ? ` · Grand Final ${champion.finalScore}`
+                  : ""}
+                . Bracket and match history stay up for the archive.
+              </p>
+              <div className="flex flex-wrap gap-3">
+                <Link href="/playoffs" className="btn btn-gold">
+                  View bracket
+                </Link>
+                <Link href="/matches" className="btn">
+                  All matches
+                </Link>
+                <Link href="/seasons" className="btn btn-ghost">
+                  Seasons
+                </Link>
+              </div>
             </EsportsCard>
-          ))}
-        </section>
+          </section>
+        ) : (
+          <section
+            className="mb-7 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"
+            aria-label="Cup format"
+          >
+            {[
+              ["01", "Group stage", "Two groups of four. Round-robin Bo1. Fourth place is out."],
+              ["02", "Crossovers", "A1 vs B2 and B1 vs A2. Each 3rd waits for a loser."],
+              ["03", "Playoffs", "Double-elim graph. Grand Final is Bo3. Everything else Bo1."],
+            ].map(([index, title, copy]) => (
+              <EsportsCard key={index} className="px-5 py-5">
+                <p className="m-0 font-mono text-lg font-bold text-amber-500">{index}</p>
+                <h2 className="mt-2 mb-1.5 font-display text-lg tracking-wide text-foreground uppercase">
+                  {title}
+                </h2>
+                <p className="m-0 text-sm leading-relaxed text-muted-foreground">{copy}</p>
+              </EsportsCard>
+            ))}
+          </section>
+        )}
 
         {latest ? (
           <section className="mb-8">
