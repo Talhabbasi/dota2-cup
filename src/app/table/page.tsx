@@ -1,8 +1,14 @@
 import { PageHeader } from "@/components/common";
 import { GroupStandingsTable } from "@/components/group-standings";
 import { StandingsBoard } from "@/components/standings-board";
+import { SeasonArchiveBannerServer } from "@/components/season-archive-banner-server";
+import {
+  loadGroupStandingsForSeason,
+  loadStandingsForSeason,
+} from "@/lib/season-data";
 import { getGroupStandings } from "@/lib/group-stage-schedule";
 import { getStandings } from "@/lib/data";
+import { getPublicSeasonContext } from "@/lib/season-page";
 import { pageMeta } from "@/lib/seo";
 import { CUP_NAME } from "@/lib/brand";
 
@@ -13,11 +19,21 @@ export const metadata = pageMeta(
   `Live ${CUP_NAME} standings: wins, losses, and points for every franchise this season.`,
 );
 
-export default async function TablePage() {
+export default async function TablePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ season?: string }>;
+}) {
+  const sp = await searchParams;
+  const { view, seasonId } = await getPublicSeasonContext(sp);
   const [groupA, groupB, overall] = await Promise.all([
-    getGroupStandings("A"),
-    getGroupStandings("B"),
-    getStandings(),
+    seasonId
+      ? loadGroupStandingsForSeason(seasonId, "A")
+      : getGroupStandings("A"),
+    seasonId
+      ? loadGroupStandingsForSeason(seasonId, "B")
+      : getGroupStandings("B"),
+    seasonId ? loadStandingsForSeason(seasonId) : getStandings(),
   ]);
 
   const views = overall.map((row) => ({
@@ -39,63 +55,39 @@ export default async function TablePage() {
     groupB.length === 4 && groupB.every((row) => row.played === 3);
 
   return (
-    <div className="page standings-page">
+    <div className="page table-page">
+      <SeasonArchiveBannerServer season={sp.season} />
       <PageHeader
-        className="standings-hero"
-        eyebrow="League"
-        title="Standings"
+        eyebrow="Standings"
+        title={view ? `Table · Season ${view.number}` : "Standings"}
+        subtitle={
+          hasGroups
+            ? `${groupGames} group games counted toward placement. Overall table includes playoffs.`
+            : "Team records update after each result is logged."
+        }
         pills={
-          hasGroups || views.length > 0
-            ? [
-                {
-                  value: groupA.length + groupB.length || views.length,
-                  label: "teams",
-                },
-                {
-                  value: groupGames || views.reduce((n, r) => n + r.played, 0),
-                  label: "games played",
-                },
-              ]
+          views.length > 0
+            ? [{ value: views.length, label: "teams" }]
             : undefined
         }
       />
 
-      {!hasGroups && views.length === 0 ? (
-        <div className="empty-panel teams-list-empty">
-          <span className="team-empty-matches-icon" aria-hidden>
-            🏆
-          </span>
-          <p className="muted" style={{ margin: 0 }}>
-            No teams on the table yet.
-          </p>
+      {hasGroups ? (
+        <div className="group-standings-row-wrap">
+          <GroupStandingsTable
+            title="Group A"
+            rows={groupA}
+            markLastEliminated={markA}
+          />
+          <GroupStandingsTable
+            title="Group B"
+            rows={groupB}
+            markLastEliminated={markB}
+          />
         </div>
-      ) : (
-        <div className="grid gap-8">
-          {hasGroups ? (
-            <div className="group-standings-row-wrap">
-              <GroupStandingsTable
-                title="Group A"
-                rows={groupA}
-                markLastEliminated={markA}
-              />
-              <GroupStandingsTable
-                title="Group B"
-                rows={groupB}
-                markLastEliminated={markB}
-              />
-            </div>
-          ) : null}
+      ) : null}
 
-          {views.length > 0 ? (
-            <section className="grid gap-3">
-              <h2 className="m-0 font-display text-xl tracking-wide text-foreground">
-                Overall
-              </h2>
-              <StandingsBoard rows={views} />
-            </section>
-          ) : null}
-        </div>
-      )}
+      <StandingsBoard rows={views} />
     </div>
   );
 }

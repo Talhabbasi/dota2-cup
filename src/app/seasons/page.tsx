@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/common";
 import { pageMeta } from "@/lib/seo";
 import { getSeasonHistory } from "@/lib/seasons";
@@ -13,40 +12,32 @@ export const metadata = pageMeta(
 );
 
 function statusLabel(status: string, live: boolean, hasChampion: boolean) {
-  if (hasChampion) return "Champions";
+  if (hasChampion && status === "archived") return "Champions";
   if (live) return "Live";
-  if (status === "archived") return "Champion";
+  if (status === "archived") return "Archived";
   if (status === "upcoming") return "Upcoming";
   return status;
 }
 
 export default async function SeasonsPage() {
-  const history = await getSeasonHistory();
-  const seasons = history.filter((row) => row.champion);
-  if (seasons.length === 0) notFound();
+  const seasons = await getSeasonHistory();
 
   return (
     <div className="page seasons-page">
       <PageHeader
         eyebrow="Archive"
         title="Seasons"
+        subtitle="Completed seasons stay read-only — open bracket and matches from each card."
         pills={[
           {
             value: seasons.length,
             label: `season${seasons.length === 1 ? "" : "s"}`,
-          },
-          {
-            value: seasons.length,
-            label: `champion${seasons.length === 1 ? "" : "s"}`,
           },
         ]}
       />
 
       {seasons.length === 0 ? (
         <div className="empty-panel teams-list-empty">
-          <span className="team-empty-matches-icon" aria-hidden>
-            🏆
-          </span>
           <p className="muted" style={{ margin: 0 }}>
             No seasons yet.
           </p>
@@ -62,11 +53,15 @@ export default async function SeasonsPage() {
               <article key={season.id} className="season-history-card">
                 <header>
                   <p className="eyebrow">
-                    {statusLabel(season.status, season.live, Boolean(season.champion))}
-                    {season.live && !season.champion ? (
+                    {statusLabel(
+                      season.status,
+                      season.live,
+                      Boolean(season.champion),
+                    )}
+                    {season.live ? (
                       <span className="badge badge-gold">Now</span>
                     ) : null}
-                    {season.champion ? (
+                    {season.champion && season.status === "archived" ? (
                       <span className="badge badge-gold">Complete</span>
                     ) : null}
                   </p>
@@ -84,6 +79,20 @@ export default async function SeasonsPage() {
                       Champion{" "}
                       <Link href={`/teams/${season.champion.id}`}>
                         {season.champion.name}
+                      </Link>
+                    </p>
+                    <p className="m-0 mb-3 flex flex-wrap gap-3 text-sm">
+                      <Link
+                        href={`/playoffs?season=${season.number}`}
+                        className="text-link"
+                      >
+                        View bracket
+                      </Link>
+                      <Link
+                        href={`/matches?season=${season.number}`}
+                        className="text-link"
+                      >
+                        All matches
                       </Link>
                     </p>
                     {starters.length > 0 ? (
@@ -118,7 +127,9 @@ export default async function SeasonsPage() {
                   <p className="muted">
                     {season.live
                       ? "Grand Final not played yet. The champion will show here after the Bo3."
-                      : "No champion recorded for this season."}
+                      : season.status === "upcoming"
+                        ? "Upcoming — not started yet."
+                        : "No champion recorded for this season."}
                   </p>
                 )}
               </article>

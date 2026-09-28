@@ -13,6 +13,12 @@ model Season {
   number    Int       @unique
   name      String
   status    String    @default("upcoming")
+  /// UPCOMING | AUCTION_ACTIVE | IN_PROGRESS | COMPLETED
+  phase     String    @default("UPCOMING")
+  plannedStartAt DateTime?
+  /// AUCTION_BASED | TEAM_BASED
+  tournamentFormat String @default("AUCTION_BASED")
+  teamCount Int       @default(8)
   createdAt DateTime  @default(now())
   startedAt DateTime?
   endedAt   DateTime?
@@ -28,6 +34,20 @@ model Season {
   cupSettings  CupSettings[]
   predictions  MatchPrediction[]
   bracketPicks BracketPick[]
+  snapshot     SeasonSnapshot?
+}
+
+/// Frozen bracket / insights when a season is archived.
+model SeasonSnapshot {
+  id                  String   @id @default(cuid())
+  seasonId            String   @unique
+  season              Season   @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  archivedAt          DateTime @default(now())
+  championTeamId      String?
+  finalScore          String?
+  bracketJson         String?
+  predictionsLockedAt DateTime?
+  insightsJson        String?
 }
 
 model PostedRelease {

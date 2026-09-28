@@ -70,6 +70,13 @@ const SECTIONS = [
     tone: "amber",
   },
   {
+    href: "/admin/seasons",
+    label: "Seasons",
+    note: "Create, go live, archive",
+    icon: CalendarDays,
+    tone: "gold",
+  },
+  {
     href: "/admin/payments",
     label: "Payments",
     note: "Collection & mark paid",

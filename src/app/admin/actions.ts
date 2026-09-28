@@ -39,6 +39,11 @@ import { ingestScoreboardScreenshot, listScoreboardKnownNames } from "@/lib/scor
 import { recordManualSeriesWinner } from "@/lib/results";
 import { prisma } from "@/lib/prisma";
 import type { Medal } from "@/lib/constants";
+import {
+  activateSeason,
+  createSeasonAdmin,
+  endSeasonArchive,
+} from "@/lib/seasons";
 
 function revalidateAdmin() {
   revalidatePublicPages();
@@ -53,6 +58,7 @@ function revalidateAdmin() {
   revalidatePath("/admin/payments");
   revalidatePath("/admin/insights");
   revalidatePath("/admin/logs");
+  revalidatePath("/admin/seasons");
   revalidatePath("/player-insight");
   revalidatePath("/predictions");
 }
@@ -670,5 +676,64 @@ export async function actionAttachMatchScreenshot(
       ok: false,
       error: actionErrorMessage(error, "Upload failed. Try again."),
     };
+  }
+}
+
+export async function actionCreateSeason(formData: FormData) {
+  const session = await requireAdmin();
+  const name = String(formData.get("name") ?? "").trim();
+  const plannedRaw = String(formData.get("plannedStartAt") ?? "").trim();
+  const tournamentFormat = String(formData.get("tournamentFormat") ?? "").trim();
+  const teamCount = Number(String(formData.get("teamCount") ?? "8"));
+  const plannedStartAt = plannedRaw ? new Date(`${plannedRaw}T12:00:00`) : null;
+  try {
+    const season = await createSeasonAdmin({
+      name,
+      plannedStartAt,
+      tournamentFormat,
+      teamCount,
+    });
+    await note(session, "season.create", `Created ${season.name}`, {
+      seasonId: season.id,
+      number: season.number,
+    });
+    revalidateAdmin();
+    revalidatePath("/admin/seasons");
+    revalidatePath("/seasons");
+  } catch (error) {
+    throw error instanceof Error ? error : new Error("Could not create season.");
+  }
+}
+
+export async function actionEndSeasonArchive(formData: FormData) {
+  const session = await requireAdmin();
+  const seasonId = String(formData.get("seasonId") ?? "").trim();
+  if (!seasonId) throw new Error("Missing season.");
+  try {
+    const season = await endSeasonArchive(seasonId);
+    await note(session, "season.end", `Archived ${season.name}`, { seasonId });
+    revalidateAdmin();
+    revalidatePath("/admin/seasons");
+    revalidatePath("/");
+    revalidatePath("/seasons");
+    revalidatePublicPages();
+  } catch (error) {
+    throw error instanceof Error ? error : new Error("Could not archive season.");
+  }
+}
+
+export async function actionActivateSeason(formData: FormData) {
+  const session = await requireAdmin();
+  const seasonId = String(formData.get("seasonId") ?? "").trim();
+  if (!seasonId) throw new Error("Missing season.");
+  try {
+    const season = await activateSeason(seasonId);
+    await note(session, "season.activate", `Activated ${season.name}`, { seasonId });
+    revalidateAdmin();
+    revalidatePath("/admin/seasons");
+    revalidatePath("/");
+    revalidatePublicPages();
+  } catch (error) {
+    throw error instanceof Error ? error : new Error("Could not activate season.");
   }
 }

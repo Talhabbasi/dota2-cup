@@ -384,8 +384,13 @@ export async function listEditableFixtures(limit = 25) {
   );
 }
 
-async function listCupScheduleImpl(opts?: { publicOnly?: boolean }) {
-  const season = await currentSeasonFilter();
+async function listCupScheduleImpl(opts?: {
+  publicOnly?: boolean;
+  seasonId?: string;
+}) {
+  const season = opts?.seasonId
+    ? { seasonId: opts.seasonId }
+    : await currentSeasonFilter();
   return safeScheduleQuery([], () =>
     prisma.scheduledFixture.findMany({
       where: opts?.publicOnly
@@ -403,10 +408,15 @@ const listPublicCupScheduleCached = unstable_cache(
   { tags: [PUBLIC_PAGE_TAG], revalidate: PUBLIC_REVALIDATE_SECONDS },
 );
 
-export async function listCupSchedule(opts?: { publicOnly?: boolean }) {
-  const rows = opts?.publicOnly
-    ? await listPublicCupScheduleCached()
-    : await listCupScheduleImpl(opts);
+export async function listCupSchedule(opts?: {
+  publicOnly?: boolean;
+  seasonId?: string;
+}) {
+  const rows = opts?.seasonId
+    ? await listCupScheduleImpl(opts)
+    : opts?.publicOnly
+      ? await listPublicCupScheduleCached()
+      : await listCupScheduleImpl(opts);
   // unstable_cache JSON-serializes Dates; restore them for callers.
   return rows.map((row) => ({
     ...row,

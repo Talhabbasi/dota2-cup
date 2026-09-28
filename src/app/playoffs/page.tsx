@@ -3,10 +3,15 @@ import { PageHeader } from "@/components/common";
 import { GroupStandingsTable } from "@/components/group-standings";
 import { PlayoffBracket } from "@/components/playoff-bracket";
 import { PlayoffGraphLazy } from "@/components/playoff-graph-lazy";
+import { SeasonArchiveBannerServer } from "@/components/season-archive-banner-server";
 import type { GroupGraphMatch } from "@/components/playoff-graph";
-import { getGroupStandings } from "@/lib/group-stage-schedule";
+import {
+  loadGroupStandingsForSeason,
+} from "@/lib/season-data";
 import { getPlayoffView } from "@/lib/playoff";
+import { getPublicSeasonContext } from "@/lib/season-page";
 import { listCupSchedule } from "@/lib/schedule-crud";
+import { getSeasonSnapshotBracket } from "@/lib/seasons";
 import { pageMeta } from "@/lib/seo";
 import { CUP_NAME } from "@/lib/brand";
 
@@ -17,13 +22,32 @@ export const metadata = pageMeta(
   `Follow the ${CUP_NAME} playoff graph: group standings, upper and lower brackets, and the Grand Final.`,
 );
 
-export default async function PlayoffsPage() {
-  const [view, groupA, groupB, fixtures] = await Promise.all([
+export default async function PlayoffsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ season?: string }>;
+}) {
+  const sp = await searchParams;
+  const { view: viewSeason, seasonId } = await getPublicSeasonContext(sp);
+
+  const [viewFromSnap, viewLive, groupA, groupB, fixtures] = await Promise.all([
+    viewSeason?.isArchive && seasonId
+      ? getSeasonSnapshotBracket(seasonId)
+      : Promise.resolve(null),
     getPlayoffView(),
-    getGroupStandings("A"),
-    getGroupStandings("B"),
-    listCupSchedule({ publicOnly: true }),
+    seasonId
+      ? loadGroupStandingsForSeason(seasonId, "A")
+      : Promise.resolve([]),
+    seasonId
+      ? loadGroupStandingsForSeason(seasonId, "B")
+      : Promise.resolve([]),
+    listCupSchedule({
+      publicOnly: true,
+      seasonId: seasonId ?? undefined,
+    }),
   ]);
+
+  const view = viewFromSnap ?? viewLive;
   const groupIdsA = new Set(groupA.map((row) => row.id));
   const groupMatches: GroupGraphMatch[] = fixtures
     .filter((fixture) => fixture.kind === "group")
@@ -41,9 +65,10 @@ export default async function PlayoffsPage() {
 
   return (
     <div className="page playoffs-page">
+      <SeasonArchiveBannerServer season={sp.season} />
       <PageHeader
         eyebrow="Tournament"
-        title="Playoffs"
+        title={viewSeason ? `Playoffs · Season ${viewSeason.number}` : "Playoffs"}
         subtitle={
           <>
             After the group stage: 4th is eliminated. 3rd in each group waits

@@ -1,7 +1,10 @@
 import { PageHeader } from "@/components/common";
 import { MatchesGrid, type MatchListView } from "@/components/matches-grid";
+import { SeasonArchiveBannerServer } from "@/components/season-archive-banner-server";
 import { getMatches } from "@/lib/data";
+import { loadMatchesForSeason } from "@/lib/season-data";
 import { matchKillTotals } from "@/lib/match-score";
+import { getPublicSeasonContext } from "@/lib/season-page";
 import { pageMeta } from "@/lib/seo";
 import { CUP_NAME } from "@/lib/brand";
 
@@ -12,8 +15,16 @@ export const metadata = pageMeta(
   `${CUP_NAME} match results, scores, and Dota 2 series history for the live indoor season.`,
 );
 
-export default async function MatchesPage() {
-  const matches = await getMatches();
+export default async function MatchesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ season?: string }>;
+}) {
+  const sp = await searchParams;
+  const { view, seasonId } = await getPublicSeasonContext(sp);
+  const matches = seasonId
+    ? await loadMatchesForSeason(seasonId)
+    : await getMatches();
 
   const views: MatchListView[] = matches.map((m) => {
     const { radiantKills, direKills } = matchKillTotals(m.players, {
@@ -45,35 +56,14 @@ export default async function MatchesPage() {
   }, 0);
 
   return (
-    <div className="page matches-list-page">
+    <div className="page matches-page">
+      <SeasonArchiveBannerServer season={sp.season} />
       <PageHeader
-        className="matches-list-hero"
-        eyebrow="Scoreboard"
-        title="Matches"
-        pills={
-          views.length > 0
-            ? [
-                { value: views.length, label: "games logged" },
-                ...(totalKills > 0
-                  ? [{ value: totalKills, label: "total kills tracked" }]
-                  : []),
-              ]
-            : undefined
-        }
+        eyebrow="Results"
+        title={view ? `Matches · Season ${view.number}` : "Matches"}
+        subtitle={`${views.length} recorded · ${totalKills} kills logged`}
       />
-
-      {views.length === 0 ? (
-        <div className="empty-panel teams-list-empty">
-          <span className="team-empty-matches-icon" aria-hidden>
-            ⚔
-          </span>
-          <p className="muted" style={{ margin: 0 }}>
-            No matches yet.
-          </p>
-        </div>
-      ) : (
-        <MatchesGrid matches={views} />
-      )}
+      <MatchesGrid matches={views} />
     </div>
   );
 }

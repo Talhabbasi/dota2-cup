@@ -1,7 +1,9 @@
 import { PageHeader } from "@/components/common";
 import { CupScheduleBoard } from "@/components/cup-schedule";
 import { GroupStandingsTable } from "@/components/group-standings";
-import { getGroupStandings } from "@/lib/group-stage-schedule";
+import { SeasonArchiveBannerServer } from "@/components/season-archive-banner-server";
+import { loadGroupStandingsForSeason } from "@/lib/season-data";
+import { getPublicSeasonContext } from "@/lib/season-page";
 import { listCupSchedule } from "@/lib/schedule-crud";
 import { pageMeta } from "@/lib/seo";
 import { CUP_NAME } from "@/lib/brand";
@@ -13,19 +15,30 @@ export const metadata = pageMeta(
   `Weekend ${CUP_NAME} fixtures in Pakistan time — group stage, playoffs, and upcoming Dota 2 kickoffs.`,
 );
 
-export default async function SchedulePage() {
+export default async function SchedulePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ season?: string }>;
+}) {
+  const sp = await searchParams;
+  const { view, seasonId } = await getPublicSeasonContext(sp);
   const [fixtures, groupA, groupB] = await Promise.all([
-    listCupSchedule({ publicOnly: true }),
-    getGroupStandings("A"),
-    getGroupStandings("B"),
+    listCupSchedule({ publicOnly: true, seasonId: seasonId ?? undefined }),
+    seasonId
+      ? loadGroupStandingsForSeason(seasonId, "A")
+      : Promise.resolve([]),
+    seasonId
+      ? loadGroupStandingsForSeason(seasonId, "B")
+      : Promise.resolve([]),
   ]);
   const upcoming = fixtures.filter((fixture) => fixture.status === "scheduled");
 
   return (
     <div className="page schedule-page">
+      <SeasonArchiveBannerServer season={sp.season} />
       <PageHeader
         eyebrow="Fixtures"
-        title="Schedule"
+        title={view ? `Schedule · Season ${view.number}` : "Schedule"}
         subtitle={
           <>
             Group A Saturday, Group B Sunday, then weekend playoffs. Group

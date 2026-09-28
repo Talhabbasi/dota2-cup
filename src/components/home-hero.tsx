@@ -53,15 +53,18 @@ export function HomeHero({
   matchCount,
   seasonLabel,
   champion,
+  siteMode = "active",
 }: {
   upcoming: FixturePreview | null;
   teamCount: number;
   matchCount: number;
   seasonLabel?: string | null;
   champion?: SeasonChampion | null;
+  siteMode?: "active" | "champion" | "upcoming";
 }) {
   const [titleLead, titleTail] = cupNameLines();
-  const crowned = Boolean(champion);
+  const crowned = siteMode === "champion" && Boolean(champion);
+  const upcomingMode = siteMode === "upcoming";
   const starters =
     champion?.players.filter((player) => !player.isSub) ?? [];
   const seasonBit = seasonLabel ?? (champion ? champion.seasonName : null);
@@ -95,7 +98,9 @@ export function HomeHero({
           />
           {crowned
             ? `${seasonBit ?? CUP_KICKER} · Complete`
-            : CUP_KICKER}
+            : upcomingMode
+              ? `${CUP_KICKER} · Upcoming`
+              : CUP_KICKER}
         </p>
         <h1 className="hero-title animate-rise delay-1">
           <Image
@@ -177,6 +182,24 @@ export function HomeHero({
                 ))}
               </p>
             ) : null}
+          </>
+        ) : upcomingMode ? (
+          <>
+            <p className="hero-tagline animate-rise delay-2">
+              Next season coming soon
+            </p>
+            <p className="hero-lead animate-rise delay-2">
+              The last tournament is in the archive. Organizers will open a new
+              season when registration and auction are ready.
+            </p>
+            <div className="hero-ctas animate-rise delay-3">
+              <Link href="/seasons" className="btn btn-gold">
+                Season archive
+              </Link>
+              <Link href="/playoffs" className="btn">
+                Past brackets
+              </Link>
+            </div>
           </>
         ) : (
           <>

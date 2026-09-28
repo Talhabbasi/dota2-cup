@@ -11,6 +11,20 @@ export const SEASON_STATUS = {
   archived: "archived",
 } as const;
 
+export const SEASON_PHASE = {
+  UPCOMING: "UPCOMING",
+  AUCTION_ACTIVE: "AUCTION_ACTIVE",
+  IN_PROGRESS: "IN_PROGRESS",
+  COMPLETED: "COMPLETED",
+} as const;
+
+export const TOURNAMENT_FORMAT = {
+  AUCTION_BASED: "AUCTION_BASED",
+  TEAM_BASED: "TEAM_BASED",
+} as const;
+
+export const ALLOWED_TEAM_COUNTS = [8, 10, 12] as const;
+
 export type SeasonStatus = (typeof SEASON_STATUS)[keyof typeof SEASON_STATUS];
 
 const DEFAULT_SEASON_NUMBER = 1;
@@ -46,20 +60,21 @@ async function loadCurrentSeasonWith(db: Db) {
   ]);
   if (settings?.currentSeasonId) {
     const pointed = seasons.find((season) => season.id === settings.currentSeasonId);
-    if (pointed) return pointed;
+    if (pointed && pointed.status !== SEASON_STATUS.archived) return pointed;
   }
-  return (
-    seasons.find((season) => season.status === SEASON_STATUS.live) ??
-    seasons[seasons.length - 1] ??
-    null
-  );
+  return seasons.find((season) => season.status === SEASON_STATUS.live) ?? null;
+}
+
+/** Active live season only — never falls back to archived. */
+export async function getLiveSeason(db: Db = prisma) {
+  if (db === prisma) return loadCurrentSeason();
+  return loadCurrentSeasonWith(db);
 }
 
 const loadCurrentSeason = cache(() => loadCurrentSeasonWith(prisma));
 
 export async function getCurrentSeason(db: Db = prisma) {
-  if (db === prisma) return loadCurrentSeason();
-  return loadCurrentSeasonWith(db);
+  return getLiveSeason(db);
 }
 
 export async function getCurrentSeasonSafe() {
@@ -79,24 +94,34 @@ export async function requireCurrentSeason(db: Db = prisma) {
 }
 
 export async function ensureDefaultSeason(db: Db = prisma) {
-  let season = await getCurrentSeason(db);
+  let season = await getLiveSeason(db);
   if (!season) {
-    season = await db.season.upsert({
+    const existing = await db.season.findUnique({
       where: { number: DEFAULT_SEASON_NUMBER },
-      create: {
-        number: DEFAULT_SEASON_NUMBER,
-        name: DEFAULT_SEASON_NAME,
-        status: SEASON_STATUS.live,
-        startedAt: new Date(),
-      },
-      update: {},
     });
+    if (existing) {
+      season = existing;
+    } else {
+      season = await db.season.create({
+        data: {
+          number: DEFAULT_SEASON_NUMBER,
+          name: DEFAULT_SEASON_NAME,
+          status: SEASON_STATUS.live,
+          phase: SEASON_PHASE.IN_PROGRESS,
+          startedAt: new Date(),
+        },
+      });
+    }
   }
 
   if (season.number === DEFAULT_SEASON_NUMBER && season.status === SEASON_STATUS.upcoming) {
     season = await db.season.update({
       where: { id: season.id },
-      data: { status: SEASON_STATUS.live, startedAt: season.startedAt ?? new Date() },
+      data: {
+        status: SEASON_STATUS.live,
+        phase: SEASON_PHASE.IN_PROGRESS,
+        startedAt: season.startedAt ?? new Date(),
+      },
     });
   }
 
@@ -107,7 +132,10 @@ export async function ensureDefaultSeason(db: Db = prisma) {
     await db.cupSettings.create({
       data: { id: "singleton", currentSeasonId: season.id },
     });
-  } else if (settings.currentSeasonId !== season.id) {
+  } else if (
+    settings.currentSeasonId !== season.id &&
+    season.status === SEASON_STATUS.live
+  ) {
     await db.cupSettings.update({
       where: { id: "singleton" },
       data: { currentSeasonId: season.id },
@@ -118,8 +146,17 @@ export async function ensureDefaultSeason(db: Db = prisma) {
 }
 
 export async function currentSeasonId(db: Db = prisma) {
+  const live = await getLiveSeason(db);
+  if (live?.id) return live.id;
   const season = await ensureDefaultSeason(db);
   return season.id;
+}
+
+export async function seasonScope(
+  viewSeasonId?: string | null,
+): Promise<{ seasonId?: string }> {
+  if (viewSeasonId?.trim()) return { seasonId: viewSeasonId.trim() };
+  return currentSeasonFilter();
 }
 
 export async function createSeason(input?: { name?: string | null }) {
@@ -141,8 +178,245 @@ export async function createSeason(input?: { name?: string | null }) {
       number,
       name: seasonName(number, input?.name),
       status: SEASON_STATUS.upcoming,
+      phase: SEASON_PHASE.UPCOMING,
     },
   });
+}
+
+export type CreateSeasonAdminInput = {
+  name: string;
+  plannedStartAt?: Date | null;
+  tournamentFormat?: string;
+  teamCount?: number;
+};
+
+export async function createSeasonAdmin(input: CreateSeasonAdminInput) {
+  const name = input.name?.trim();
+  if (!name) throw new Error("Season name is required.");
+
+  const format =
+    input.tournamentFormat === TOURNAMENT_FORMAT.TEAM_BASED
+      ? TOURNAMENT_FORMAT.TEAM_BASED
+      : TOURNAMENT_FORMAT.AUCTION_BASED;
+
+  const teamCount = input.teamCount ?? 8;
+  if (!(ALLOWED_TEAM_COUNTS as readonly number[]).includes(teamCount)) {
+    throw new Error("Team count must be 8, 10, or 12.");
+  }
+
+  const last = await prisma.season.findFirst({ orderBy: { number: "desc" } });
+  const number = (last?.number ?? 0) + 1;
+
+  return prisma.season.create({
+    data: {
+      number,
+      name: seasonName(number, name),
+      status: SEASON_STATUS.upcoming,
+      phase: SEASON_PHASE.UPCOMING,
+      plannedStartAt: input.plannedStartAt ?? null,
+      tournamentFormat: format,
+      teamCount,
+    },
+  });
+}
+
+export type PublicSeasonRow = {
+  id: string;
+  number: number;
+  name: string;
+  status: string;
+  phase: string;
+  plannedStartAt: Date | null;
+  startedAt: Date | null;
+  endedAt: Date | null;
+  isActive: boolean;
+  championName: string | null;
+};
+
+export async function listPublicSeasons(): Promise<PublicSeasonRow[]> {
+  const [rows, live] = await Promise.all([
+    prisma.season.findMany({
+      orderBy: { number: "desc" },
+      include: { championTeam: { select: { name: true } } },
+    }),
+    getLiveSeason(),
+  ]);
+  return rows.map((row) => ({
+    id: row.id,
+    number: row.number,
+    name: row.name,
+    status: row.status,
+    phase: row.phase,
+    plannedStartAt: row.plannedStartAt,
+    startedAt: row.startedAt,
+    endedAt: row.endedAt,
+    isActive: live?.id === row.id,
+    championName: row.championTeam?.name ?? null,
+  }));
+}
+
+export async function getSeasonByIdOrNumber(
+  idOrNumber: string,
+): Promise<PublicSeasonRow | null> {
+  const trimmed = idOrNumber.trim();
+  const asNum = Number(trimmed);
+  const row = await prisma.season.findFirst({
+    where: Number.isFinite(asNum)
+      ? { OR: [{ id: trimmed }, { number: asNum }] }
+      : { id: trimmed },
+    include: { championTeam: { select: { name: true } } },
+  });
+  if (!row) return null;
+  const live = await getLiveSeason();
+  return {
+    id: row.id,
+    number: row.number,
+    name: row.name,
+    status: row.status,
+    phase: row.phase,
+    plannedStartAt: row.plannedStartAt,
+    startedAt: row.startedAt,
+    endedAt: row.endedAt,
+    isActive: live?.id === row.id,
+    championName: row.championTeam?.name ?? null,
+  };
+}
+
+export async function listSeasonsForAdmin() {
+  return prisma.season.findMany({
+    orderBy: { number: "desc" },
+    include: {
+      championTeam: { select: { id: true, name: true } },
+    },
+  });
+}
+
+export async function activateSeason(seasonId: string) {
+  const target = await prisma.season.findUnique({ where: { id: seasonId } });
+  if (!target) throw new Error("Season not found.");
+  if (target.status === SEASON_STATUS.archived) {
+    throw new Error("Cannot activate an archived season.");
+  }
+  const live = await getLiveSeason();
+  if (live && live.id !== target.id) {
+    throw new Error(
+      `End or archive **${formatSeasonLabel(live)}** before activating another season.`,
+    );
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.season.update({
+      where: { id: target.id },
+      data: {
+        status: SEASON_STATUS.live,
+        phase: SEASON_PHASE.IN_PROGRESS,
+        startedAt: target.startedAt ?? new Date(),
+        endedAt: null,
+      },
+    });
+    await tx.cupSettings.upsert({
+      where: { id: "singleton" },
+      create: { id: "singleton", currentSeasonId: target.id },
+      update: { currentSeasonId: target.id },
+    });
+  });
+
+  return prisma.season.findUniqueOrThrow({ where: { id: target.id } });
+}
+
+export async function endSeasonArchive(seasonId: string) {
+  const season = await prisma.season.findUnique({ where: { id: seasonId } });
+  if (!season) throw new Error("Season not found.");
+  if (season.status === SEASON_STATUS.archived) {
+    throw new Error("That season is already archived.");
+  }
+
+  await recordSeasonChampion(seasonId);
+
+  const updated = await prisma.season.findUnique({
+    where: { id: seasonId },
+    select: { championTeamId: true },
+  });
+  const championId =
+    updated?.championTeamId ?? (await inferSeasonChampionTeamId(seasonId));
+
+  let bracketJson: string | null = null;
+  let finalScore: string | null = null;
+  try {
+    const { getPlayoffView } = await import("./playoff");
+    const view = await getPlayoffView();
+    bracketJson = JSON.stringify(view);
+  } catch {
+    bracketJson = null;
+  }
+
+  const final = await prisma.scheduledFixture.findFirst({
+    where: {
+      seasonId,
+      status: "completed",
+      ...FINAL_WHERE,
+      ...publicFixtureWhere,
+    },
+    select: { radiantWins: true, direWins: true },
+    orderBy: { scheduledAt: "desc" },
+  });
+  if (final) {
+    finalScore = `${Math.max(final.radiantWins, final.direWins)}–${Math.min(final.radiantWins, final.direWins)}`;
+  }
+
+  const now = new Date();
+
+  await prisma.$transaction(async (tx) => {
+    await tx.seasonSnapshot.upsert({
+      where: { seasonId },
+      create: {
+        seasonId,
+        archivedAt: now,
+        championTeamId: championId,
+        finalScore,
+        bracketJson,
+        predictionsLockedAt: now,
+        insightsJson: "{}",
+      },
+      update: {
+        archivedAt: now,
+        championTeamId: championId,
+        finalScore,
+        bracketJson,
+        predictionsLockedAt: now,
+      },
+    });
+    await tx.season.update({
+      where: { id: seasonId },
+      data: {
+        status: SEASON_STATUS.archived,
+        phase: SEASON_PHASE.COMPLETED,
+        endedAt: now,
+        championTeamId: championId ?? undefined,
+      },
+    });
+    await tx.cupSettings.update({
+      where: { id: "singleton" },
+      data: { currentSeasonId: null },
+    });
+  });
+
+  return prisma.season.findUniqueOrThrow({ where: { id: seasonId } });
+}
+
+export async function getSeasonSnapshotBracket(
+  seasonId: string,
+): Promise<import("./playoff").PlayoffView | null> {
+  const snap = await prisma.seasonSnapshot.findUnique({
+    where: { seasonId },
+    select: { bracketJson: true },
+  });
+  if (!snap?.bracketJson) return null;
+  try {
+    return JSON.parse(snap.bracketJson) as import("./playoff").PlayoffView;
+  } catch {
+    return null;
+  }
 }
 
 export function formatSeasonLabel(season: {
@@ -219,35 +493,16 @@ export async function startSeason(number: number) {
     throw new Error(`**${formatSeasonLabel(target)}** is already live.`);
   }
 
-  if (current) {
+  if (current && current.id !== target.id) {
+    await endSeasonArchive(current.id);
+  } else if (current) {
     await recordSeasonChampion(current.id);
   }
 
-  await prisma.$transaction(async (tx) => {
-    if (current) {
-      await tx.season.update({
-        where: { id: current.id },
-        data: { status: SEASON_STATUS.archived, endedAt: new Date() },
-      });
-    }
-    await tx.season.update({
-      where: { id: target.id },
-      data: {
-        status: SEASON_STATUS.live,
-        startedAt: target.startedAt ?? new Date(),
-        endedAt: null,
-      },
-    });
-    await tx.cupSettings.upsert({
-      where: { id: "singleton" },
-      create: { id: "singleton", currentSeasonId: target.id },
-      update: { currentSeasonId: target.id },
-    });
-  });
-
+  const activated = await activateSeason(target.id);
   return {
-    previous: current,
-    current: await prisma.season.findUniqueOrThrow({ where: { id: target.id } }),
+    previous: current?.id !== target.id ? current : null,
+    current: activated,
   };
 }
 
@@ -344,12 +599,11 @@ export async function recordSeasonChampion(
     (await inferSeasonChampionTeamId(seasonId));
   if (!winnerId) return null;
 
-  if (!season.championTeamId || !season.endedAt) {
+  if (!season.championTeamId) {
     await prisma.season.update({
       where: { id: seasonId },
       data: {
         championTeamId: winnerId,
-        endedAt: season.endedAt ?? new Date(),
       },
     });
   }
@@ -376,8 +630,8 @@ export type SeasonChampion = {
 export const getCurrentSeasonChampion = cache(
   async (): Promise<SeasonChampion | null> => {
     try {
-      const season = await getCurrentSeason();
-      if (!season) return null;
+      const season = await getLiveSeason();
+      if (!season || season.status !== SEASON_STATUS.live) return null;
 
       let teamId = season.championTeamId;
       if (!teamId) {
@@ -470,7 +724,7 @@ export async function getSeasonHistory(): Promise<SeasonHistoryRow[]> {
         championTeam: { select: { id: true, name: true } },
       },
     }),
-    getCurrentSeasonSafe(),
+    getLiveSeason(),
   ]);
 
   const rows: SeasonHistoryRow[] = [];

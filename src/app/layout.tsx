@@ -6,7 +6,12 @@ import { Providers } from "@/components/providers";
 import { SiteChrome } from "@/components/site-chrome";
 import { CUP_ICON_PATH, CUP_TITLE_SUFFIX } from "@/lib/brand";
 import { SITE_DESCRIPTION, SITE_NAME, SITE_URL } from "@/lib/seo";
-import { getCurrentSeasonSafe, liveSeasonLabel } from "@/lib/seasons";
+import {
+  getCurrentSeasonSafe,
+  getLiveSeason,
+  listPublicSeasons,
+  liveSeasonLabel,
+} from "@/lib/seasons";
 import { currentPlayer } from "@/lib/auth";
 import "./globals.css";
 
@@ -64,11 +69,16 @@ export const viewport: Viewport = {
 };
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
-  const [season, { player }] = await Promise.all([
-    getCurrentSeasonSafe(),
+  const [live, seasons, { player }] = await Promise.all([
+    getLiveSeason(),
+    listPublicSeasons(),
     currentPlayer(),
   ]);
-  const seasonLabel = liveSeasonLabel(season);
+  const seasonLabel = live
+    ? liveSeasonLabel(live)
+    : seasons.length > 0
+      ? "Season archive"
+      : liveSeasonLabel(await getCurrentSeasonSafe());
   return (
     <html
       lang="en"
@@ -80,6 +90,9 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
           <SiteChrome
             seasonLabel={seasonLabel}
             showRegister={!player}
+            showSeasons={seasons.length > 0}
+            seasons={seasons}
+            liveSeasonId={live?.id ?? null}
             banner={<ClosedBanner />}
           >
             {children}

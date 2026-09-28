@@ -60,11 +60,13 @@ export function Nav({
   showSeasons = false,
   seasonLabel,
   showRegister = true,
+  seasonSwitcher = null,
 }: {
   showSeasons?: boolean;
   seasonLabel: string;
   /** Keep Register until this Discord account has a player row. */
   showRegister?: boolean;
+  seasonSwitcher?: React.ReactNode;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -153,6 +155,7 @@ export function Nav({
         </nav>
 
         <div className="ml-auto flex shrink-0 items-center gap-2">
+          {seasonSwitcher}
           <AuthButtons />
           <button
             type="button"

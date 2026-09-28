@@ -16,7 +16,7 @@ import {
 import { PlayoffGraphLazy } from "@/components/playoff-graph-lazy";
 import { getPlayoffView } from "@/lib/playoff";
 import { getActiveWeekendBundle } from "@/lib/schedule";
-import { getCurrentSeasonChampion, getCurrentSeasonSafe } from "@/lib/seasons";
+import { getCurrentSeasonChampion, getCurrentSeasonSafe, getLiveSeason } from "@/lib/seasons";
 
 export const revalidate = 30;
 
@@ -56,6 +56,7 @@ export default async function Home() {
     playoff,
     season,
     champion,
+    live,
   ] = await Promise.all([
     getStandings(),
     getRecentMatches(5),
@@ -66,20 +67,23 @@ export default async function Home() {
     getPlayoffView(),
     getCurrentSeasonSafe(),
     getCurrentSeasonChampion(),
+    getLiveSeason(),
   ]);
 
   const latest = matches[0] ?? null;
   const recent = latest ? matches.slice(1, 5) : matches.slice(0, 4);
-  const crowned = Boolean(champion);
+  const crowned = Boolean(live && champion);
+  const siteMode = crowned ? "champion" : live ? "active" : "upcoming";
 
   return (
     <>
       <HomeHero
-        upcoming={crowned ? null : upcoming}
+        upcoming={siteMode === "active" ? upcoming : null}
         teamCount={teamCount}
         matchCount={matchCount}
         seasonLabel={season ? `Season ${season.number}` : null}
-        champion={champion}
+        champion={crowned ? champion : null}
+        siteMode={siteMode}
       />
 
       <div className="page home-body">
@@ -87,7 +91,19 @@ export default async function Home() {
           <LoginErrorBanner />
         </Suspense>
 
-        {crowned && champion ? (
+        {siteMode === "upcoming" ? (
+          <section className="mb-8" aria-label="Between seasons">
+            <EsportsCard className="px-5 py-6 sm:px-7">
+              <p className="m-0 text-sm text-muted-foreground">
+                No live tournament right now. Browse the{" "}
+                <Link href="/seasons" className="text-link">
+                  season archive
+                </Link>{" "}
+                for champions, brackets, and match history.
+              </p>
+            </EsportsCard>
+          </section>
+        ) : crowned && champion ? (
           <section className="mb-8" aria-label="Season champion">
             <EsportsCard className="overflow-hidden px-5 py-6 sm:px-7">
               <p className="m-0 font-mono text-sm font-bold tracking-[0.18em] text-amber-500 uppercase">
@@ -139,7 +155,7 @@ export default async function Home() {
           </section>
         )}
 
-        {latest ? (
+        {siteMode === "active" && latest ? (
           <section className="mb-8">
             <MatchCard match={latest} showDate kicker="Latest match" />
           </section>
@@ -163,7 +179,7 @@ export default async function Home() {
           </section>
         ) : null}
 
-        {weekend ? (
+        {siteMode === "active" && weekend ? (
           <WeekendScheduleBlock
             weekendIndex={weekend.weekendIndex}
             fixtures={weekend.fixtures}
