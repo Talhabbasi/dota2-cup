@@ -203,14 +203,14 @@ function geminiImageMime(mime: string) {
   return "image/jpeg";
 }
 
-const GEMINI_MODELS = [
-  "gemini-3.8-flash",
-  "gemini-flash-latest",
-  "gemini-3.5-flash",
-];
+/** Prefer one fast Flash model; one fallback only if the first 404s/busy. */
+const GEMINI_MODELS = ["gemini-3.8-flash", "gemini-flash-latest"];
 
-/** Per-request wait. 3.8 Flash default thinking is medium and often exceeds ~20s. */
-const GEMINI_TIMEOUT_MS = 45_000;
+/**
+ * Per-request wait. Keep below Vercel maxDuration with room for S3 + DB.
+ * Chaining many 45s attempts used to burn the whole function budget.
+ */
+const GEMINI_TIMEOUT_MS = 50_000;
 
 function isBusyGemini(status: number, message: string) {
   return (
@@ -266,9 +266,11 @@ async function generateGeminiJson(
           },
         ],
         generationConfig: {
-          // Gemini 3.x defaults to medium thinking — too slow for scoreboard OCR.
-          thinkingConfig: { thinkingLevel: "low" },
+          // Minimal thinking keeps scoreboard OCR under serverless limits.
+          thinkingConfig: { thinkingLevel: "minimal" },
           responseMimeType: "application/json",
+          temperature: 0.1,
+          maxOutputTokens: 4096,
         },
       }),
     },
@@ -289,8 +291,8 @@ async function parseWithGemini(
   const imageMime = geminiImageMime(mime);
   const prompt = buildParsePrompt(knownNames);
   let lastError = "Gemini did not return a scoreboard.";
-  // One attempt per model — keep total wall time under the Vercel maxDuration.
-  for (const model of GEMINI_MODELS) {
+  for (let i = 0; i < GEMINI_MODELS.length; i++) {
+    const model = GEMINI_MODELS[i]!;
     try {
       const { res, body } = await generateGeminiJson(
         model,
@@ -301,12 +303,12 @@ async function parseWithGemini(
       );
       if (!res.ok) {
         lastError = body.error?.message || `Gemini ${model} returned ${res.status}.`;
-        if (res.status === 404) continue;
-        if (isBusyGemini(res.status, lastError)) {
-          await sleep(600);
+        // Only fall through on missing model / transient overload.
+        if (res.status === 404 || isBusyGemini(res.status, lastError)) {
+          if (isBusyGemini(res.status, lastError)) await sleep(400);
           continue;
         }
-        continue;
+        throw new Error(lastError);
       }
       const text = body.candidates?.[0]?.content?.parts
         ?.map((p) => p.text)
@@ -323,7 +325,12 @@ async function parseWithGemini(
     } catch (error) {
       if (isAbortTimeout(error)) {
         lastError = `Gemini ${model} timed out. Try a clearer SCOREBOARD crop, or retry.`;
-        continue;
+        // Don't burn the rest of the function budget on another 50s wait.
+        break;
+      }
+      // Hard API errors thrown above — surface them.
+      if (error instanceof Error && /returned \d+/.test(error.message)) {
+        throw error;
       }
       lastError =
         error instanceof Error ? error.message : `Gemini ${model} failed.`;

@@ -4,7 +4,7 @@ import { AdminShell } from "@/components/admin/admin-shell";
 
 export const dynamic = "force-dynamic";
 /** Scoreboard OCR (Gemini) needs headroom beyond the default serverless limit. */
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 export default async function AdminLayout({
   children,

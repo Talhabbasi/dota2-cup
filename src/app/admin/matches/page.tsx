@@ -7,7 +7,7 @@ import { AdminMatchesBoard } from "@/components/admin/matches-board";
 
 export const dynamic = "force-dynamic";
 /** Match detail OCR / S3 can take longer than the default serverless limit. */
-export const maxDuration = 60;
+export const maxDuration = 120;
 export const metadata = pageMeta("Admin Matches", "Fix match OCR and results.");
 
 export default async function AdminMatchesPage() {

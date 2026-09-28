@@ -29,7 +29,7 @@ import {
 } from "@/app/admin/actions";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 120;
 export const metadata = pageMeta("Admin Fixture", "Edit scheduled match.");
 
 const TIMES = [

@@ -1,7 +1,7 @@
 /** Client-side resize/compress before FormData upload — cuts upload + OCR time. */
 
-const MAX_EDGE = 1600;
-const JPEG_QUALITY = 0.72;
+const MAX_EDGE = 1280;
+const JPEG_QUALITY = 0.64;
 
 export async function compressImageFileForUpload(file: File): Promise<File> {
   if (!file.type.startsWith("image/")) return file;

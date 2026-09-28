@@ -44,8 +44,9 @@ function safeKeyHint(hint: string): string {
   return (cleaned || "file").slice(0, 64);
 }
 
-const MAX_UPLOAD_WIDTH = 1600;
-const JPEG_QUALITY = 72;
+/** Smaller payloads keep Gemini OCR under serverless time limits. */
+const MAX_UPLOAD_WIDTH = 1280;
+const JPEG_QUALITY = 64;
 
 /**
  * Shrink + JPEG-compress for S3 and OCR. Same buffer is fine for scoreboard
