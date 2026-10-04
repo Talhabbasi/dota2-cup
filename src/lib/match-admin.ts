@@ -1,3 +1,4 @@
+import { withAuctionLock, requireAuctionInactive } from "./auction-lock";
 import { prisma } from "./prisma";
 import { currentSeasonId, getLiveSeason, syncSeasonPlayer } from "./seasons";
 import { rebalanceTeamRoster } from "./players-admin";
@@ -275,10 +276,12 @@ export async function adminSetAuctionSoldPrice(input: {
   lotId: string;
   soldPrice: number;
 }) {
+ return withAuctionLock(async db => {
+ await requireAuctionInactive(db);
   if (!Number.isFinite(input.soldPrice) || input.soldPrice < 0) {
     throw new Error("Sold price must be a non-negative number.");
   }
-  const lot = await prisma.auctionLot.findUnique({
+  const lot = await db.auctionLot.findUnique({
     where: { id: input.lotId },
     include: { team: true },
   });
@@ -291,18 +294,21 @@ export async function adminSetAuctionSoldPrice(input: {
   const next = Math.round(input.soldPrice);
   const delta = next - previous;
 
-  await prisma.$transaction([
-    prisma.auctionLot.update({
+  if (!lot.team || lot.team.purse - delta < 0) throw new Error("This price would exceed the team budget.");
+  await Promise.all([
+    db.auctionLot.update({
       where: { id: lot.id },
       data: { soldPrice: next },
     }),
-    prisma.team.update({
+    db.team.update({
       where: { id: lot.teamId },
       data: { purse: { decrement: delta } },
     }),
   ]);
 
   return { lotId: lot.id, previous, next };
+
+ });
 }
 
 export async function adminListSoldLots() {

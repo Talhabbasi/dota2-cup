@@ -1,5 +1,6 @@
+import { withAuctionLock, requireAuctionInactive, type AuctionDb } from "./auction-lock";
+import { createSeasonTeam, syncPlayerRosterToSeason } from "./season-roster";
 import {
-  MAX_CAPTAINS,
   MAX_ROSTER,
   STARTING_PURSE,
 } from "./constants";
@@ -7,11 +8,11 @@ import { formatRoles } from "./data";
 import { PLAY_WINDOW_SHORT, playWindowOrBoth } from "./play-window";
 import { rebalanceTeamRoster } from "./players-admin";
 import { prisma } from "./prisma";
-import { currentSeasonId, currentSeasonFilter, syncSeasonPlayer, syncSeasonPlayers } from "./seasons";
+import { currentSeasonFilter } from "./seasons";
 import { parseRolesJson } from "./roles";
 
-async function requirePlayer(discordId: string) {
-  const player = await prisma.player.findFirst({
+async function requirePlayer(discordId: string, db: AuctionDb = prisma) {
+  const player = await db.player.findFirst({
     where: {
       OR: [{ discordId }, { discordId: { startsWith: `${discordId}:` } }],
     },
@@ -27,100 +28,30 @@ export async function adminAddCaptain(input: {
   discordId: string;
   teamName: string;
 }) {
-  const player = await requirePlayer(input.discordId);
-  const seasonId = await currentSeasonId();
-
-  if (player.teamId) {
-    const currentTeam = await prisma.team.findUnique({
-      where: { id: player.teamId },
-      select: { id: true, name: true, seasonId: true },
-    });
-    if (currentTeam?.seasonId === seasonId) {
-      throw new Error(`${player.discordName} is already on a team this season.`);
-    }
-  }
-
-  const teamCount = await prisma.team.count({
-    where: { seasonId },
-  });
-  if (teamCount >= MAX_CAPTAINS) {
-    throw new Error(`Already at ${MAX_CAPTAINS} teams.`);
-  }
-
-  const name = input.teamName.trim();
-  const taken = await prisma.team.findFirst({
-    where: {
-      seasonId,
-      name: { equals: name, mode: "insensitive" },
-    },
-  });
-  if (taken) throw new Error(`Team "${name}" already exists this season.`);
-
-  const captainTaken = await prisma.team.findFirst({
-    where: { seasonId, captainId: player.id },
-  });
-  if (captainTaken) {
-    throw new Error(
-      `${player.discordName} already captains **${captainTaken.name}** this season.`,
-    );
-  }
-
-  const team = await prisma.team.create({
-    data: {
-      name,
-      seasonId,
-      captainId: player.id,
-      purse: STARTING_PURSE,
-    },
-  });
-
-  await prisma.player.update({
-    where: { id: player.id },
-    data: {
-      teamId: team.id,
-      isCaptain: true,
-      rosterRole: null,
-      teamJoinedAt: new Date(),
-    },
-  });
-  await syncSeasonPlayer(player.id);
-
-  return prisma.team.findUniqueOrThrow({
-    where: { id: team.id },
-    include: { players: true },
-  });
+  return createSeasonTeam({ name: input.teamName, captainDiscordId: input.discordId, purse: STARTING_PURSE });
 }
 
 export async function adminRemoveCaptain(discordId: string) {
-  const player = await requirePlayer(discordId);
+ return withAuctionLock(async db => {
+ await requireAuctionInactive(db);
+  const player = await requirePlayer(discordId, db);
   if (!player.isCaptain || !player.teamId) {
     throw new Error(`${player.discordName} is not a captain.`);
   }
 
   const teamId = player.teamId;
-  const roster = await prisma.player.findMany({
+  const roster = await db.player.findMany({
     where: { teamId },
     select: { id: true, discordId: true },
   });
   const rosterIds = roster.map((row) => row.id);
-  const state = await ensureAuctionState();
-  if (
-    state.status === "running" &&
-    state.currentBidderTeamId === teamId
-  ) {
-    await prisma.auctionState.update({
-      where: { id: "singleton" },
-      data: { currentBidderTeamId: null },
-    });
-  }
-
-  await prisma.bid.deleteMany({ where: { teamId } });
-  await prisma.auctionLot.updateMany({
+  await db.bid.deleteMany({ where: { teamId } });
+  await db.auctionLot.updateMany({
     where: { teamId },
     data: { teamId: null },
   });
 
-  await prisma.player.updateMany({
+  await db.player.updateMany({
     where: { teamId },
     data: {
       teamId: null,
@@ -130,32 +61,34 @@ export async function adminRemoveCaptain(discordId: string) {
     },
   });
 
-  await prisma.match.updateMany({
+  await db.match.updateMany({
     where: { radiantTeamId: teamId },
     data: { radiantTeamId: null },
   });
-  await prisma.match.updateMany({
+  await db.match.updateMany({
     where: { direTeamId: teamId },
     data: { direTeamId: null },
   });
-  await prisma.match.updateMany({
+  await db.match.updateMany({
     where: { winnerTeamId: teamId },
     data: { winnerTeamId: null },
   });
 
   const name = player.team?.name ?? "the team";
-  await prisma.team.delete({ where: { id: teamId } });
-  await syncSeasonPlayers(rosterIds);
+  await db.team.delete({ where: { id: teamId } });
+  for (const id of rosterIds) await syncPlayerRosterToSeason(id, db);
   return {
     teamName: name,
     rosterDiscordIds: roster.map((row) => row.discordId),
   };
+
+ });
 }
 
-async function findTeamByName(name: string) {
+async function findTeamByName(name: string, db: AuctionDb = prisma) {
   const trimmed = name.trim();
   if (!trimmed) throw new Error("Team name cannot be empty.");
-  const team = await prisma.team.findFirst({
+  const team = await db.team.findFirst({
     where: {
       name: { equals: trimmed, mode: "insensitive" },
       ...(await currentSeasonFilter()),
@@ -183,8 +116,10 @@ export async function adminChangeCaptain(input: {
   teamName: string;
   discordId: string;
 }) {
-  const team = await findTeamByName(input.teamName);
-  const next = await requirePlayer(input.discordId);
+ return withAuctionLock(async db => {
+ await requireAuctionInactive(db);
+  const team = await findTeamByName(input.teamName, db);
+  const next = await requirePlayer(input.discordId, db);
 
   if (next.isCaptain && next.teamId === team.id) {
     throw new Error(`${next.discordName} is already captain of **${team.name}**.`);
@@ -212,7 +147,7 @@ export async function adminChangeCaptain(input: {
     team.players.find((player) => player.isCaptain) ??
     null;
 
-  await prisma.$transaction(async (tx) => {
+  await (async (tx: AuctionDb) => {
     await tx.player.updateMany({
       where: { teamId: team.id, isCaptain: true },
       data: { isCaptain: false },
@@ -229,14 +164,13 @@ export async function adminChangeCaptain(input: {
       where: { id: team.id },
       data: { captainId: next.id },
     });
-  });
+  })(db);
+  await db.captainAccount.updateMany({ where: { teamId: team.id, revokedAt: null }, data: { revokedAt: new Date(), token: null } });
 
-  await rebalanceTeamRoster(team.id);
-  await syncSeasonPlayers(
-    [next.id, previous?.id].filter((id): id is string => Boolean(id)),
-  );
+  await rebalanceTeamRoster(team.id, db);
 
-  const updated = await prisma.team.findUniqueOrThrow({
+
+  const updated = await db.team.findUniqueOrThrow({
     where: { id: team.id },
     include: { players: true },
   });
@@ -258,6 +192,8 @@ export async function adminChangeCaptain(input: {
       playWindow: next.playWindow,
     },
   };
+
+ });
 }
 
 /**
@@ -268,7 +204,9 @@ export async function adminRenameTeam(input: {
   teamName: string;
   newName: string;
 }) {
-  const team = await findTeamByName(input.teamName);
+ return withAuctionLock(async db => {
+ await requireAuctionInactive(db);
+  const team = await findTeamByName(input.teamName, db);
   const newName = input.newName.trim();
   if (!newName) throw new Error("New team name cannot be empty.");
   if (newName.length > 80) {
@@ -278,7 +216,7 @@ export async function adminRenameTeam(input: {
     throw new Error(`That team is already named **${team.name}**.`);
   }
 
-  const taken = await prisma.team.findFirst({
+  const taken = await db.team.findFirst({
     where: {
       seasonId: team.seasonId,
       name: { equals: newName, mode: "insensitive" },
@@ -287,7 +225,7 @@ export async function adminRenameTeam(input: {
   });
   if (taken) throw new Error(`Team **${taken.name}** already exists this season.`);
 
-  await prisma.team.update({
+  await db.team.update({
     where: { id: team.id },
     data: { name: newName },
   });
@@ -303,14 +241,8 @@ export async function adminRenameTeam(input: {
     newName,
     captainName: captain?.steamName ?? null,
   };
-}
 
-async function ensureAuctionState() {
-  return prisma.auctionState.upsert({
-    where: { id: "singleton" },
-    create: { id: "singleton" },
-    update: {},
-  });
+ });
 }
 
 export async function getTeamByCaptainDiscord(discordId: string) {

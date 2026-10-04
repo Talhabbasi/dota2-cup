@@ -12,9 +12,8 @@ function withRuntimePoolParams(url: string) {
     ) {
       parsed.searchParams.set("pgbouncer", "true");
     }
-    // Do not cap the pool on Vercel: `next build` prerenders pages with
-    // parallel queries, and a limit of 1 stalls the Prisma engine.
-    if (!process.env.VERCEL && !parsed.searchParams.has("connection_limit")) {
+    // Per-instance pool, not a global connection budget. Respect explicit URL tuning.
+    if (!parsed.searchParams.has("connection_limit")) {
       parsed.searchParams.set("connection_limit", "5");
     }
     if (!parsed.searchParams.has("pool_timeout")) {

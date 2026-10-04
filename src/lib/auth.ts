@@ -11,6 +11,7 @@ import {
 } from "./admin-password";
 import { verifyCaptainLogin } from "./captain-accounts";
 import { prisma } from "./prisma";
+import { AuctionError } from "./auction-lock";
 import { isSiteAdmin } from "./site-admin";
 
 export const authOptions: NextAuthOptions = {
@@ -66,6 +67,7 @@ export const authOptions: NextAuthOptions = {
           email: `${captain.loginName}@captain.local`,
           captainTeamId: captain.teamId,
           captainAccountId: captain.accountId,
+          captainAccountToken: captain.accountToken,
         };
       },
     }),
@@ -79,7 +81,9 @@ export const authOptions: NextAuthOptions = {
         token.discordId = undefined;
         token.captainTeamId = undefined;
         token.captainAccountId = undefined;
+        token.captainAccountToken = undefined;
       } else if (account?.provider === "captain-credentials" && user) {
+        token.captainAccountToken = (user as { captainAccountToken?: string }).captainAccountToken;
         token.authProvider = "captain";
         token.isAdmin = false;
         token.isCaptainBidder = true;
@@ -93,6 +97,7 @@ export const authOptions: NextAuthOptions = {
         token.isCaptainBidder = false;
         token.captainTeamId = undefined;
         token.captainAccountId = undefined;
+        token.captainAccountToken = undefined;
       }
 
       if (token.authProvider === "credentials") {
@@ -118,6 +123,7 @@ export const authOptions: NextAuthOptions = {
           session.user.isCaptainBidder = true;
           session.user.captainTeamId = token.captainTeamId;
           session.user.captainAccountId = token.captainAccountId;
+          session.user.captainAccountToken = token.captainAccountToken;
         } else {
           const discordId =
             (token.discordId as string | undefined) ?? token.sub ?? undefined;
@@ -141,12 +147,13 @@ export async function authSession() {
 export async function requireCaptainBidder() {
   const session = await authSession();
   if (!session?.user?.isCaptainBidder || !session.user.captainTeamId) {
-    throw new Error("Captain auction login required.");
+    throw new AuctionError("Captain auction login required.", 401);
   }
   return {
     session,
     teamId: session.user.captainTeamId,
-    accountId: session.user.captainAccountId ?? null,
+    accountId: session.user.captainAccountId,
+    accountToken: session.user.captainAccountToken,
   };
 }
 

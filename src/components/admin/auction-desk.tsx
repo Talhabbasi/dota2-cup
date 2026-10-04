@@ -1,5 +1,6 @@
 "use client";
 
+import { useCallback, useState } from "react";
 import {
   actionWebAuctionNext,
   actionWebAuctionPass,
@@ -26,6 +27,10 @@ export function AdminAuctionDesk({
   view: WebAuctionView;
   format: string;
 }) {
+  const [current, setCurrent] = useState(view);
+  const [connected, setConnected] = useState(false);
+  const onView = useCallback((next: WebAuctionView, ready: boolean) => { setCurrent(next); setConnected(ready); }, []);
+  const fields = <><input type="hidden" name="lotId" value={current.lotId ?? ""} /><input type="hidden" name="revision" value={current.revision} /></>;
   if (format === "TEAM_BASED") {
     return (
       <p className="m-0 text-sm text-muted-foreground">
@@ -37,8 +42,8 @@ export function AdminAuctionDesk({
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-      <LiveAuctionBoard initial={view} />
-      <div className="grid gap-3 self-start rounded-xl border border-white/10 p-4">
+      <LiveAuctionBoard initial={view} onView={onView} />
+      <fieldset disabled={!connected} className="grid gap-3 self-start rounded-xl border border-white/10 p-4">
         <h3 className="mt-0 mb-1 font-display text-lg tracking-wide uppercase">
           Master control
         </h3>
@@ -61,21 +66,25 @@ export function AdminAuctionDesk({
 
         <div className="grid grid-cols-2 gap-2">
           <AdminActionForm action={actionWebAuctionTimer} successMessage="Timer started">
+            {fields}
             <AdminSubmitButton variant="secondary" className="w-full text-xs">
               Start timer
             </AdminSubmitButton>
           </AdminActionForm>
           <AdminActionForm action={actionWebAuctionResetTimer} successMessage="Timer reset">
+            {fields}
             <AdminSubmitButton variant="secondary" className="w-full text-xs">
               Reset timer
             </AdminSubmitButton>
           </AdminActionForm>
           <AdminActionForm action={actionWebAuctionPause} successMessage="Paused">
+            {fields}
             <AdminSubmitButton variant="secondary" className="w-full text-xs">
               Pause
             </AdminSubmitButton>
           </AdminActionForm>
           <AdminActionForm action={actionWebAuctionResume} successMessage="Resumed">
+            {fields}
             <AdminSubmitButton variant="secondary" className="w-full text-xs">
               Resume
             </AdminSubmitButton>
@@ -85,6 +94,7 @@ export function AdminAuctionDesk({
             successMessage="Sold"
             confirmMessage="Confirm sale to high bidder?"
           >
+            {fields}
             <AdminSubmitButton className="w-full text-xs">Sold</AdminSubmitButton>
           </AdminActionForm>
           <AdminActionForm
@@ -92,17 +102,19 @@ export function AdminAuctionDesk({
             successMessage="Unsold"
             confirmMessage="Pass this player as unsold?"
           >
+            {fields}
             <AdminSubmitButton variant="secondary" className="w-full text-xs">
               Pass / unsold
             </AdminSubmitButton>
           </AdminActionForm>
         </div>
         <AdminActionForm action={actionWebAuctionNext} successMessage="Next player">
-          <AdminSubmitButton variant="secondary" className="w-full text-xs">
-            Introduce next (skip queue advance)
+          {fields}
+            <AdminSubmitButton variant="secondary" className="w-full text-xs">
+            Pass and introduce next
           </AdminSubmitButton>
         </AdminActionForm>
-      </div>
+      </fieldset>
     </div>
   );
 }

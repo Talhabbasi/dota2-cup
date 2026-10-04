@@ -1,3 +1,4 @@
+import { lockAuction, requireAuctionInactive, withAuctionLock } from "./auction-lock";
 import { cache } from "react";
 import { getCupSettings } from "./cup-settings-cache";
 import { prisma } from "./prisma";
@@ -10,7 +11,6 @@ import {
   SEASON_STATUS,
   TOURNAMENT_FORMAT,
   formatSeasonLabel,
-  type SeasonStatus,
 } from "./season-constants";
 
 export {
@@ -261,7 +261,9 @@ export type UpdateSeasonAdminInput = {
 };
 
 export async function updateSeasonAdmin(input: UpdateSeasonAdminInput) {
-  const season = await prisma.season.findUnique({ where: { id: input.seasonId } });
+ return withAuctionLock(async db => {
+ await requireAuctionInactive(db);
+  const season = await db.season.findUnique({ where: { id: input.seasonId } });
   if (!season) throw new Error("Season not found.");
 
   const name = input.name?.trim();
@@ -279,7 +281,8 @@ export async function updateSeasonAdmin(input: UpdateSeasonAdminInput) {
     throw new Error("Team count must be 8, 10, or 12.");
   }
 
-  return prisma.season.update({
+  if (await db.team.count({where:{seasonId:season.id}}) > teamCount) throw new Error("Remove excess teams before reducing the season team count.");
+  return db.season.update({
     where: { id: season.id },
     data: {
       name: seasonName(season.number, name),
@@ -291,6 +294,8 @@ export async function updateSeasonAdmin(input: UpdateSeasonAdminInput) {
       teamCount,
     },
   });
+
+ });
 }
 
 /**
@@ -324,6 +329,8 @@ export async function deleteSeasonAdmin(
   }
 
   await prisma.$transaction(async (tx) => {
+    await lockAuction(tx);
+    await requireAuctionInactive(tx);
     await tx.cupSettings.updateMany({
       where: { currentSeasonId: seasonId },
       data: { currentSeasonId: null },
@@ -513,6 +520,8 @@ export async function setActiveSeason(seasonId: string, db: Db = prisma) {
     target.plannedStartAt!.getTime() > now.getTime();
 
   await db.$transaction(async (tx) => {
+    await lockAuction(tx);
+    await requireAuctionInactive(tx);
     await tx.season.updateMany({ data: { isActive: false } });
     await tx.season.update({
       where: { id: target.id },
@@ -545,14 +554,15 @@ export async function setActiveSeason(seasonId: string, db: Db = prisma) {
       create: { id: "singleton", currentSeasonId: target.id },
       update: { currentSeasonId: target.id },
     });
-  });
+    const members = await tx.seasonPlayer.findMany({ where: { seasonId: target.id } });
+    await tx.player.updateMany({ data: { teamId: null, isCaptain: false, rosterRole: null, teamJoinedAt: null, auctionStatus: "UNSOLD", paidAt: null, paymentAmount: 0 } });
+    for (const member of members) await tx.player.update({ where: { id: member.playerId }, data: {
+      teamId: member.teamId, isCaptain: member.isCaptain, rosterRole: member.rosterRole,
+      teamJoinedAt: member.teamJoinedAt, auctionStatus: member.teamId ? "SOLD" : "UNSOLD",
+      paidAt: member.paidAt, paymentAmount: member.paymentAmount,
+    } });
 
-  // Mirror this season's payment + roster onto Player for legacy readers.
-  if (db === prisma) {
-    const { hydratePlayerPaymentsFromSeason } = await import("./payments");
-    await hydratePlayerPaymentsFromSeason(target.id);
-    await hydratePlayerRosterFromSeason(target.id);
-  }
+  }, { timeout: 15000 });
 
   return db.season.findUniqueOrThrow({ where: { id: target.id } });
 }
@@ -670,6 +680,8 @@ export async function endSeasonArchive(seasonId: string) {
   const now = new Date();
 
   await prisma.$transaction(async (tx) => {
+    await lockAuction(tx);
+    await requireAuctionInactive(tx);
     await tx.seasonSnapshot.upsert({
       where: { seasonId },
       create: {

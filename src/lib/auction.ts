@@ -91,7 +91,7 @@ type LiveAuction = {
   awaitingDecision: boolean;
 };
 
-type AuctionOpts = { sandbox?: boolean };
+type AuctionOpts = { sandbox?: boolean; lotId?: string | null; revision?: number };
 
 /** Live cup auction is DB-backed (`web-auction`). Only sandbox stays in memory. */
 const live: LiveAuction | null = null;
@@ -161,6 +161,7 @@ function requireLot(auction: LiveAuction, lotId?: string | null) {
 
 function idleView(sandbox: boolean) {
   return {
+    revision: 0,
     sandbox,
     status: "idle" as const,
     medal: null,
@@ -189,6 +190,7 @@ function viewFromSession(auction: LiveAuction | null, sandbox: boolean) {
     ? (auction.teams.get(auction.currentBidderTeamId) ?? null)
     : null;
   return {
+    revision: 0,
     sandbox: auction.sandbox,
     status: auction.status,
     medal: auction.medal,
@@ -696,6 +698,7 @@ export async function restoreSoldAuctionPlayers(
 
 function discordViewFromWeb(view: WebAuctionView) {
   return {
+    revision: view.revision,
     sandbox: false as const,
     status: view.status,
     medal: view.medal,
@@ -724,6 +727,10 @@ function discordViewFromWeb(view: WebAuctionView) {
     channelId: view.channelId,
     messageId: view.messageId,
   };
+}
+
+async function webControl(options?: AuctionOpts) {
+  return { lotId: options?.lotId ?? "", revision: options?.revision ?? -1 };
 }
 
 export async function startAuction(rankInput: string, options?: AuctionOpts) {
@@ -776,7 +783,7 @@ async function startSandboxAuction(rankInput: string) {
 
 export async function pauseAuction(options?: AuctionOpts) {
   if (!options?.sandbox) {
-    return discordViewFromWeb(await pauseWebAuction());
+    return discordViewFromWeb(await pauseWebAuction(await webControl(options)));
   }
   const auction = requireSession(true);
   if (auction.status !== "running") {
@@ -789,7 +796,7 @@ export async function pauseAuction(options?: AuctionOpts) {
 
 export async function resumeAuction(options?: AuctionOpts) {
   if (!options?.sandbox) {
-    return discordViewFromWeb(await resumeWebAuction());
+    return discordViewFromWeb(await resumeWebAuction(await webControl(options)));
   }
   const auction = session(true);
   if (!auction || auction.status !== "paused") {
@@ -805,7 +812,7 @@ export async function resumeAuction(options?: AuctionOpts) {
 
 export async function skipLot(options?: AuctionOpts & { lotId?: string | null }) {
   if (!options?.sandbox) {
-    return discordViewFromWeb(await passWebUnsold(options?.lotId));
+    return discordViewFromWeb(await passWebUnsold(options?.lotId, options?.revision));
   }
   const auction = requireSession(true);
   requireLot(auction, options?.lotId);
@@ -815,7 +822,7 @@ export async function skipLot(options?: AuctionOpts & { lotId?: string | null })
 
 export async function confirmLot(options?: AuctionOpts & { lotId?: string | null }) {
   if (!options?.sandbox) {
-    return discordViewFromWeb(await confirmWebSold(options?.lotId));
+    return discordViewFromWeb(await confirmWebSold(options?.lotId, options?.revision));
   }
   const auction = requireSession(true);
   requireLot(auction, options?.lotId);
@@ -836,14 +843,14 @@ export async function startAuctionTimer(options?: AuctionOpts) {
     auction.event = "bid";
     return viewFromSession(auction, true);
   }
-  return discordViewFromWeb(await startWebTimer());
+  return discordViewFromWeb(await startWebTimer(await webControl(options)));
 }
 
 export async function resetAuctionTimer(options?: AuctionOpts) {
   if (options?.sandbox) {
     return startAuctionTimer({ sandbox: true });
   }
-  return discordViewFromWeb(await resetWebTimer());
+  return discordViewFromWeb(await resetWebTimer(await webControl(options)));
 }
 
 export async function nextAuctionPlayer(options?: AuctionOpts) {
@@ -853,7 +860,7 @@ export async function nextAuctionPlayer(options?: AuctionOpts) {
     await settleCurrent("unsold", true);
     return getAuctionView(true);
   }
-  return discordViewFromWeb(await introduceNextWebPlayer());
+  return discordViewFromWeb(await introduceNextWebPlayer(await webControl(options)));
 }
 
 export async function undoLastSale(): Promise<never> {
@@ -864,6 +871,7 @@ export async function undoLastSale(): Promise<never> {
 
 export async function placeBid(input: {
   discordId: string;
+  requestId?: string;
   amount?: number;
   bump?: number;
   sandbox?: boolean;
@@ -874,6 +882,7 @@ export async function placeBid(input: {
     return discordViewFromWeb(
       await placeWebBidByDiscord({
         discordId: input.discordId,
+        requestId: input.requestId,
         amount: input.amount,
         bump: input.bump,
         lotId: input.lotId,

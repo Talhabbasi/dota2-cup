@@ -960,37 +960,44 @@ export async function actionWebAuctionStart(formData: FormData) {
   revalidatePath("/auction/live");
 }
 
-export async function actionWebAuctionPause() {
+function auctionControl(formData: FormData) {
+  const lotId = String(formData.get("lotId") ?? "");
+  const revision = Number(formData.get("revision"));
+  if (!lotId || !Number.isSafeInteger(revision) || revision < 0) throw new Error("Refresh the auction before using controls.");
+  return { lotId, revision };
+}
+
+export async function actionWebAuctionPause(formData: FormData) {
   await requireAdmin();
-  await pauseWebAuction();
+  await pauseWebAuction(auctionControl(formData));
   revalidatePath("/admin/auction");
   revalidatePath("/auction/live");
 }
 
-export async function actionWebAuctionResume() {
+export async function actionWebAuctionResume(formData: FormData) {
   await requireAdmin();
-  await resumeWebAuction();
+  await resumeWebAuction(auctionControl(formData));
   revalidatePath("/admin/auction");
   revalidatePath("/auction/live");
 }
 
-export async function actionWebAuctionTimer() {
+export async function actionWebAuctionTimer(formData: FormData) {
   await requireAdmin();
-  await startWebTimer();
+  await startWebTimer(auctionControl(formData));
   revalidatePath("/admin/auction");
   revalidatePath("/auction/live");
 }
 
-export async function actionWebAuctionResetTimer() {
+export async function actionWebAuctionResetTimer(formData: FormData) {
   await requireAdmin();
-  await resetWebTimer();
+  await resetWebTimer(auctionControl(formData));
   revalidatePath("/admin/auction");
   revalidatePath("/auction/live");
 }
 
-export async function actionWebAuctionSold() {
+export async function actionWebAuctionSold(formData: FormData) {
   const session = await requireAdmin();
-  const view = await confirmWebSold();
+  const view = await confirmWebSold(auctionControl(formData).lotId, auctionControl(formData).revision);
   await note(session, "auction.web_sold", `Sold lot on web auction`, {
     player: view.lastSale?.playerName ?? view.currentPlayer?.steamName,
   });
@@ -1000,17 +1007,17 @@ export async function actionWebAuctionSold() {
   revalidatePublicPages();
 }
 
-export async function actionWebAuctionPass() {
+export async function actionWebAuctionPass(formData: FormData) {
   const session = await requireAdmin();
-  await passWebUnsold();
+  await passWebUnsold(auctionControl(formData).lotId, auctionControl(formData).revision);
   await note(session, "auction.web_pass", `Passed / unsold on web auction`);
   revalidatePath("/admin/auction");
   revalidatePath("/auction/live");
 }
 
-export async function actionWebAuctionNext() {
+export async function actionWebAuctionNext(formData: FormData) {
   await requireAdmin();
-  await introduceNextWebPlayer();
+  await introduceNextWebPlayer(auctionControl(formData));
   revalidatePath("/admin/auction");
   revalidatePath("/auction/live");
 }

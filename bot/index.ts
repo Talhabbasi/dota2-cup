@@ -45,12 +45,10 @@ import {
   MEDAL_LABELS,
   MEDALS,
   ROLE_LABELS,
-  ROLES,
   STARTING_ROLES,
   STARTING_PURSE,
   basePriceFor,
   type Medal,
-  type Role,
 } from "../src/lib/constants";
 import { registerPlayer, setPlayerPlayWindow } from "../src/lib/register";
 import {
@@ -96,7 +94,6 @@ import {
   patchLivePlayer,
   pauseAuction,
   placeBid,
-  repairAuctionScores,
   resetAuctionTimer,
   revertSoldAuctionPlayers,
   resumeAuction,
@@ -239,10 +236,9 @@ import {
   listUnsignedPlayers,
 } from "../src/lib/players-admin";
 import { parseRolesJson } from "../src/lib/roles";
-import { prisma, keepPrismaAlive } from "../src/lib/prisma";
+import { prisma } from "../src/lib/prisma";
 import { formatRoles } from "../src/lib/data";
 import { publicErrorMessage } from "../src/lib/public-error";
-import { steamProfileUrl } from "../src/lib/steam";
 import {
   PLAY_WINDOW_DISCORD_CHOICES,
   PLAY_WINDOW_LABELS,
@@ -265,10 +261,6 @@ const botClientId: string = clientId;
 const medalChoices = MEDALS.map((m) => ({
   name: MEDAL_LABELS[m],
   value: m,
-}));
-const roleChoices = ROLES.map((r) => ({
-  name: ROLE_LABELS[r],
-  value: r,
 }));
 const registerRoleChoices = [
   ...STARTING_ROLES.map((r) => ({
@@ -1332,20 +1324,6 @@ async function editReplyChunks(
       allowedMentions: { parse: [] },
     });
   }
-}
-
-function paymentStatusLine(player: {
-  rosterRole: string | null;
-  paidAt: Date | null;
-  paymentAmount?: number | null;
-}) {
-  if (!playerMustPay(player.rosterRole)) {
-    return "Fee: **substitute — no payment required**";
-  }
-  if (player.paidAt) {
-    return `Fee: **paid** (${formatEntryFee()})`;
-  }
-  return `Fee: **unpaid** — ${formatEntryFee()} screenshot in **#${paymentsChannelName()}**, then wait for admin ✅`;
 }
 
 function parseDiscordSnowflake(raw: string): string {
@@ -2742,9 +2720,12 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
         });
         return;
       }
+      const observed = await getAuctionView(sandbox);
       await interaction.deferReply();
       const view = await placeBid({
         discordId,
+        lotId: observed.lotId,
+        requestId: interaction.id,
         amount: interaction.options.getInteger("amount", true),
         sandbox,
         teamName: interaction.options.getString("team"),
@@ -2826,25 +2807,27 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
       await interaction.deferReply();
       const sandbox = sandboxFromChannel(interaction.channel);
       const sub = interaction.options.getSubcommand();
+      const observed = await getAuctionView(sandbox);
+      const control = { sandbox, lotId: observed.lotId, revision: observed.revision };
       let view;
       if (sub === "start") {
         view = await startAuction(interaction.options.getString("rank", true), {
           sandbox,
         });
       } else if (sub === "pause") {
-        view = await pauseAuction({ sandbox });
+        view = await pauseAuction(control);
       } else if (sub === "resume") {
-        view = await resumeAuction({ sandbox });
+        view = await resumeAuction(control);
       } else if (sub === "skip") {
-        view = await skipLot({ sandbox });
+        view = await skipLot(control);
       } else if (sub === "confirm") {
-        view = await confirmLot({ sandbox });
+        view = await confirmLot(control);
       } else if (sub === "timer") {
-        view = await startAuctionTimer({ sandbox });
+        view = await startAuctionTimer(control);
       } else if (sub === "reset_timer") {
-        view = await resetAuctionTimer({ sandbox });
+        view = await resetAuctionTimer(control);
       } else if (sub === "next") {
-        view = await nextAuctionPlayer({ sandbox });
+        view = await nextAuctionPlayer(control);
       } else if (sub === "board") {
         view = await getAuctionView(sandbox);
         // Force a fresh post in this channel
@@ -3857,11 +3840,13 @@ client.on("interactionCreate", async (interaction: Interaction) => {
         return;
       }
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      const current = await getAuctionView(sandbox);
       const view =
         spec === "open"
-          ? await placeBid({ discordId: interaction.user.id, sandbox, lotId })
+          ? await placeBid({ discordId: interaction.user.id, sandbox, lotId, requestId: interaction.id, amount: current.highBidder ? current.currentBid + BID_INCREMENT : current.currentBid })
           : await placeBid({
               discordId: interaction.user.id,
+              requestId: interaction.id,
               bump: Number(spec),
               sandbox,
               lotId,
@@ -3965,17 +3950,6 @@ client.once(Events.ClientReady, async () => {
     );
   }
   await hydrateAuctionClock().catch(() => undefined);
-  try {
-    const repair = await repairAuctionScores();
-    if (repair.pursesFixed.length > 0 || repair.duplicateLotsRemoved > 0) {
-      console.log(
-        `Repaired auction scores: removed ${repair.duplicateLotsRemoved} duplicate lots; purses ${repair.pursesFixed.map((p) => `${p.name} ${p.from}→${p.to}`).join(", ") || "ok"}`,
-      );
-      void notifySiteRefresh();
-    }
-  } catch (error) {
-    console.warn("auction score repair", error);
-  }
   for (const guild of client.guilds.cache.values()) {
     try {
       await ensureUpdatesChannel(guild);
@@ -4068,13 +4042,18 @@ client.once(Events.ClientReady, async () => {
     }
   }
   let auctionTickBusy = false;
+  let lastAuctionUpdate = "";
   setInterval(async () => {
     if (auctionTickBusy) return;
     auctionTickBusy = true;
     try {
-      for (const sandbox of [false, true]) {
-        const { changed } = await tickAuction(sandbox);
-        if (changed) await refreshPostedLot(sandbox);
+      for (const sandbox of (process.env.DISCORD_LIVE_AUCTION_SYNC === "true" ? [false, true] : [true])) {
+        const result = await tickAuction(sandbox);
+        const key = !sandbox && result.view ? `${result.view.revision}:${result.view.awaitingDecision}` : "";
+        if (sandbox ? result.changed : key !== lastAuctionUpdate) {
+          await refreshPostedLot(sandbox);
+          if (!sandbox) lastAuctionUpdate = key;
+        }
       }
     } catch (error) {
       console.error("auction tick", error);
@@ -4083,7 +4062,7 @@ client.once(Events.ClientReady, async () => {
     }
   }, 1000);
   let reminderTickBusy = false;
-  setInterval(async () => {
+  if (process.env.DISCORD_MATCH_REMINDERS === "true") setInterval(async () => {
     if (reminderTickBusy) return;
     reminderTickBusy = true;
     try {
@@ -4094,9 +4073,7 @@ client.once(Events.ClientReady, async () => {
       reminderTickBusy = false;
     }
   }, 60_000);
-  setInterval(() => {
-    void keepPrismaAlive();
-  }, 60_000);
+
 });
 
 async function main() {

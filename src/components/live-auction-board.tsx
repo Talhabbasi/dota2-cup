@@ -1,61 +1,57 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { WebAuctionView } from "@/lib/web-auction";
 import { BID_INCREMENT } from "@/lib/constants";
+import { useAuctionView } from "./use-auction-view";
 import { cn } from "@/lib/utils";
 
 export function LiveAuctionBoard({
   initial,
   canBid = false,
   teamId = null,
+  onView,
 }: {
   initial: WebAuctionView;
   canBid?: boolean;
   teamId?: string | null;
+  onView?: (view: WebAuctionView, connected: boolean) => void;
 }) {
-  const [view, setView] = useState(initial);
+  const { view, accept, connected, secondsLeft, closed } = useAuctionView(initial);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
-
-  useEffect(() => {
-    const es = new EventSource("/api/auction/stream");
-    es.addEventListener("auction", (event) => {
-      try {
-        const data = JSON.parse((event as MessageEvent).data) as WebAuctionView;
-        setView(data);
-      } catch {
-        /* ignore */
-      }
-    });
-    es.onerror = () => {
-      /* browser reconnects */
-    };
-    return () => es.close();
-  }, []);
+  const [uncertain, setUncertain] = useState<{ lotId: string; amount: number; requestId: string } | null>(null);
+  const submitting = useRef(false);
+  useEffect(() => { onView?.(view, connected); }, [view, connected, onView]);
 
   async function bid() {
+    if (submitting.current || !connected || (!uncertain && (closed || !view.lotId))) return;
+    const payload = uncertain ?? { lotId: view.lotId!, amount: view.highBidder ? view.currentBid + BID_INCREMENT : view.currentBid, requestId: crypto.randomUUID() };
+    submitting.current = true;
     setPending(true);
     setError(null);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 12000);
     try {
       const res = await fetch("/api/auction/bid", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ bump: BID_INCREMENT }),
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload), signal: controller.signal,
       });
-      const json = (await res.json()) as {
-        ok: boolean;
-        error?: string;
-        view?: WebAuctionView;
-      };
-      if (!json.ok) {
-        setError(json.error ?? "Bid failed");
+      const json = await res.json();
+      if (!res.ok || !json.ok) {
+        if (res.status >= 500) setUncertain(payload);
+        else setUncertain(null);
+        setError(json.error ?? "Bid failed. Refresh the auction.");
         return;
       }
-      if (json.view) setView(json.view);
+      setUncertain(null);
+      if (json.view) accept(json.view);
     } catch {
-      setError("Network error");
+      setUncertain(payload);
+      setError("Connection interrupted. Check the result using the same bid request.");
     } finally {
+      clearTimeout(timeout);
+      submitting.current = false;
       setPending(false);
     }
   }
@@ -66,13 +62,16 @@ export function LiveAuctionBoard({
 
   return (
     <div className="grid gap-4">
+      <p role="status" className={connected ? "m-0 text-sm text-emerald-300" : "m-0 text-sm text-amber-300"}>
+        {connected ? "Live updates connected" : "Reconnecting — bidding is disabled until updates resume."}
+      </p>
       <div className="rounded-xl border border-white/10 bg-[#121824]/90 p-5">
         <p className="m-0 text-[0.68rem] font-semibold tracking-[0.18em] text-primary uppercase">
           {idle
             ? "Auction idle"
             : view.status === "paused"
               ? "Paused"
-              : view.awaitingDecision
+              : closed
                 ? "Awaiting sold / pass"
                 : "Live lot"}
         </p>
@@ -98,7 +97,7 @@ export function LiveAuctionBoard({
             label="High bidder"
             value={view.highBidder?.name ?? "—"}
           />
-          <Stat label="Clock" value={`${view.secondsLeft}s`} />
+          <Stat label="Clock" value={view.endsAt || view.status === "paused" ? `${secondsLeft}s` : "Not started"} />
           <Stat label="Left in pool" value={String(view.remainingInPool)} />
         </div>
 
@@ -115,17 +114,19 @@ export function LiveAuctionBoard({
           <div className="mt-5 flex flex-wrap items-center gap-3">
             <button
               type="button"
-              disabled={pending || idle || view.status !== "running" || view.awaitingDecision || Boolean(youAreHigh)}
+              disabled={pending || !connected || (!uncertain && (idle || view.status !== "running" || closed || Boolean(youAreHigh)))}
               onClick={bid}
               className={cn(
                 "rounded-md bg-amber-500 px-4 py-2 text-sm font-semibold text-black disabled:opacity-40",
               )}
             >
-              {youAreHigh
+              {uncertain
+                ? "Check previous bid"
+                : youAreHigh
                 ? "You are high bidder"
                 : pending
                   ? "Bidding…"
-                  : `+${BID_INCREMENT} bid`}
+                  : `Bid ${view.highBidder ? view.currentBid + BID_INCREMENT : view.currentBid}`}
             </button>
             {error ? (
               <p className="m-0 text-sm text-red-300" role="alert">

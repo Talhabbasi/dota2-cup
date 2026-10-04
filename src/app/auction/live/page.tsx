@@ -1,6 +1,6 @@
 import { PageHeader } from "@/components/common";
 import { LiveAuctionBoard } from "@/components/live-auction-board";
-import { getWebAuctionView } from "@/lib/web-auction";
+import { getWebAuctionViewOrEmpty } from "@/lib/web-auction";
 import { pageMeta } from "@/lib/seo";
 import { CUP_NAME } from "@/lib/brand";
 import Link from "next/link";
@@ -13,7 +13,7 @@ export const metadata = pageMeta(
 );
 
 export default async function LiveAuctionPage() {
-  const view = await getWebAuctionView();
+  const view = await getWebAuctionViewOrEmpty();
 
   return (
     <div className="page">

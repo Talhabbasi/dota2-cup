@@ -1,9 +1,11 @@
+import { createSeasonTeam } from "./season-roster";
+import { withAuctionLock, requireAuctionInactive } from "./auction-lock";
 import {
   hashAdminPassword,
   verifyAdminPassword,
 } from "./admin-password";
 import { prisma } from "./prisma";
-import { currentSeasonId, getLiveSeason } from "./seasons";
+import { getLiveSeason } from "./seasons";
 import {
   generateCaptainPasscode,
   generateCaptainToken,
@@ -11,6 +13,7 @@ import {
 
 export type CaptainSessionInfo = {
   accountId: string;
+  accountToken: string | null;
   teamId: string;
   teamName: string;
   seasonId: string;
@@ -23,7 +26,9 @@ export async function createCaptainAccount(input: {
   loginName?: string;
   passcode?: string;
 }) {
-  const team = await prisma.team.findUnique({
+  return withAuctionLock(async db => {
+  await requireAuctionInactive(db);
+  const team = await db.team.findUnique({
     where: { id: input.teamId },
     select: { id: true, name: true, seasonId: true, tag: true },
   });
@@ -38,7 +43,7 @@ export async function createCaptainAccount(input: {
   const passcode = input.passcode?.trim() || generateCaptainPasscode();
   const token = generateCaptainToken();
 
-  const existing = await prisma.captainAccount.findUnique({
+  const existing = await db.captainAccount.findUnique({
     where: {
       seasonId_loginName: { seasonId: team.seasonId, loginName },
     },
@@ -48,7 +53,7 @@ export async function createCaptainAccount(input: {
   }
 
   const account = existing
-    ? await prisma.captainAccount.update({
+    ? await db.captainAccount.update({
         where: { id: existing.id },
         data: {
           passcodeHash: hashAdminPassword(passcode),
@@ -57,7 +62,7 @@ export async function createCaptainAccount(input: {
           teamId: team.id,
         },
       })
-    : await prisma.captainAccount.create({
+    : await db.captainAccount.create({
         data: {
           seasonId: team.seasonId,
           teamId: team.id,
@@ -69,12 +74,14 @@ export async function createCaptainAccount(input: {
 
   return {
     accountId: account.id,
+    accountToken: account.token,
     loginName,
     passcode,
     token,
     teamId: team.id,
     teamName: team.name,
   };
+  });
 }
 
 export async function listCaptainAccounts(seasonId?: string) {
@@ -88,10 +95,9 @@ export async function listCaptainAccounts(seasonId?: string) {
 }
 
 export async function revokeCaptainAccount(accountId: string) {
-  await prisma.captainAccount.update({
-    where: { id: accountId },
-    data: { revokedAt: new Date(), token: null },
-  });
+  await withAuctionLock(db => db.captainAccount.update({
+    where: { id: accountId }, data: { revokedAt: new Date(), token: null },
+  }));
 }
 
 export async function verifyCaptainLogin(input: {
@@ -111,6 +117,7 @@ export async function verifyCaptainLogin(input: {
   if (!verifyAdminPassword(input.passcode, account.passcodeHash)) return null;
   return {
     accountId: account.id,
+    accountToken: account.token,
     teamId: account.teamId,
     teamName: account.team.name,
     seasonId: account.seasonId,
@@ -131,6 +138,7 @@ export async function verifyCaptainToken(
   if (!live || live.id !== account.seasonId) return null;
   return {
     accountId: account.id,
+    accountToken: account.token,
     teamId: account.teamId,
     teamName: account.team.name,
     seasonId: account.seasonId,
@@ -147,52 +155,7 @@ export async function adminCreateManualTeam(input: {
   captainPlayerId?: string | null;
   purse?: number;
 }) {
-  const seasonId = await currentSeasonId();
-  const name = input.name.trim();
-  if (!name) throw new Error("Team name is required.");
-
-  const taken = await prisma.team.findFirst({
-    where: { seasonId, name: { equals: name, mode: "insensitive" } },
-  });
-  if (taken) throw new Error(`Team "${name}" already exists.`);
-
-  let captainId = input.captainPlayerId?.trim() || null;
-  if (!captainId && input.captainDiscordId?.trim()) {
-    const player = await prisma.player.findFirst({
-      where: {
-        OR: [
-          { discordId: input.captainDiscordId.trim() },
-          { discordId: { startsWith: `${input.captainDiscordId.trim()}:` } },
-        ],
-      },
-    });
-    if (!player) throw new Error("Captain player not found.");
-    captainId = player.id;
-  }
-  if (!captainId) throw new Error("Pick a captain player.");
-
-  const team = await prisma.team.create({
-    data: {
-      name,
-      tag: input.tag?.trim() || null,
-      logoUrl: input.logoUrl?.trim() || null,
-      seasonId,
-      captainId,
-      purse: input.purse ?? 0,
-    },
-  });
-
-  await prisma.player.update({
-    where: { id: captainId },
-    data: {
-      teamId: team.id,
-      isCaptain: true,
-      teamJoinedAt: new Date(),
-      auctionStatus: "SOLD",
-    },
-  });
-
-  return team;
+  return createSeasonTeam({ ...input, purse: input.purse ?? 0 });
 }
 
 export async function adminUpdateTeamMeta(input: {
@@ -201,13 +164,16 @@ export async function adminUpdateTeamMeta(input: {
   logoUrl?: string | null;
   name?: string | null;
 }) {
+  return withAuctionLock(async db => {
+    await requireAuctionInactive(db);
   const data: { tag?: string | null; logoUrl?: string | null; name?: string } = {};
   if (input.tag !== undefined) data.tag = input.tag?.trim() || null;
   if (input.logoUrl !== undefined) data.logoUrl = input.logoUrl?.trim() || null;
   if (input.name?.trim()) data.name = input.name.trim();
-  return prisma.team.update({
+  return db.team.update({
     where: { id: input.teamId },
     data,
+  });
   });
 }
 
@@ -216,11 +182,16 @@ export async function adminSetPlayerAuctionMeta(input: {
   auctionStatus?: string;
   basePrice?: number | null;
 }) {
+  return withAuctionLock(async db => {
+    await requireAuctionInactive(db);
   const data: { auctionStatus?: string; basePrice?: number | null } = {};
+  if (input.auctionStatus && !["UNSOLD", "SOLD"].includes(input.auctionStatus)) throw new Error("Invalid player auction status.");
   if (input.auctionStatus) data.auctionStatus = input.auctionStatus;
+  if (input.basePrice != null && (!Number.isSafeInteger(input.basePrice) || input.basePrice < 1 || input.basePrice > 2147483647)) throw new Error("Base price must be a positive whole number.");
   if (input.basePrice !== undefined) data.basePrice = input.basePrice;
-  return prisma.player.update({
+  return db.player.update({
     where: { id: input.playerId },
     data,
+  });
   });
 }

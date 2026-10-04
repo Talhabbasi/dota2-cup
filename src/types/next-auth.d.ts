@@ -9,6 +9,7 @@ declare module "next-auth" {
       isCaptainBidder?: boolean;
       captainTeamId?: string;
       captainAccountId?: string;
+      captainAccountToken?: string;
     };
   }
 }
@@ -21,5 +22,6 @@ declare module "next-auth/jwt" {
     isCaptainBidder?: boolean;
     captainTeamId?: string;
     captainAccountId?: string;
+      captainAccountToken?: string;
   }
 }

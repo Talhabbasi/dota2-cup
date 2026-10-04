@@ -1,6 +1,6 @@
 import { PageHeader } from "@/components/common";
 import { CaptainAuctionClient } from "@/components/captain-auction-client";
-import { getWebAuctionView } from "@/lib/web-auction";
+import { getWebAuctionViewOrEmpty } from "@/lib/web-auction";
 import { pageMeta } from "@/lib/seo";
 import { CUP_NAME } from "@/lib/brand";
 
@@ -12,7 +12,7 @@ export const metadata = pageMeta(
 );
 
 export default async function CaptainAuctionPage() {
-  const view = await getWebAuctionView();
+  const view = await getWebAuctionViewOrEmpty();
   return (
     <div className="page">
       <PageHeader

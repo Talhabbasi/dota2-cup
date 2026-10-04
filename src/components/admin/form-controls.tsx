@@ -95,6 +95,7 @@ export function AdminActionForm({
   cancelLabel = "Cancel",
 }: AdminActionFormProps) {
   const formRef = useRef<HTMLFormElement>(null);
+  const confirmedData = useRef<FormData | null>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
   const mounted = useSyncExternalStore(
@@ -183,8 +184,8 @@ export function AdminActionForm({
                   className={cn(adminBtnClass, adminBtnPrimaryClass)}
                   disabled={pending}
                   onClick={() => {
-                    const form = formRef.current;
-                    if (form) runSave(new FormData(form));
+                    const data = confirmedData.current;
+                    if (data) runSave(data);
                   }}
                 >
                   {pending ? "Saving…" : confirmLabel}
@@ -207,6 +208,7 @@ export function AdminActionForm({
           if (pending) return;
           const formData = new FormData(event.currentTarget);
           if (confirmMessage) {
+            confirmedData.current = formData;
             setOpen(true);
             return;
           }
