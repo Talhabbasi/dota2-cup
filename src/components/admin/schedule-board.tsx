@@ -9,7 +9,8 @@ import {
   adminCardClass,
   adminControlClass,
 } from "@/components/admin/ui";
-import { actionCreateFixture } from "@/app/admin/actions";
+import { actionCreateFixture, actionSchedulePubgLobby } from "@/app/admin/actions";
+import { PUBG_MAPS } from "@/lib/games";
 import {
   AdminActionForm,
   AdminSubmitButton,
@@ -49,22 +50,36 @@ export type AdminFixtureRow = {
   status: string;
 };
 
+export type AdminLobbyRow = {
+  id: string;
+  when: string;
+  label: string;
+  map: string;
+  teamNames: string[];
+};
+
 export function AdminScheduleBoard({
   fixtures,
   teams,
   readOnly = false,
   publicSeasonParam,
+  game = "DOTA",
+  seasonId,
+  lobbies = [],
 }: {
   fixtures: AdminFixtureRow[];
   teams: { id: string; name: string }[];
   readOnly?: boolean;
   publicSeasonParam?: string;
+  game?: string;
+  seasonId: string;
+  lobbies?: AdminLobbyRow[];
 }) {
   const [showAdd, setShowAdd] = useState(false);
 
   return (
     <div className="space-y-6">
-      {!readOnly ? (
+      {!readOnly && game !== "PUBG" ? (
       <div
         className={cn(
           adminCardClass,
@@ -94,6 +109,7 @@ export function AdminScheduleBoard({
             successMessage="Fixture booked"
             className="mt-4 grid gap-3 border-t border-white/10 pt-4 sm:grid-cols-2 lg:grid-cols-3"
           >
+            <input type="hidden" name="seasonId" value={seasonId} />
             <AdminField label="Team A">
               <select name="teamA" required className={adminControlClass}>
                 <option value="">…</option>
@@ -169,20 +185,114 @@ export function AdminScheduleBoard({
       </div>
       ) : null}
 
+      {!readOnly && game === "PUBG" ? (
+        <div className={cn(adminCardClass, !showAdd && "transition hover:border-[#487fff]/35 hover:bg-[#161e2e]")}>
+          <button
+            type="button"
+            onClick={() => setShowAdd((v) => !v)}
+            className={adminActionToggleClass}
+            aria-expanded={showAdd}
+          >
+            <span>
+              <span className="block text-sm font-semibold text-foreground">
+                Book lobby
+              </span>
+              <span className="text-sm text-muted-foreground">
+                Map, start time, and the teams from this season that drop in.
+              </span>
+            </span>
+            <span className="text-primary">{showAdd ? "−" : "+"}</span>
+          </button>
+          {showAdd ? (
+            <AdminActionForm
+              action={actionSchedulePubgLobby}
+              successMessage="Lobby booked"
+              className="mt-4 grid gap-3 border-t border-white/10 pt-4 sm:grid-cols-2"
+            >
+              <input type="hidden" name="seasonId" value={seasonId} />
+              <AdminField label="Lobby label">
+                <input name="label" required placeholder="Game 1" className={adminControlClass} />
+              </AdminField>
+              <AdminField label="Map">
+                <select name="map" required defaultValue="Erangel" className={adminControlClass}>
+                  {PUBG_MAPS.map((map) => (
+                    <option key={map} value={map}>
+                      {map}
+                    </option>
+                  ))}
+                </select>
+              </AdminField>
+              <AdminField label="Start time" className="sm:col-span-2">
+                <input name="playedAt" type="datetime-local" required className={adminControlClass} />
+              </AdminField>
+              <AdminField label="Teams in this lobby" className="sm:col-span-2">
+                {teams.length === 0 ? (
+                  <p className="m-0 text-sm text-muted-foreground">
+                    No teams in this season yet. Add squads under Teams first.
+                  </p>
+                ) : (
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {teams.map((team) => (
+                      <label key={team.id} className="flex items-center gap-2 text-sm">
+                        <input type="checkbox" name="teamIds" value={team.id} />
+                        {team.name}
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </AdminField>
+              <AdminSubmitButton className="sm:col-span-2" disabled={teams.length < 2}>
+                Book lobby
+              </AdminSubmitButton>
+            </AdminActionForm>
+          ) : null}
+        </div>
+      ) : null}
+
+      {game === "PUBG" ? (
+        <AdminDataTable
+          title={readOnly ? "Archive lobbies" : "Scheduled lobbies"}
+          hint="Each row is one custom room. Record places and kills under PUBG results."
+          items={lobbies}
+          getId={(row) => row.id}
+          hrefFor={() => `/admin/pubg?season=${publicSeasonParam ?? ""}`}
+          searchPlaceholder="Search teams or map…"
+          searchText={(row) => `${row.label} ${row.map} ${row.teamNames.join(" ")}`}
+          emptyLabel="No lobbies booked for this season."
+          columns={[
+            {
+              key: "lobby",
+              header: "Lobby",
+              cell: (row) => (
+                <span className="font-medium">
+                  {row.label}{" "}
+                  <span className="text-muted-foreground">· {row.map}</span>
+                </span>
+              ),
+            },
+            {
+              key: "when",
+              header: "Start",
+              cell: (row) => <span className="text-muted-foreground">{row.when}</span>,
+            },
+            {
+              key: "teams",
+              header: "Teams",
+              cell: (row) => row.teamNames.join(", ") || "—",
+            },
+          ]}
+        />
+      ) : (
       <AdminDataTable
         title={readOnly ? "Archive fixtures" : "Fixtures"}
         hint={
           readOnly
-            ? "Read-only. Click a row to open the public schedule for this season."
+            ? "Read-only. Click a fixture to see Team A vs Team B for this season."
             : "Click a fixture to set win / walkover, edit, or delete."
         }
         items={fixtures}
         getId={(f) => f.id}
-        hrefFor={(f) =>
-          readOnly
-            ? `/schedule?season=${publicSeasonParam ?? ""}`
-            : `/admin/schedule/${f.id}`
-        }
+        hrefFor={(f) => `/admin/schedule/${f.id}?season=${publicSeasonParam ?? ""}`}
         searchPlaceholder="Search teams…"
         searchText={(f) => `${f.teamA} ${f.teamB} ${f.kind} ${f.when}`}
         emptyLabel={
@@ -244,6 +354,7 @@ export function AdminScheduleBoard({
           },
         ]}
       />
+      )}
     </div>
   );
 }

@@ -130,7 +130,7 @@ export async function getPublicPlayerInsight(options?: {
   }
   if (!seasonId) return empty;
 
-  const [seats, topLot, board] = await Promise.all([
+  const [seats, topLot, board, seasonRoster] = await Promise.all([
     prisma.matchPlayer.findMany({
       where: {
         match: { seasonId },
@@ -155,7 +155,6 @@ export async function getPublicPlayerInsight(options?: {
             id: true,
             steamName: true,
             discordId: true,
-            team: { select: { name: true } },
           },
         },
       },
@@ -174,7 +173,6 @@ export async function getPublicPlayerInsight(options?: {
           select: {
             id: true,
             steamName: true,
-            team: { select: { name: true } },
           },
         },
         team: { select: { name: true } },
@@ -185,7 +183,16 @@ export async function getPublicPlayerInsight(options?: {
       // Archive / explicit season views always show scored boards when data exists.
       forAdmin: Boolean(options?.seasonId),
     }),
+    prisma.seasonPlayer.findMany({
+      where: { seasonId, teamId: { not: null } },
+      select: { playerId: true, team: { select: { name: true } } },
+    }),
   ]);
+
+  /** Team per player for this season — Player.team mirrors only the live season. */
+  const seasonTeamName = new Map(
+    seasonRoster.map((row) => [row.playerId, row.team?.name ?? null]),
+  );
 
   /** One map, but roster vs stand-in (+ team) stay separate keys so they never merge. */
   const byKey = new Map<string, Totals>();
@@ -249,12 +256,13 @@ export async function getPublicPlayerInsight(options?: {
       continue;
     }
 
-    const key = `roster:${seat.playerId}:${(teamName ?? seat.player.team?.name ?? "none").toLowerCase()}`;
+    const rosterTeam = teamName ?? seasonTeamName.get(seat.playerId) ?? null;
+    const key = `roster:${seat.playerId}:${(rosterTeam ?? "none").toLowerCase()}`;
     const cur = byKey.get(key) ?? {
       key,
       playerId: seat.playerId,
       name: seat.player.steamName,
-      teamName: teamName ?? seat.player.team?.name ?? null,
+      teamName: rosterTeam,
       kills: 0,
       assists: 0,
       deaths: 0,
@@ -266,7 +274,7 @@ export async function getPublicPlayerInsight(options?: {
     cur.deaths += seat.deaths;
     cur.games += 1;
     cur.name = seat.player.steamName;
-    cur.teamName = teamName ?? seat.player.team?.name ?? null;
+    cur.teamName = rosterTeam;
     byKey.set(key, cur);
   }
 
@@ -371,7 +379,8 @@ export async function getPublicPlayerInsight(options?: {
       ? {
           playerId: topLot.player.id,
           name: topLot.player.steamName,
-          teamName: topLot.team?.name ?? topLot.player.team?.name ?? null,
+          teamName:
+            topLot.team?.name ?? seasonTeamName.get(topLot.player.id) ?? null,
           value: topLot.soldPrice ?? 0,
           valueLabel: formatPoints(topLot.soldPrice ?? 0),
           detail: "Highest auction sale",

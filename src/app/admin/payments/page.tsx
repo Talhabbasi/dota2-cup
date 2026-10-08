@@ -1,10 +1,14 @@
 import { PageHeader } from "@/components/common";
+import { AdminSeasonViewer } from "@/components/admin/season-viewer";
 import { requireAdmin } from "@/lib/admin-auth";
+import { resolveAdminSeasonView } from "@/lib/admin-season-view";
 import {
   adminListPaymentPlayers,
   getPaymentCollection,
   listTeamPayments,
 } from "@/lib/payments";
+import { rosterRules } from "@/lib/games";
+import { prisma } from "@/lib/prisma";
 import { entryFeePkr, formatEntryFee } from "@/lib/registration-status";
 import { pageMeta } from "@/lib/seo";
 import { AdminPaymentsBoard } from "@/components/admin/payments-board";
@@ -15,21 +19,37 @@ export const metadata = pageMeta(
   "Entry fee collection and team payment status.",
 );
 
-export default async function AdminPaymentsPage() {
+export default async function AdminPaymentsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ season?: string }>;
+}) {
   await requireAdmin();
+  const sp = await searchParams;
+  const { view, options, readOnly, publicSeasonParam } =
+    await resolveAdminSeasonView(sp.season);
   const [summary, players, teams] = await Promise.all([
-    getPaymentCollection(),
-    adminListPaymentPlayers(),
-    listTeamPayments(),
+    getPaymentCollection(view.id),
+    adminListPaymentPlayers(view.id),
+    listTeamPayments(view.id),
   ]);
   const fee = entryFeePkr();
+  const season = await prisma.season.findUnique({
+    where: { id: view.id },
+    select: { game: true, pubgMode: true },
+  });
+  const rules = rosterRules(season);
 
   return (
     <div className="page">
       <PageHeader
         eyebrow="Admin"
         title="Payments"
-        subtitle={`Collection desk — ${formatEntryFee()} per starter. Subs free. Mark paid when verified.`}
+        subtitle={
+          readOnly
+            ? `Archive ${view.game === "PUBG" ? "PUBG" : "Dota"} Season ${view.number} — ${rules.label}. Read-only.`
+            : `${rules.label}. ${formatEntryFee()} per paying player. Team total Rs ${rules.teamFeePkr.toLocaleString("en-PK")}.`
+        }
         pills={[
           {
             value: `Rs ${summary.collected.toLocaleString("en-PK")}`,
@@ -37,6 +57,13 @@ export default async function AdminPaymentsPage() {
           },
           { value: summary.unpaidCount, label: "owe" },
         ]}
+      />
+      <AdminSeasonViewer
+        view={view}
+        options={options}
+        readOnly={readOnly}
+        publicSeasonParam={publicSeasonParam}
+        publicHref="/table"
       />
       <AdminPaymentsBoard
         summary={{
@@ -75,6 +102,7 @@ export default async function AdminPaymentsPage() {
           starters: t.starters,
           subs: t.subs,
         }))}
+        seasonId={view.id}
       />
     </div>
   );

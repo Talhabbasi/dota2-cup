@@ -1,19 +1,33 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
   adminCardClass,
   adminControlClass,
 } from "@/components/admin/ui";
 import type { AdminSeasonOption } from "@/lib/admin-season-view";
+import { ADMIN_SEASON_COOKIE } from "@/lib/season-view-cookie";
 import { cn } from "@/lib/utils";
+
+function rememberSeason(id: string) {
+  document.cookie = `${ADMIN_SEASON_COOKIE}=${encodeURIComponent(id)}; path=/; max-age=2592000; samesite=lax`;
+}
+
+function seasonOptionLabel(season: AdminSeasonOption) {
+  const game = season.game === "PUBG" ? "PUBG" : "Dota";
+  const name =
+    season.name !== `Season ${season.number}` ? ` · ${season.name}` : "";
+  const state = season.isLive ? " (live)" : season.isArchive ? " (archive)" : "";
+  return `${game} · Season ${season.number}${name}${state}`;
+}
 
 export function AdminSeasonViewer({
   view,
   options,
   readOnly,
-  publicSeasonParam,
+  publicSeasonParam: _publicSeasonParam,
   publicHref,
 }: {
   view: AdminSeasonOption;
@@ -25,7 +39,10 @@ export function AdminSeasonViewer({
 }) {
   const router = useRouter();
   const pathname = usePathname();
-  const publicUrl = `${publicHref}?season=${publicSeasonParam}`;
+  const publicUrl = readOnly ? "/seasons" : publicHref;
+  useEffect(() => {
+    rememberSeason(view.id);
+  }, [view.id]);
 
   return (
     <div
@@ -45,18 +62,13 @@ export function AdminSeasonViewer({
           onChange={(e) => {
             const next = options.find((o) => o.id === e.target.value);
             if (!next) return;
-            if (next.isLive) {
-              router.push(pathname);
-            } else {
-              router.push(`${pathname}?season=${next.number}`);
-            }
+            rememberSeason(next.id);
+            router.push(`${pathname}?season=${next.id}`);
           }}
         >
           {options.map((o) => (
             <option key={o.id} value={o.id}>
-              Season {o.number}
-              {o.name !== `Season ${o.number}` ? ` · ${o.name}` : ""}
-              {o.isLive ? " (live)" : o.isArchive ? " (archive)" : ""}
+              {seasonOptionLabel(o)}
             </option>
           ))}
         </select>
@@ -71,11 +83,13 @@ export function AdminSeasonViewer({
           href={publicUrl}
           className="rounded-lg border border-white/14 bg-white/[0.04] px-3.5 py-2 text-sm font-semibold text-foreground transition hover:border-[#487fff]/40 hover:bg-[#487fff]/10"
         >
-          Open public Season {view.number}
+            {readOnly
+              ? "Season archive"
+              : `Open public ${view.game === "PUBG" ? "PUBG" : "Dota"} Season ${view.number}`}
         </Link>
         {readOnly ? (
           <Link
-            href={pathname}
+            href={`${pathname}?season=${options.find((o) => o.isLive)?.id ?? view.id}`}
             className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3.5 py-2 text-sm font-semibold text-amber-100 transition hover:bg-amber-500/20"
           >
             Back to live

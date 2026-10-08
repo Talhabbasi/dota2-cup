@@ -3,16 +3,20 @@ import { MatchesGrid, type MatchListView } from "@/components/matches-grid";
 import { SeasonArchiveBannerServer } from "@/components/season-archive-banner-server";
 import { loadMatchesForSeason } from "@/lib/season-data";
 import { matchKillTotals } from "@/lib/match-score";
+import { listPubgLobbies } from "@/lib/pubg-lobby";
+import { matchPoints } from "@/lib/pubg-scoring";
 import { getPublicSeasonContext } from "@/lib/season-page";
-import { pageMeta } from "@/lib/seo";
-import { CUP_NAME } from "@/lib/brand";
+import { livePageMeta } from "@/lib/seo";
 
 export const revalidate = 30;
 
-export const metadata = pageMeta(
-  "Match Results",
-  `${CUP_NAME} match results, scores, and Dota 2 series history for the live indoor season.`,
-);
+export function generateMetadata() {
+  return livePageMeta("Match Results", (brand) =>
+    brand.game === "PUBG"
+      ? `${brand.name} lobby results — placements, kills, and points for the live season.`
+      : `${brand.name} match results, scores, and Dota 2 series history for the live indoor season.`,
+  );
+}
 
 export default async function MatchesPage({
   searchParams,
@@ -21,6 +25,44 @@ export default async function MatchesPage({
 }) {
   const sp = await searchParams;
   const { view, seasonId } = await getPublicSeasonContext(sp);
+  if (view?.game === "PUBG" && seasonId) {
+    const lobbies = (await listPubgLobbies(seasonId)).filter(
+      (lobby) => lobby.status !== "scheduled",
+    );
+    return (
+      <div className="page matches-page">
+        <SeasonArchiveBannerServer season={sp.season} />
+        <PageHeader
+          eyebrow="Results"
+          title={`${view.name} · lobbies`}
+          subtitle="Played rooms for the active season. Points are placement plus one per kill."
+        />
+        {lobbies.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No played lobbies yet.</p>
+        ) : (
+          <div className="grid gap-4">
+            {lobbies.map((lobby) => (
+              <section key={lobby.id} className="rounded-lg border border-white/10 p-4">
+                <h2 className="mt-0 mb-2 text-lg">
+                  {lobby.label || "Lobby"} · {lobby.map}
+                </h2>
+                <ul className="m-0 grid list-none gap-1 p-0 text-sm">
+                  {lobby.teams
+                    .filter((row) => row.placement != null)
+                    .map((row) => (
+                      <li key={row.id}>
+                        #{row.placement} {row.team.name} · {row.kills} kills ·{" "}
+                        {matchPoints(row.placement ?? 0, row.kills)} pts
+                      </li>
+                    ))}
+                </ul>
+              </section>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
   const matches = seasonId ? await loadMatchesForSeason(seasonId) : [];
 
   const views: MatchListView[] = matches.map((m) => {

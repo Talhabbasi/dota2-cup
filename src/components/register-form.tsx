@@ -3,7 +3,14 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { startNavigation } from "@/components/navigation-loader";
-import { FLEX, MEDAL_LABELS, MEDALS, ROLE_LABELS, ROLES } from "@/lib/constants";
+import {
+  FLEX,
+  MEDALS,
+  PUBG_MEDALS,
+  ROLE_LABELS,
+  ROLES,
+  labelForMedal,
+} from "@/lib/constants";
 import {
   PLAY_WINDOW_LABELS,
   PLAY_WINDOWS,
@@ -15,6 +22,7 @@ const ROLE_OPTIONS = [...ROLES, FLEX] as const;
 
 type Existing = {
   steamUrl: string;
+  pubgName: string;
   medal: string;
   role: string;
   playWindow: PlayWindow;
@@ -24,13 +32,25 @@ type Existing = {
 export function RegisterForm({
   discordName,
   existing,
+  pubg = false,
+  rosterLabel = "",
 }: {
   discordName: string;
   existing: Existing | null;
+  pubg?: boolean;
+  rosterLabel?: string;
 }) {
   const router = useRouter();
+  const [pubgName, setPubgName] = useState(existing?.pubgName ?? "");
   const [steam, setSteam] = useState(existing?.steamUrl ?? "");
-  const [medal, setMedal] = useState(existing?.medal ?? "archon");
+  const rankOptions = pubg ? PUBG_MEDALS : MEDALS;
+  const [medal, setMedal] = useState(
+    existing?.medal && (rankOptions as readonly string[]).includes(existing.medal)
+      ? existing.medal
+      : pubg
+        ? "gold"
+        : "archon",
+  );
   const [role, setRole] = useState(existing?.role ?? "mid");
   const [playWindow, setPlayWindow] = useState<PlayWindow>(
     existing?.playWindow ?? "both",
@@ -46,7 +66,7 @@ export function RegisterForm({
       const res = await fetch("/api/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ steam, medal, role, playWindow }),
+        body: JSON.stringify({ steam, pubgName, medal, role, playWindow }),
       });
       const data = (await res.json().catch(() => ({}))) as {
         id?: string;
@@ -73,6 +93,26 @@ export function RegisterForm({
         <input value={discordName} disabled readOnly />
       </label>
 
+      {pubg ? (
+        <label className="register-field">
+          <span>PUBG name</span>
+          <input
+            required
+            minLength={2}
+            maxLength={24}
+            placeholder="Your in-game name"
+            value={pubgName}
+            onChange={(e) => setPubgName(e.target.value)}
+            disabled={busy || existing?.locked}
+          />
+          <small>
+            {rosterLabel
+              ? `${rosterLabel}. Discord and Steam must be the same person.`
+              : "Discord and Steam must be the same person."}
+          </small>
+        </label>
+      ) : null}
+
       <label className="register-field">
         <span>Steam profile URL</span>
         <input
@@ -88,20 +128,27 @@ export function RegisterForm({
 
       <div className="register-row">
         <label className="register-field">
-          <span>Rank</span>
+          <span>{pubg ? "PUBG rank" : "Rank"}</span>
           <select
             value={medal}
             onChange={(e) => setMedal(e.target.value)}
             disabled={busy || existing?.locked}
           >
-            {MEDALS.map((m) => (
+            {rankOptions.map((m) => (
               <option key={m} value={m}>
-                {MEDAL_LABELS[m]}
+                {labelForMedal(m)}
               </option>
             ))}
           </select>
+          {pubg ? (
+            <small>
+              Classic tier: Bronze through Conqueror. Divisions inside a tier
+              still count as that tier.
+            </small>
+          ) : null}
         </label>
 
+        {pubg ? null : (
         <label className="register-field">
           <span>Role</span>
           <select
@@ -116,6 +163,7 @@ export function RegisterForm({
             ))}
           </select>
         </label>
+        )}
       </div>
 
       <label className="register-field">

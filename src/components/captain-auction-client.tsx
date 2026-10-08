@@ -1,6 +1,7 @@
 "use client";
 
 import { signIn, signOut, useSession } from "next-auth/react";
+import { RegisterSignIn } from "@/components/register-signin";
 import { useState } from "react";
 import { LiveAuctionBoard } from "@/components/live-auction-board";
 import type { WebAuctionView } from "@/lib/web-auction";
@@ -8,8 +9,10 @@ import { adminControlClass } from "@/components/admin/ui";
 
 export function CaptainAuctionClient({
   initialView,
+  discordTeamId = null,
 }: {
   initialView: WebAuctionView;
+  discordTeamId?: string | null;
 }) {
   const { data: session, status } = useSession();
   const [loginName, setLoginName] = useState("");
@@ -41,9 +44,29 @@ export function CaptainAuctionClient({
     return <p className="text-sm text-muted-foreground">Loading…</p>;
   }
 
+  if (discordTeamId && session?.user?.discordId) {
+    return (
+      <div className="grid gap-4">
+        <p className="m-0 text-sm">
+          Bidding as <strong>{session.user.name}</strong> with Discord.
+        </p>
+        <LiveAuctionBoard
+          initial={initialView}
+          canBid
+          teamId={discordTeamId}
+        />
+      </div>
+    );
+  }
+
   if (!isCaptain) {
     return (
-      <form onSubmit={onLogin} className="mx-auto grid max-w-sm gap-3">
+      <div className="mx-auto grid max-w-sm gap-4">
+        <RegisterSignIn callbackUrl="/auction/captain" />
+        <p className="m-0 text-center text-xs text-muted-foreground">
+          Or use the captain login from Admin → Auction.
+        </p>
+      <form onSubmit={onLogin} className="grid gap-3">
         <label className="grid gap-1 text-sm">
           <span className="text-muted-foreground">Captain login</span>
           <input
@@ -78,6 +101,7 @@ export function CaptainAuctionClient({
           {pending ? "Signing in…" : "Open bid desk"}
         </button>
       </form>
+      </div>
     );
   }
 
@@ -90,7 +114,9 @@ export function CaptainAuctionClient({
         <button
           type="button"
           className="text-sm text-muted-foreground underline-offset-2 hover:underline"
-          onClick={() => signOut({ callbackUrl: "/auction/captain" })}
+          onClick={() =>
+            signOut({ redirect: false }).then(() => window.location.reload())
+          }
         >
           Sign out
         </button>

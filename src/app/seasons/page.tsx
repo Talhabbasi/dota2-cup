@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { PageHeader } from "@/components/common";
-import { CUP_NAME } from "@/lib/brand";
+import { CUP_NAME, PUBG_CUP_NAME } from "@/lib/brand";
 import { getSeasonHistory } from "@/lib/seasons";
 import { pageMeta } from "@/lib/seo";
 
@@ -8,7 +8,7 @@ export const revalidate = 30;
 
 export const metadata = pageMeta(
   "Season Archive",
-  `Past ${CUP_NAME} seasons — champions and player insight.`,
+  `Past ${CUP_NAME} and ${PUBG_CUP_NAME} seasons — champions and player insight.`,
 );
 
 export default async function SeasonsPage() {
@@ -45,8 +45,8 @@ export default async function SeasonsPage() {
                   <span className="badge badge-gold">Complete</span>
                 </p>
                 <h2>
-                  <Link href={`/seasons/season-${season.number}`}>
-                    Season {season.number}
+                  <Link href={`/seasons/${season.game.toLowerCase()}-${season.number}`}>
+                    {season.game === "PUBG" ? "PUBG" : "Dota"} Season {season.number}
                     {season.name !== `Season ${season.number}`
                       ? ` · ${season.name}`
                       : ""}
@@ -56,7 +56,7 @@ export default async function SeasonsPage() {
               {season.champion ? (
                 <p className="season-history-winner">
                   Champion{" "}
-                  <Link href={`/seasons/season-${season.number}`}>
+                  <Link href={`/seasons/${season.game.toLowerCase()}-${season.number}`}>
                     {season.champion.name}
                   </Link>
                 </p>
@@ -65,7 +65,7 @@ export default async function SeasonsPage() {
               )}
               <p className="m-0 mt-3">
                 <Link
-                  href={`/seasons/season-${season.number}`}
+                  href={`/seasons/${season.game.toLowerCase()}-${season.number}`}
                   className="text-link"
                 >
                   Overview &amp; player insight →

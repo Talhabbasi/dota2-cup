@@ -5,16 +5,19 @@ import { SeasonArchiveBannerServer } from "@/components/season-archive-banner-se
 import { loadGroupStandingsForSeason } from "@/lib/season-data";
 import { getPublicSeasonContext } from "@/lib/season-page";
 import { listCupSchedule } from "@/lib/schedule-crud";
-import { pageMeta } from "@/lib/seo";
-import { CUP_NAME } from "@/lib/brand";
+import { listPubgLobbies } from "@/lib/pubg-lobby";
+import { livePageMeta } from "@/lib/seo";
 import { seasonScheduleSubtitle } from "@/lib/season-public-copy";
 
 export const revalidate = 30;
 
-export const metadata = pageMeta(
-  "Match Schedule",
-  `Weekend ${CUP_NAME} fixtures in Pakistan time — group stage, playoffs, and upcoming Dota 2 kickoffs.`,
-);
+export function generateMetadata() {
+  return livePageMeta("Match Schedule", (brand) =>
+    brand.game === "PUBG"
+      ? `${brand.name} lobby schedule in Pakistan time — booked PUBG lobbies and maps.`
+      : `Weekend ${brand.name} fixtures in Pakistan time — group stage, playoffs, and upcoming Dota 2 kickoffs.`,
+  );
+}
 
 export default async function SchedulePage({
   searchParams,
@@ -23,6 +26,39 @@ export default async function SchedulePage({
 }) {
   const sp = await searchParams;
   const { view, seasonId } = await getPublicSeasonContext(sp);
+  if (view?.game === "PUBG" && seasonId) {
+    const lobbies = (await listPubgLobbies(seasonId)).filter(
+      (lobby) => lobby.status === "scheduled",
+    );
+    return (
+      <div className="page schedule-page">
+        <SeasonArchiveBannerServer season={sp.season} />
+        <PageHeader
+          eyebrow="Fixtures"
+          title={`${view.name} · schedule`}
+          subtitle="Booked PUBG lobbies for the active season."
+        />
+        {lobbies.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No lobbies booked yet.</p>
+        ) : (
+          <ul className="m-0 grid list-none gap-3 p-0">
+            {lobbies.map((lobby) => (
+              <li key={lobby.id} className="rounded-lg border border-white/10 px-4 py-3">
+                <p className="m-0 font-medium">
+                  {lobby.label || "Lobby"} · {lobby.map}
+                </p>
+                <p className="mt-1 mb-0 text-sm text-muted-foreground">
+                  {lobby.playedAt.toLocaleString("en-PK", { timeZone: "Asia/Karachi" })} PKT
+                  {" · "}
+                  {lobby.teams.map((row) => row.team.name).join(", ") || "Teams not listed"}
+                </p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    );
+  }
   const [fixtures, groupA, groupB] = await Promise.all([
     listCupSchedule({ publicOnly: true, seasonId: seasonId ?? undefined }),
     seasonId

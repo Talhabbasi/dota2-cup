@@ -1,5 +1,5 @@
 export const STARTING_PURSE = 20_000;
-export const MAX_CAPTAINS = 8;
+export const MAX_CAPTAINS = 15;
 export const BID_INCREMENT = 100;
 export const BID_CLOCK_SECONDS = 30;
 export const MIN_ROSTER = 5;
@@ -20,6 +20,22 @@ export const MEDALS = [
 
 export type Medal = (typeof MEDALS)[number];
 
+/** PUBG Mobile classic tiers, highest first. Crown and below also have divisions V–I. */
+export const PUBG_MEDALS = [
+  "conqueror",
+  "challenger",
+  "master",
+  "ace",
+  "crown",
+  "diamond",
+  "platinum",
+  "gold",
+  "silver",
+  "bronze",
+] as const;
+
+export type PubgMedal = (typeof PUBG_MEDALS)[number];
+
 export const BASE_PRICE: Record<Medal, number> = {
   immortal: 5000,
   divine: 4000,
@@ -30,6 +46,19 @@ export const BASE_PRICE: Record<Medal, number> = {
   guardian: 1000,
   herald: 1000,
   uncalibrated: 1000,
+};
+
+export const PUBG_BASE_PRICE: Record<PubgMedal, number> = {
+  conqueror: 4000,
+  challenger: 3500,
+  master: 3000,
+  ace: 2500,
+  crown: 2000,
+  diamond: 1500,
+  platinum: 1200,
+  gold: 1000,
+  silver: 800,
+  bronze: 600,
 };
 
 export const ROLES = [
@@ -92,8 +121,39 @@ export const MEDAL_LABELS: Record<Medal, string> = {
   uncalibrated: "Uncalibrated",
 };
 
+export const PUBG_MEDAL_LABELS: Record<PubgMedal, string> = {
+  conqueror: "Conqueror",
+  challenger: "Challenger",
+  master: "Master",
+  ace: "Ace",
+  crown: "Crown",
+  diamond: "Diamond",
+  platinum: "Platinum",
+  gold: "Gold",
+  silver: "Silver",
+  bronze: "Bronze",
+};
+
+export function medalsForGame(game: string | null | undefined) {
+  return game === "PUBG" ? PUBG_MEDALS : MEDALS;
+}
+
+export function labelForMedal(medal: string): string {
+  return (
+    MEDAL_LABELS[medal as Medal] ??
+    PUBG_MEDAL_LABELS[medal as PubgMedal] ??
+    medal
+  );
+}
+
 export function basePriceFor(medal: string): number {
-  return BASE_PRICE[(medal as Medal) ?? "uncalibrated"] ?? 1000;
+  if ((MEDALS as readonly string[]).includes(medal)) {
+    return BASE_PRICE[medal as Medal];
+  }
+  if ((PUBG_MEDALS as readonly string[]).includes(medal)) {
+    return PUBG_BASE_PRICE[medal as PubgMedal];
+  }
+  return 1000;
 }
 
 export function parseRoles(input: string): PlayerRole[] {
@@ -127,12 +187,33 @@ export function parseRoles(input: string): PlayerRole[] {
   return unique;
 }
 
-export function parseMedal(input: string): Medal {
-  const v = input.toLowerCase().trim();
+export function parseMedal(input: string): Medal | PubgMedal {
+  const v = input.toLowerCase().trim().replace(/\s+/g, "_");
   if ((MEDALS as readonly string[]).includes(v)) return v as Medal;
+  if ((PUBG_MEDALS as readonly string[]).includes(v)) return v as PubgMedal;
   throw new Error(
-    `Unknown medal "${input}". Use: ${MEDALS.join(", ")}`,
+    `Unknown medal "${input}". Use: ${[...MEDALS, ...PUBG_MEDALS].join(", ")}`,
   );
+}
+
+export function parseMedalForGame(input: string, game: "DOTA"): Medal;
+export function parseMedalForGame(input: string, game: "PUBG"): PubgMedal;
+export function parseMedalForGame(
+  input: string,
+  game: string | null | undefined,
+): Medal | PubgMedal;
+export function parseMedalForGame(
+  input: string,
+  game: string | null | undefined,
+) {
+  const medal = parseMedal(input);
+  const allowed = medalsForGame(game);
+  if (!(allowed as readonly string[]).includes(medal)) {
+    throw new Error(
+      `That rank is not used for this cup. Use: ${allowed.join(", ")}`,
+    );
+  }
+  return medal;
 }
 
 export function parseRole(input: string): Role {

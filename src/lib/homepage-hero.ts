@@ -14,7 +14,6 @@ import {
 } from "./season-constants";
 import {
   getLiveSeason,
-  getSeasonHistory,
   listPublicSeasons,
 } from "./seasons";
 import { toIso } from "./format";
@@ -308,42 +307,9 @@ async function buildActiveSlide(): Promise<HeroActiveSlide | null> {
 }
 
 async function loadHomepageHeroBanner(): Promise<HomepageHeroBanner> {
-  const [activeSeason, history] = await Promise.all([
-    buildActiveSlide(),
-    getSeasonHistory(),
-  ]);
-
-  const liveId = activeSeason?.seasonId ?? null;
-  const champCandidates = history.filter(
-    (row) =>
-      row.champion &&
-      row.id !== liveId &&
-      (row.status === SEASON_STATUS.archived ||
-        Boolean(row.endedAt) ||
-        row.number < (activeSeason?.seasonNumber ?? Number.POSITIVE_INFINITY)),
-  );
-
-  const pastChampions = await Promise.all(
-    champCandidates
-      .filter((row): row is typeof row & { champion: NonNullable<typeof row.champion> } =>
-        Boolean(row.champion),
-      )
-      .map((row) =>
-        buildChampionSlide({
-          id: row.id,
-          number: row.number,
-          name: row.name,
-          champion: { id: row.champion.id, name: row.champion.name },
-        }),
-      ),
-  );
-
-  const slides: HeroBannerSlide[] = [
-    ...(activeSeason ? [activeSeason] : []),
-    ...pastChampions,
-  ];
-
-  return { activeSeason, pastChampions, slides };
+  const activeSeason = await buildActiveSlide();
+  const slides: HeroBannerSlide[] = activeSeason ? [activeSeason] : [];
+  return { activeSeason, pastChampions: [], slides };
 }
 
 export const getHomepageHeroBanner = unstable_cache(

@@ -1,7 +1,13 @@
 import Image from "next/image";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
-import { CUP_ICON_PATH, CUP_NAME, CUP_TAGLINE } from "@/lib/brand";
+import {
+  CUP_ICON_PATH,
+  CUP_NAME,
+  CUP_TAGLINE,
+  PUBG_CUP_NAME,
+  PUBG_CUP_TAGLINE,
+} from "@/lib/brand";
 import { cn } from "@/lib/utils";
 
 const COLUMNS = [
@@ -33,7 +39,13 @@ const COLUMNS = [
   },
 ] as const;
 
-export function SiteFooter({ seasonLabel }: { seasonLabel: string }) {
+export function SiteFooter({
+  seasonLabel,
+  game = "DOTA",
+}: {
+  seasonLabel: string;
+  game?: string;
+}) {
   const year = new Date().getFullYear();
 
   return (
@@ -51,7 +63,7 @@ export function SiteFooter({ seasonLabel }: { seasonLabel: string }) {
             />
             <span className="grid gap-1">
               <span className="font-display text-sm font-bold tracking-[0.14em] text-white uppercase">
-                {CUP_NAME}
+                {game === "PUBG" ? PUBG_CUP_NAME : CUP_NAME}
               </span>
               <Badge
                 variant="outline"
@@ -62,10 +74,10 @@ export function SiteFooter({ seasonLabel }: { seasonLabel: string }) {
             </span>
           </Link>
           <p className="mt-4 mb-0 max-w-sm text-sm leading-relaxed text-muted-foreground">
-            {CUP_TAGLINE}
+            {game === "PUBG" ? PUBG_CUP_TAGLINE : CUP_TAGLINE}
           </p>
           <p className="mt-3 mb-0 text-xs text-slate-500">
-            © {year} {CUP_NAME}. All rights reserved.
+            © {year} {game === "PUBG" ? PUBG_CUP_NAME : CUP_NAME}. All rights reserved.
           </p>
         </div>
 
@@ -79,7 +91,9 @@ export function SiteFooter({ seasonLabel }: { seasonLabel: string }) {
                 {column.title}
               </p>
               <ul className="m-0 grid list-none gap-2 p-0">
-                {column.links.map(([href, label]) => (
+                {column.links
+                  .filter(([href]) => game !== "PUBG" || (href !== "/heroes" && href !== "/playoffs"))
+                  .map(([href, label]) => (
                   <li key={href}>
                     <Link
                       href={href}
@@ -100,7 +114,7 @@ export function SiteFooter({ seasonLabel }: { seasonLabel: string }) {
 
       <div className="border-t border-white/10">
         <p className="mx-auto my-0 w-[min(1180px,calc(100%-2rem))] py-4 text-center text-[0.72rem] tracking-[0.08em] text-slate-500 uppercase sm:text-left">
-          Official {CUP_NAME} Platform · {seasonLabel}
+          Official {game === "PUBG" ? PUBG_CUP_NAME : CUP_NAME} Platform · {seasonLabel}
         </p>
       </div>
     </footer>

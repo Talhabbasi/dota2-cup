@@ -172,7 +172,10 @@ export async function getPlayer(
   const [matchPlayers, seasonRows, soldLots, currentSeason] = await Promise.all([
     prisma.matchPlayer.findMany({
       where: {
-        OR: [{ playerId: player.id }, { steam32: player.steam32 }],
+        OR: [
+          { playerId: player.id },
+          ...(player.steam32 != null ? [{ steam32: player.steam32 }] : []),
+        ],
         match: publicMatchWhere,
       },
       include: {

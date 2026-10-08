@@ -3,10 +3,7 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import DiscordProvider from "next-auth/providers/discord";
 import { getServerSession } from "next-auth";
 import {
-  adminEmailConfigured,
-  adminLoginIdMatches,
-  adminPasswordHashConfigured,
-  adminPasswordPlaintextMisconfigured,
+  adminLoginForHost,
   verifyAdminPassword,
 } from "./admin-password";
 import { verifyCaptainLogin } from "./captain-accounts";
@@ -32,19 +29,21 @@ export const authOptions: NextAuthOptions = {
         email: { label: "Username or email", type: "text" },
         password: { label: "Password", type: "password" },
       },
-      async authorize(credentials) {
-        if (adminPasswordPlaintextMisconfigured()) return null;
-        const login = credentials?.email?.trim() ?? "";
+      async authorize(credentials, req) {
+        const forwarded = req?.headers?.["x-forwarded-host"];
+        const hostHeader = Array.isArray(forwarded)
+          ? forwarded[0]
+          : forwarded || (Array.isArray(req?.headers?.host) ? req.headers.host[0] : req?.headers?.host);
+        const account = adminLoginForHost(hostHeader);
+        const login = credentials?.email?.trim().toLowerCase() ?? "";
         const password = credentials?.password ?? "";
-        const hash = adminPasswordHashConfigured();
-        if (!hash || !login || !password) return null;
-        if (!adminLoginIdMatches(login)) return null;
-        if (!verifyAdminPassword(password, hash)) return null;
-        const email = adminEmailConfigured() ?? `${login}@admin.local`;
+        if (!account || !login || !password) return null;
+        if (login !== account.loginId) return null;
+        if (!verifyAdminPassword(password, account.hash)) return null;
         return {
-          id: `admin:${email}`,
-          email,
-          name: adminEmailConfigured() ? "Admin" : login,
+          id: `admin:${account.email}`,
+          email: account.email,
+          name: account.name,
         };
       },
     }),

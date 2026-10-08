@@ -8,9 +8,11 @@ import {
   STARTING_PURSE,
   STARTING_ROLES,
   basePriceFor,
-  parseMedal,
+  labelForMedal,
+  parseMedalForGame,
   type Medal,
 } from "./constants";
+import { liveRoster } from "./live-roster";
 import { prisma } from "./prisma";
 import { stringifyRoles } from "./roles";
 import { currentSeasonId, currentSeasonFilter, syncSeasonPlayer } from "./seasons";
@@ -244,6 +246,7 @@ async function persistSale(auction: LiveAuction, kind: "sold" | "unsold") {
   }
 
   if (kind === "sold" && team) {
+    const roster = await liveRoster();
     const seasonId = await currentSeasonId();
     await prisma.$transaction([
       prisma.team.update({
@@ -255,7 +258,7 @@ async function persistSale(auction: LiveAuction, kind: "sold" | "unsold") {
         data: {
           teamId: team.id,
           teamJoinedAt: new Date(),
-          rosterRole: team.rosterCount > MIN_ROSTER ? "sub" : null,
+          rosterRole: roster.subs > 0 && team.rosterCount > roster.min ? "sub" : null,
           auctionStatus: "SOLD",
         },
       }),
@@ -308,9 +311,10 @@ async function settleCurrent(kind: "sold" | "unsold", sandbox?: boolean) {
   const team = teamId ? auction.teams.get(teamId) : null;
   const purseBefore = team?.purse;
   const rosterBefore = team?.rosterCount;
+  const roster = await liveRoster();
   try {
     if (kind === "sold" && team) {
-      if (team.rosterCount >= MAX_ROSTER || team.purse < auction.currentBid) {
+      if (team.rosterCount >= roster.max || team.purse < auction.currentBid) {
         kind = "unsold";
       } else {
         team.purse -= auction.currentBid;
@@ -636,7 +640,8 @@ export async function restoreSoldAuctionPlayers(
     }
 
     if (!player.teamId) {
-      if (team.players.length >= MAX_ROSTER) {
+      const roster = await liveRoster();
+      if (team.players.length >= roster.max) {
         throw new Error(`**${team.name}** is full.`);
       }
       await prisma.player.update({
@@ -644,7 +649,7 @@ export async function restoreSoldAuctionPlayers(
         data: {
           teamId: team.id,
           teamJoinedAt: new Date(),
-          rosterRole: team.players.length >= MIN_ROSTER ? "sub" : null,
+          rosterRole: roster.subs > 0 && team.players.length >= roster.min ? "sub" : null,
         },
       });
       await rebalanceTeamRoster(team.id);
@@ -746,13 +751,13 @@ export async function startAuction(rankInput: string, options?: AuctionOpts) {
 async function startSandboxAuction(rankInput: string) {
   const current = session(true);
   if (current && (current.status === "running" || current.status === "paused")) {
-    const label = current.medal ? MEDAL_LABELS[current.medal] : "this rank";
+    const label = current.medal ? labelForMedal(current.medal) : "this rank";
     throw new Error(
       `Test auction already running for ${label}. Pause or finish it first.`,
     );
   }
 
-  const medal = parseMedal(rankInput);
+  const medal = parseMedalForGame(rankInput, "DOTA");
   const eligible = buildSandboxPlayers(medal);
   const playerMap = new Map(eligible.map((p) => [p.id, p]));
   const queue = eligible.map((p) => p.id);
@@ -908,9 +913,13 @@ export async function placeBid(input: {
 
   let team = pickSandboxTeam(auction, input.discordId, input.teamName);
 
-  if (team.rosterCount >= MAX_ROSTER) {
+  const roster = await liveRoster();
+  if (roster.max <= 1) {
+    throw new Error("Solo cups do not auction teammates.");
+  }
+  if (team.rosterCount >= roster.max) {
     throw new Error(
-      `**${team.name}** is full (${MAX_ROSTER}/${MAX_ROSTER}). You cannot buy another player.`,
+      `**${team.name}** is full (${roster.max}/${roster.max}). You cannot buy another player.`,
     );
   }
 

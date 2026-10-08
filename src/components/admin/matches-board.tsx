@@ -34,16 +34,12 @@ export function AdminMatchesBoard({
       title={readOnly ? "Archive matches" : "Matches"}
       hint={
         readOnly
-          ? "Read-only. Click a row to open the public matches archive for this season."
+          ? "Read-only. Click a match to see this season's result."
           : "Click a match to open the full editor (OCR, stand-ins, result)."
       }
       items={matches}
       getId={(m) => m.id}
-      hrefFor={(m) =>
-        readOnly
-          ? `/matches?season=${publicSeasonParam ?? ""}`
-          : `/admin/matches/${m.id}`
-      }
+      hrefFor={(m) => `/admin/matches/${m.id}?season=${publicSeasonParam ?? ""}`}
       searchPlaceholder="Search teams…"
       searchText={(m) => `${m.radiantName} ${m.direName} ${m.winnerName ?? ""}`}
       emptyLabel={

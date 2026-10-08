@@ -3,8 +3,9 @@ import { authSession } from "@/lib/auth";
 import { publicErrorMessage } from "@/lib/public-error";
 import { revalidatePublicPages } from "@/lib/page-cache";
 import { isRegistrationOpen } from "@/lib/registration-status";
+import { isPubgSeason } from "@/lib/games";
 import { registerPlayer } from "@/lib/register";
-import { getCurrentSeasonSafe } from "@/lib/seasons";
+import { getCurrentSeasonSafe, getLiveSeason } from "@/lib/seasons";
 
 export async function POST(request: Request) {
   const session = await authSession();
@@ -24,13 +25,25 @@ export async function POST(request: Request) {
 
   const body = (await request.json().catch(() => ({}))) as {
     steam?: string;
+    pubgName?: string;
     medal?: string;
     role?: string;
     playWindow?: string;
   };
-  if (!body.steam?.trim() || !body.medal || !body.role || !body.playWindow) {
+  const live = await getLiveSeason();
+  const pubg = isPubgSeason(live);
+  if (
+    !body.playWindow ||
+    (pubg
+      ? !body.pubgName?.trim() || !body.steam?.trim() || !body.medal
+      : !body.steam?.trim() || !body.medal || !body.role)
+  ) {
     return NextResponse.json(
-      { error: "Steam profile URL, rank, role, and weekend window are required." },
+      {
+        error: pubg
+          ? "PUBG name, Steam profile, rank, and weekend window are required. One Discord links to one Steam."
+          : "Steam profile URL, rank, role, and weekend window are required.",
+      },
       { status: 400 },
     );
   }
@@ -40,6 +53,7 @@ export async function POST(request: Request) {
       discordId,
       discordName: session.user?.name ?? session.user?.email ?? "Player",
       steam: body.steam,
+      pubgName: body.pubgName,
       medal: body.medal,
       role: body.role,
       playWindow: body.playWindow,

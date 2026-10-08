@@ -2,19 +2,17 @@ import { PrismaClient } from "@prisma/client";
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
-/** Neon pooler + long-running bot: keep Prisma's pool small so idle closes recover. */
+/**
+ * Neon's pooler supports prepared statements, so `pgbouncer=true` is not added.
+ * That flag made every query about 5x slower (each one paid extra round trips).
+ * Set it explicitly in DATABASE_URL only if a pooler without prepared statements is used.
+ */
 function withRuntimePoolParams(url: string) {
   try {
     const parsed = new URL(url);
-    if (
-      parsed.hostname.includes("-pooler") &&
-      !parsed.searchParams.has("pgbouncer")
-    ) {
-      parsed.searchParams.set("pgbouncer", "true");
-    }
     // Per-instance pool, not a global connection budget. Respect explicit URL tuning.
     if (!parsed.searchParams.has("connection_limit")) {
-      parsed.searchParams.set("connection_limit", "5");
+      parsed.searchParams.set("connection_limit", "10");
     }
     if (!parsed.searchParams.has("pool_timeout")) {
       parsed.searchParams.set("pool_timeout", "20");

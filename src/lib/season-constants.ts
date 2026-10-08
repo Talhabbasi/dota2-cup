@@ -18,7 +18,7 @@ export const TOURNAMENT_FORMAT = {
   TEAM_BASED: "TEAM_BASED",
 } as const;
 
-export const ALLOWED_TEAM_COUNTS = [8, 10, 12] as const;
+export const ALLOWED_TEAM_COUNTS = [8, 10, 12, 14, 15] as const;
 
 /** Default series lengths — fixtures can override via admin `bestOf`. */
 export const REGULAR_BEST_OF = 1;

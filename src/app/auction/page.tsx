@@ -8,15 +8,17 @@ import { STARTING_PURSE, formatPoints } from "@/lib/constants";
 import { getCupFeatureSettings } from "@/lib/cup-features";
 import { getTeams } from "@/lib/data";
 import { isRosterSub } from "@/lib/roles";
-import { pageMeta } from "@/lib/seo";
-import { CUP_NAME } from "@/lib/brand";
+import { livePageMeta } from "@/lib/seo";
 
 export const revalidate = 30;
 
-export const metadata = pageMeta(
-  "Player Auction",
-  `See which ${CUP_NAME} players sold to which team and for how many points in the season auction.`,
-);
+export function generateMetadata() {
+  return livePageMeta(
+    "Player Auction",
+    (brand) =>
+      `See which ${brand.name} players sold to which team and for how many points in the season auction.`,
+  );
+}
 
 export default async function AuctionPage() {
   const { auctionEnabled } = await getCupFeatureSettings();

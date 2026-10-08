@@ -11,6 +11,8 @@ import {
   Wallet,
 } from "lucide-react";
 import { PageHeader } from "@/components/common";
+import { AdminSeasonViewer } from "@/components/admin/season-viewer";
+import { resolveAdminSeasonView } from "@/lib/admin-season-view";
 import { AdminSignIn } from "@/components/admin-sign-in";
 import { currentPlayer } from "@/lib/auth";
 import { adminPasswordLoginConfigured } from "@/lib/admin-password";
@@ -20,6 +22,8 @@ import { getPaymentCollection } from "@/lib/payments";
 import { isRegistrationOpen } from "@/lib/registration-status";
 import { MEDAL_LABELS, adminRoleName, formatPoints } from "@/lib/constants";
 import { isSiteAdmin } from "@/lib/site-admin";
+import { getLiveSeason } from "@/lib/seasons";
+import { isPubgSeason } from "@/lib/games";
 import { pageMeta } from "@/lib/seo";
 import { CUP_NAME } from "@/lib/brand";
 import { actionUpdateCupSwitches } from "@/app/admin/actions";
@@ -127,7 +131,7 @@ const TONE_ICON: Record<(typeof SECTIONS)[number]["tone"], string> = {
 export default async function AdminPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ error?: string }>;
+  searchParams?: Promise<{ error?: string; season?: string }>;
 }) {
   const params = (await searchParams) ?? {};
   const { session, player } = await currentPlayer();
@@ -182,12 +186,17 @@ export default async function AdminPage({
     );
   }
 
-  const [settings, insights, payments, registrationOpen] = await Promise.all([
-    getCupFeatureSettings(),
-    getAdminInsights(),
-    getPaymentCollection(),
-    isRegistrationOpen(),
-  ]);
+  const seasonView = await resolveAdminSeasonView(params.season);
+  const seasonQuery = `?season=${seasonView.view.id}`;
+  const [settings, insights, payments, registrationOpen, liveSeason] =
+    await Promise.all([
+      getCupFeatureSettings(),
+      getAdminInsights(seasonView.view.id),
+      getPaymentCollection(seasonView.view.id),
+      isRegistrationOpen(),
+      getLiveSeason(),
+    ]);
+  const livePubg = isPubgSeason(liveSeason);
 
   const metrics = [
     {
@@ -195,21 +204,21 @@ export default async function AdminPage({
       value: insights.registeredPlayers.toLocaleString("en-PK"),
       detail: `${insights.signedPlayers} on teams`,
       tone: "blue" as const,
-      href: "/admin/players",
+      href: `/admin/players${seasonQuery}`,
     },
     {
       label: "Matches",
       value: insights.matchesPlayed.toLocaleString("en-PK"),
       detail: `${insights.matchesWithWinner} with winner`,
       tone: "violet" as const,
-      href: "/admin/matches",
+      href: `/admin/matches${seasonQuery}`,
     },
     {
       label: "Collected",
       value: `Rs ${payments.collected.toLocaleString("en-PK")}`,
       detail: `${payments.unpaidCount} unpaid`,
       tone: "green" as const,
-      href: "/admin/payments",
+      href: `/admin/payments${seasonQuery}`,
     },
     {
       label: "Auction sold",
@@ -219,19 +228,26 @@ export default async function AdminPage({
           ? `Avg ${formatPoints(insights.avgSoldPrice)}`
           : "No sales yet",
       tone: "amber" as const,
-      href: "/admin/auction",
+      href: `/admin/auction${seasonQuery}`,
     },
     {
       label: "Predictions",
       value: settings.predictionsEnabled ? "Unlocked" : "Locked",
       detail: settings.auctionEnabled ? "Auction on" : "Auction off",
       tone: settings.predictionsEnabled ? ("green" as const) : ("rose" as const),
-      href: "/admin/predictions",
+      href: `/admin/predictions${seasonQuery}`,
     },
   ];
 
   return (
     <div className="page">
+      <AdminSeasonViewer
+        view={seasonView.view}
+        options={seasonView.options}
+        readOnly={seasonView.readOnly}
+        publicSeasonParam={seasonView.publicSeasonParam}
+        publicHref="/"
+      />
       <section className="admin-metric-grid mb-6">
         {metrics.map((m) => (
           <Link
@@ -313,20 +329,22 @@ export default async function AdminPage({
                 <option value="off">Locked — closes all picks</option>
               </select>
             </AdminField>
-            <AdminField label="Max rank">
-              <select
-                name="maxMedalToApply"
-                defaultValue={settings.maxMedalToApply ?? "none"}
-                className={adminControlClass}
-              >
-                <option value="none">None</option>
-                {Object.entries(MEDAL_LABELS).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </AdminField>
+            {livePubg ? null : (
+              <AdminField label="Max rank">
+                <select
+                  name="maxMedalToApply"
+                  defaultValue={settings.maxMedalToApply ?? "none"}
+                  className={adminControlClass}
+                >
+                  <option value="none">None</option>
+                  {Object.entries(MEDAL_LABELS).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </AdminField>
+            )}
             <AdminField label="Complete team">
               <select
                 name="completeTeamRequired"
@@ -398,7 +416,7 @@ export default async function AdminPage({
             const Icon = row.icon;
             return (
               <li key={row.href}>
-                <Link href={row.href} className="admin-tool-card group">
+                <Link href={`${row.href}${seasonQuery}`} className="admin-tool-card group">
                   <span
                     className={cn(
                       "flex size-10 shrink-0 items-center justify-center rounded-xl",

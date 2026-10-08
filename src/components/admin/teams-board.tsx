@@ -30,12 +30,16 @@ export function AdminTeamsBoard({
   unsigned,
   readOnly = false,
   publicSeasonParam,
+  rosterMin = 5,
+  rosterMax = 7,
 }: {
   teams: AdminTeamRow[];
   unsigned: { discordId: string; steamName: string }[];
   allPlayers: { discordId: string; steamName: string; teamName: string | null }[];
   readOnly?: boolean;
   publicSeasonParam?: string;
+  rosterMin?: number;
+  rosterMax?: number;
 }) {
   const [showCreate, setShowCreate] = useState(false);
 
@@ -135,16 +139,12 @@ export function AdminTeamsBoard({
         title={readOnly ? "Archive franchises" : "Teams"}
         hint={
           readOnly
-            ? "Read-only. Click a franchise to open the public team page for this season."
+            ? "Read-only. Click a franchise to see this season's roster."
             : "Click a franchise to open its admin page."
         }
         items={teams}
         getId={(t) => t.id}
-        hrefFor={(t) =>
-          readOnly
-            ? `/teams/${t.id}?season=${publicSeasonParam ?? ""}`
-            : `/admin/teams/${t.id}`
-        }
+        hrefFor={(t) => `/admin/teams/${t.id}?season=${publicSeasonParam ?? ""}`}
         searchPlaceholder="Search team or captain…"
         searchText={(t) => `${t.name} ${t.tag ?? ""} ${t.captainName ?? ""}`}
         emptyLabel="No teams this season."
@@ -153,14 +153,19 @@ export function AdminTeamsBoard({
             key: "roster",
             label: "Roster",
             options: [
-              { value: "short", label: "Under 5" },
-              { value: "full", label: "5 starters+" },
-              { value: "max", label: "Full (7)" },
+              { value: "short", label: `Under ${rosterMin}` },
+              {
+                value: "full",
+                label: rosterMax === rosterMin ? `Full (${rosterMax})` : `${rosterMin}+`,
+              },
+              ...(rosterMax === rosterMin
+                ? []
+                : [{ value: "max", label: `Full (${rosterMax})` }]),
             ],
             match: (t, value) => {
-              if (value === "short") return t.playerCount < 5;
-              if (value === "full") return t.playerCount >= 5;
-              if (value === "max") return t.playerCount >= 7;
+              if (value === "short") return t.playerCount < rosterMin;
+              if (value === "full") return t.playerCount >= rosterMin;
+              if (value === "max") return t.playerCount >= rosterMax;
               return true;
             },
           },

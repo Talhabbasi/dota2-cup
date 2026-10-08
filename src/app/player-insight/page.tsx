@@ -1,17 +1,21 @@
 import { PageHeader } from "@/components/common";
 import { PlayerInsightAwardsGrid } from "@/components/player-insight-awards";
-import { CUP_NAME } from "@/lib/brand";
+import { isPubgSeason } from "@/lib/games";
+import { pubgPlayerAwards } from "@/lib/pubg-lobby";
 import { getPublicPlayerInsight } from "@/lib/player-insight";
 import { getSeasonByIdOrNumber, getLiveSeason } from "@/lib/seasons";
-import { pageMeta } from "@/lib/seo";
+import { livePageMeta } from "@/lib/seo";
 import Link from "next/link";
 
 export const revalidate = 30;
 
-export const metadata = pageMeta(
-  "Player Insight",
-  `Season highlights for ${CUP_NAME}: kills, assists, deaths, team totals, auction, predictions, and player of the tournament.`,
-);
+export function generateMetadata() {
+  return livePageMeta(
+    "Player Insight",
+    (brand) =>
+      `Season highlights for ${brand.name}: kills, assists, deaths, team totals, auction, predictions, and player of the tournament.`,
+  );
+}
 
 export default async function PlayerInsightPage({
   searchParams,
@@ -25,6 +29,34 @@ export default async function PlayerInsightPage({
     seasonParam ? getSeasonByIdOrNumber(seasonParam) : Promise.resolve(null),
   ]);
   const season = focused ?? live;
+  if (isPubgSeason(season) && season) {
+    const awards = await pubgPlayerAwards(season.id);
+    const cards = [
+      ["Most kills", awards.mostKills, awards.mostKills ? `${awards.mostKills.kills} kills` : ""],
+      ["Most damage", awards.mostDamage, awards.mostDamage ? `${awards.mostDamage.damage} damage` : ""],
+      ["Chicken dinners", awards.mostChickenDinners, awards.mostChickenDinners ? `${awards.mostChickenDinners.wwcd} wins` : ""],
+    ] as const;
+    return (
+      <div className="page">
+        <PageHeader
+          eyebrow={`Season ${season.number}`}
+          title="Player Insight"
+          subtitle="Kills and damage come from lobby results. Each kill is 1 team point. Damage does not add points."
+        />
+        <div className="grid gap-3 sm:grid-cols-3">
+          {cards.map(([title, row, value]) => (
+            <article key={title} className="rounded-lg border border-white/10 bg-black/20 p-4">
+              <p className="m-0 text-xs tracking-wide text-muted-foreground uppercase">{title}</p>
+              <p className="mt-2 mb-0 text-lg font-semibold">{row?.name ?? "—"}</p>
+              <p className="mt-1 mb-0 text-sm text-muted-foreground">
+                {row ? `${value}${row.teamName ? ` · ${row.teamName}` : ""}` : "No lobby stats yet."}
+              </p>
+            </article>
+          ))}
+        </div>
+      </div>
+    );
+  }
   const data = await getPublicPlayerInsight({
     seasonId: season?.id ?? null,
   });

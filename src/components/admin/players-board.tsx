@@ -23,6 +23,7 @@ export type AdminPlayerRow = {
   id: string;
   discordId: string;
   steamName: string;
+  pubgName?: string | null;
   medal: string;
   medalLabel: string;
   teamName: string | null;
@@ -45,6 +46,7 @@ export function AdminPlayersBoard({
   windowOptions,
   readOnly = false,
   publicSeasonParam,
+  game = "DOTA",
 }: {
   players: AdminPlayerRow[];
   linkablePlayers?: LinkablePlayerRow[];
@@ -54,6 +56,7 @@ export function AdminPlayersBoard({
   windowOptions: { value: string; label: string }[];
   readOnly?: boolean;
   publicSeasonParam?: string;
+  game?: string;
 }) {
   const [showRegister, setShowRegister] = useState(false);
   const [showLink, setShowLink] = useState(false);
@@ -79,7 +82,7 @@ export function AdminPlayersBoard({
               Register player
             </span>
             <span className="text-sm text-muted-foreground">
-              Add someone by Steam URL (Discord id optional).
+              Discord and Steam identify one player. PUBG also needs the in-game name and rank.
             </span>
           </span>
           <span className="text-primary">{showRegister ? "−" : "+"}</span>
@@ -90,12 +93,18 @@ export function AdminPlayersBoard({
             successMessage="Player registered"
             className="mt-4 grid gap-3 border-t border-white/10 pt-4 sm:grid-cols-2"
           >
+            <AdminField label="PUBG name">
+              <input
+                name="pubgName"
+                className={adminControlClass}
+                placeholder="Required on a PUBG season"
+              />
+            </AdminField>
             <AdminField label="Steam profile URL">
               <input
                 name="steam"
-                required
                 className={adminControlClass}
-                placeholder="https://steamcommunity.com/id/…"
+                placeholder="Required. One Steam account per Discord."
               />
             </AdminField>
             <AdminField label="Discord user id">
@@ -220,16 +229,12 @@ export function AdminPlayersBoard({
         title={readOnly ? "Archive roster" : "This season"}
         hint={
           readOnly
-            ? "Read-only. Click a player to open their public career page for this season."
+            ? "Read-only. Click a player to see their record for this season."
             : "Only players registered or linked for the live season. Click a row for their admin page."
         }
         items={players}
         getId={(p) => p.id}
-        hrefFor={(p) =>
-          readOnly
-            ? `/players/${p.id}?season=${publicSeasonParam ?? ""}`
-            : `/admin/players/${p.id}`
-        }
+        hrefFor={(p) => `/admin/players/${p.id}?season=${publicSeasonParam ?? ""}`}
         searchPlaceholder="Search name or Discord id…"
         searchText={(p) =>
           `${p.steamName} ${p.discordId} ${p.teamName ?? ""} ${p.medalLabel}`
@@ -287,7 +292,11 @@ export function AdminPlayersBoard({
           {
             key: "name",
             header: "Name",
-            cell: (p) => <span className="font-medium">{p.steamName}</span>,
+            cell: (p) => (
+              <span className="font-medium">
+                {game === "PUBG" ? p.pubgName || p.steamName : p.steamName}
+              </span>
+            ),
           },
           {
             key: "medal",

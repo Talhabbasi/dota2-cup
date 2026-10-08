@@ -1,5 +1,5 @@
 import Image from "next/image";
-import { CUP_ICON_PATH, CUP_NAME } from "@/lib/brand";
+import { CUP_ICON_PATH, CUP_NAME, PUBG_CUP_NAME } from "@/lib/brand";
 
 export function PageLoader() {
   return (
@@ -18,7 +18,10 @@ export function PageLoader() {
           />
         </span>
       </div>
-      <p className="eyebrow">{CUP_NAME}</p>
+      <p className="eyebrow">
+        <span className="brand-name-dota">{CUP_NAME}</span>
+        <span className="brand-name-pubg">{PUBG_CUP_NAME}</span>
+      </p>
       <p className="page-loader-text">Loading</p>
     </div>
   );

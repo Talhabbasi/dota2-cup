@@ -6,6 +6,8 @@ import { adminListTeamsForPicker } from "@/lib/match-admin";
 import { listPlayersForAdminSeason } from "@/lib/players-admin";
 import { pageMeta } from "@/lib/seo";
 import { AdminTeamsBoard } from "@/components/admin/teams-board";
+import { rosterRules } from "@/lib/games";
+import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 export const metadata = pageMeta("Admin Teams", "Captains and franchise names.");
@@ -20,10 +22,15 @@ export default async function AdminTeamsPage({
   const { view, options, readOnly, publicSeasonParam } =
     await resolveAdminSeasonView(sp.season);
 
-  const [teams, players] = await Promise.all([
+  const [teams, players, season] = await Promise.all([
     adminListTeamsForPicker(view.id),
     listPlayersForAdminSeason(view.id),
+    prisma.season.findUnique({
+      where: { id: view.id },
+      select: { game: true, pubgMode: true },
+    }),
   ]);
+  const rules = rosterRules(season);
   const unsigned = players
     .filter((p) => !p.teamId && !p.isCaptain)
     .map((p) => ({ discordId: p.discordId, steamName: p.steamName }));
@@ -72,6 +79,8 @@ export default async function AdminTeamsPage({
         }))}
         readOnly={readOnly}
         publicSeasonParam={publicSeasonParam}
+        rosterMin={rules.min}
+        rosterMax={rules.max}
       />
     </div>
   );

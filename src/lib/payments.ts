@@ -1,7 +1,6 @@
 import { prisma } from "./prisma";
 import { isRosterSub } from "./roles";
 import {
-  currentSeasonFilter,
   getLiveSeason,
   requireCurrentSeason,
   syncSeasonPlayer,
@@ -9,10 +8,11 @@ import {
 import {
   entryFeePkr,
   formatEntryFee,
-  formatTeamFee,
   teamFeePkr,
 } from "./registration-status";
 import { CUP_NAME } from "@/lib/brand";
+import { liveRoster } from "./live-roster";
+import { rosterRules } from "./games";
 
 export function playerMustPay(rosterRole: string | null) {
   return !isRosterSub(rosterRole);
@@ -139,7 +139,21 @@ export async function recordPlayerPayment(input: {
   return { player: updated, skipped: false as const, reason: null, alreadyPaid: false };
 }
 
-export async function adminMarkPaid(discordId: string, verifiedBy = "slash") {
+async function assertLivePaymentSeason(seasonId?: string | null) {
+  const live = await requireCurrentSeason();
+  const requested = seasonId?.trim();
+  if (requested && requested !== live.id) {
+    throw new Error("Payments can only be changed on the active season.");
+  }
+  return live;
+}
+
+export async function adminMarkPaid(
+  discordId: string,
+  verifiedBy = "slash",
+  seasonId?: string | null,
+) {
+  await assertLivePaymentSeason(seasonId);
   return recordPlayerPayment({
     discordId,
     discordName: "admin-mark",
@@ -147,8 +161,11 @@ export async function adminMarkPaid(discordId: string, verifiedBy = "slash") {
   });
 }
 
-export async function adminClearPaid(discordId: string) {
-  const season = await requireCurrentSeason();
+export async function adminClearPaid(
+  discordId: string,
+  seasonId?: string | null,
+) {
+  const season = await assertLivePaymentSeason(seasonId);
   const player = await findPlayerByDiscord(discordId);
   if (!player) throw new Error("Player not found.");
 
@@ -202,8 +219,17 @@ export type AdminPaymentPlayerRow = {
   paidAtLabel: string | null;
 };
 
-export async function adminListPaymentPlayers(): Promise<AdminPaymentPlayerRow[]> {
-  const season = await getLiveSeason();
+async function seasonForPayments(seasonId?: string | null) {
+  if (seasonId?.trim()) {
+    return prisma.season.findUnique({ where: { id: seasonId.trim() } });
+  }
+  return getLiveSeason();
+}
+
+export async function adminListPaymentPlayers(
+  seasonId?: string | null,
+): Promise<AdminPaymentPlayerRow[]> {
+  const season = await seasonForPayments(seasonId);
   if (!season) return [];
 
   const fee = entryFeePkr();
@@ -339,13 +365,13 @@ export function summarizeTeamPayments(
   name: string,
   id: string,
   players: PlayerPayRow[],
+  requiredPkr = teamFeePkr(),
 ): TeamPaymentRow {
   const starters = players.filter((p) => playerMustPay(p.rosterRole));
   const subs = players.filter((p) => !playerMustPay(p.rosterRole));
   const paidPkr = starters
     .filter((p) => p.paidAt)
     .reduce((sum, p) => sum + (p.paymentAmount || entryFeePkr()), 0);
-  const requiredPkr = teamFeePkr();
   const unpaid = starters.filter((p) => !p.paidAt).map((p) => ({
     steamName: p.steamName,
     discordId: p.discordId.split(":")[0],
@@ -362,10 +388,14 @@ export function summarizeTeamPayments(
   };
 }
 
-export async function listTeamPayments(): Promise<TeamPaymentRow[]> {
-  const seasonFilter = await currentSeasonFilter();
+export async function listTeamPayments(
+  seasonId?: string | null,
+): Promise<TeamPaymentRow[]> {
+  const season = await seasonForPayments(seasonId);
+  if (!season) return [];
+  const roster = seasonId?.trim() ? rosterRules(season) : await liveRoster();
   const teams = await prisma.team.findMany({
-    where: seasonFilter,
+    where: { seasonId: season.id },
     include: {
       seasonPlayers: {
         select: {
@@ -407,7 +437,7 @@ export async function listTeamPayments(): Promise<TeamPaymentRow[]> {
       players.some((p) => !isDummyDiscordId(p.discordId)),
     )
     .map(({ team, players }) =>
-      summarizeTeamPayments(team.name, team.id, players),
+      summarizeTeamPayments(team.name, team.id, players, roster.teamFeePkr),
     );
 }
 
@@ -470,7 +500,7 @@ export function formatTeamPaymentDetail(row: TeamPaymentRow) {
         ].join("\n");
   return [
     formatTeamPaymentLine(row),
-    `Team is allowed only at **exactly ${formatTeamFee()}** (min and max). Subs do not count.`,
+    `Team is allowed only at **exactly Rs ${row.requiredPkr.toLocaleString("en-PK")} PKR** (min and max).`,
     unpaid,
   ].join("\n");
 }
@@ -489,16 +519,17 @@ export function formatTeamPaymentsList(rows: TeamPaymentRow[]) {
   if (rows.length === 0) return "No teams yet.";
   const allowed = rows.filter((r) => r.allowed).length;
   const collected = rows.reduce((sum, r) => sum + r.paidPkr, 0);
+  const required = rows[0]?.requiredPkr;
   const lines = [
-    `**Team fees** — min and max **${formatTeamFee()}** (5 starters × ${formatEntryFee()}). Subs free.`,
+    `**Team fees** — min and max **Rs ${(required ?? 0).toLocaleString("en-PK")} PKR** per team.`,
     `**Collected from teams: ${collected.toLocaleString("en-PK")} PKR** · Allowed: **${allowed}/${rows.length}**`,
     ...rows.map(formatTeamPaymentLine),
   ];
   return lines.join("\n");
 }
 
-export async function getPaymentCollection() {
-  const season = await getLiveSeason();
+export async function getPaymentCollection(seasonId?: string | null) {
+  const season = await seasonForPayments(seasonId);
   if (!season) {
     return {
       collected: 0,
@@ -562,7 +593,7 @@ export async function getPaymentCollection() {
   );
   const expected = starters.length * fee;
   const owed = unpaid.length * fee;
-  const teams = await listTeamPayments();
+  const teams = await listTeamPayments(season.id);
   const teamsAllowed = teams.filter((t) => t.allowed).length;
 
   return {
@@ -589,7 +620,7 @@ export function formatPaymentCollection(
     `**In: ${data.collected.toLocaleString("en-PK")} PKR** (${data.paidCount} paid)`,
     `Still owed: **${data.owed.toLocaleString("en-PK")} PKR** (${data.unpaidCount} unpaid)`,
     `Expected from registered starters: **${data.expected.toLocaleString("en-PK")} PKR** (${data.starterCount} × ${formatEntryFee()})`,
-    `Teams at exactly ${formatTeamFee()}: **${data.teamsAllowed}/${data.teamCount}**`,
+    `Teams at the exact fee: **${data.teamsAllowed}/${data.teamCount}**`,
   ];
 
   if (data.teams.length > 0) {

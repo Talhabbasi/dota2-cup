@@ -92,8 +92,10 @@ function matchTeamName(seat: {
     : seat.match.direTeam?.name ?? null;
 }
 
-export async function getAdminInsights(): Promise<AdminInsights> {
-  const seasonId = await currentSeasonId();
+export async function getAdminInsights(
+  seasonIdInput?: string | null,
+): Promise<AdminInsights> {
+  const seasonId = seasonIdInput?.trim() || (await currentSeasonId());
 
   const [matches, seats, players, bids, lots] = await Promise.all([
     prisma.match.findMany({
@@ -127,13 +129,14 @@ export async function getAdminInsights(): Promise<AdminInsights> {
         },
       },
     }),
-    prisma.player.findMany({
-      where: { seasons: { some: { seasonId } } },
+    prisma.seasonPlayer.findMany({
+      where: { seasonId },
       select: {
-        steamName: true,
-        rolesJson: true,
         teamId: true,
-        discordId: true,
+        rolesJson: true,
+        player: {
+          select: { steamName: true, rolesJson: true, discordId: true },
+        },
       },
     }),
     prisma.bid.findMany({
@@ -157,11 +160,18 @@ export async function getAdminInsights(): Promise<AdminInsights> {
     }),
   ]);
 
-  const realPlayers = players.filter(
-    (p) =>
-      !p.discordId.startsWith("test-dummy-") &&
-      !p.discordId.startsWith("test-dummy-team-"),
-  );
+  const realPlayers = players
+    .filter(
+      (p) =>
+        !p.player.discordId.startsWith("test-dummy-") &&
+        !p.player.discordId.startsWith("test-dummy-team-"),
+    )
+    .map((p) => ({
+      steamName: p.player.steamName,
+      rolesJson: p.rolesJson || p.player.rolesJson,
+      teamId: p.teamId,
+      discordId: p.player.discordId,
+    }));
 
   const roleCounts = new Map<string, number>();
   for (const p of realPlayers) {

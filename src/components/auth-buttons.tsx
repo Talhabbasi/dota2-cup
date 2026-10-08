@@ -46,7 +46,9 @@ export function AuthButtons() {
         variant="outline"
         size="sm"
         className="border-white/15 bg-transparent text-foreground shadow-none hover:border-white/25 hover:bg-transparent hover:text-foreground dark:border-white/15 dark:bg-transparent dark:hover:bg-transparent"
-        onClick={() => signOut()}
+        onClick={() =>
+          signOut({ redirect: false }).then(() => window.location.reload())
+        }
       >
         <LogOut />
         Sign out

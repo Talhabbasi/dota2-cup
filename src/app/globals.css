@@ -57,6 +57,59 @@
   --sidebar-ring: #f59e0b;
 }
 
+html[data-game="pubg"] {
+  --bg: #0c0e09;
+  --bg-elev: #17190f;
+  --bg-soft: #12140d;
+  --line: rgba(242, 169, 0, 0.28);
+  --ink: #f6f1df;
+  --muted: #b7ae96;
+  --gold: #f2a900;
+  --gold-dim: #c8880a;
+  --ember: #e7c56a;
+  --background: #10130c;
+  --foreground: #f6f1df;
+  --card: #17190f;
+  --card-foreground: #f6f1df;
+  --popover: #1c1f14;
+  --primary: #f2a900;
+  --primary-foreground: #14160c;
+  --secondary: #1c1f14;
+  --surface-muted: #1c1f14;
+  --surface-elevated: #222616;
+  --muted-foreground: #b7ae96;
+  --accent: #242818;
+  --border: rgba(242, 169, 0, 0.22);
+  --ring: #f2a900;
+  --gold-accent: #f2a900;
+  --sidebar: #14160f;
+  --sidebar-primary: #f2a900;
+  --sidebar-accent: #242818;
+}
+
+html[data-game="pubg"] body {
+  background-color: #0c0e09;
+  background-image:
+    linear-gradient(180deg, rgba(8, 10, 6, 0.78) 0%, rgba(8, 10, 6, 0.9) 45%, rgba(8, 10, 6, 0.94) 100%),
+    url("/pubg/fields.jpg");
+  background-size: cover;
+  background-position: center top;
+  background-attachment: fixed;
+}
+
+html[data-game="pubg"] .teams-list-hero {
+  background-image:
+    linear-gradient(90deg, rgba(8, 10, 6, 0.88), rgba(8, 10, 6, 0.45)),
+    url("/pubg/desert.jpg");
+  background-size: cover;
+  background-position: center;
+}
+
+html[data-game="pubg"] header.sticky {
+  background: rgba(16, 18, 12, 0.92);
+  border-color: rgba(242, 169, 0, 0.22);
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -4637,6 +4690,15 @@ tr:last-child td {
   text-align: center;
 }
 
+.brand-name-pubg,
+html[data-game="pubg"] .brand-name-dota {
+  display: none;
+}
+
+html[data-game="pubg"] .brand-name-pubg {
+  display: inline;
+}
+
 .page-loader-mark {
   position: relative;
   width: 5.5rem;
@@ -6053,4 +6115,30 @@ body.admin-nav-open {
   html {
     @apply font-sans;
   }
+}
+
+html.dark[data-game="pubg"] body {
+  background-color: #0c0e09;
+  background-image:
+    linear-gradient(180deg, rgba(8, 10, 6, 0.78) 0%, rgba(8, 10, 6, 0.9) 45%, rgba(8, 10, 6, 0.94) 100%),
+    url("/pubg/fields.jpg");
+  background-size: cover;
+  background-position: center top;
+  background-attachment: fixed;
+}
+
+html.dark[data-game="pubg"] {
+  --bg: #0c0e09;
+  --background: #10130c;
+  --foreground: #f6f1df;
+  --card: #17190f;
+  --primary: #f2a900;
+  --primary-foreground: #14160c;
+  --gold: #f2a900;
+  --gold-accent: #f2a900;
+  --ring: #f2a900;
+  --border: rgba(242, 169, 0, 0.22);
+  --muted-foreground: #b7ae96;
+  --sidebar: #14160f;
+  --sidebar-primary: #f2a900;
 }

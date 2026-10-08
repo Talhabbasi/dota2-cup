@@ -1,4 +1,4 @@
-import { MIN_ROSTER } from "./constants";
+import { liveRoster } from "./live-roster";
 import { getCupFeatureSettings } from "./cup-features";
 import { weekendSlotLabel } from "./match-times";
 import {
@@ -412,13 +412,14 @@ export async function validateTeamsForSchedule() {
 
   const { completeTeamRequired } = await getCupFeatureSettings();
   if (completeTeamRequired) {
-    const under = teams.filter((t) => t.players.length < MIN_ROSTER);
+    const roster = await liveRoster();
+    const under = teams.filter((t) => t.players.length < roster.min);
     if (under.length > 0) {
       const names = under
-        .map((t) => `**${t.name}** (${t.players.length}/${MIN_ROSTER})`)
+        .map((t) => `**${t.name}** (${t.players.length}/${roster.min})`)
         .join(", ");
       throw new Error(
-        `These teams need at least ${MIN_ROSTER} players: ${names}. Finish rosters first.`,
+        `These teams need at least ${roster.min} players: ${names}. Finish rosters first.`,
       );
     }
   }

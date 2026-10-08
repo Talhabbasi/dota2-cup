@@ -44,6 +44,9 @@ import {
   isAdminDiscordId,
   MEDAL_LABELS,
   MEDALS,
+  PUBG_MEDAL_LABELS,
+  PUBG_MEDALS,
+  labelForMedal,
   ROLE_LABELS,
   STARTING_ROLES,
   STARTING_PURSE,
@@ -138,6 +141,7 @@ import {
   backfillSeason1,
   createSeason,
   currentSeasonFilter,
+  updateSeasonAdmin,
   endSeasonArchive,
   formatSeasonLabel,
   getCurrentSeason,
@@ -258,10 +262,16 @@ if (!token || !clientId) {
 const botToken: string = token;
 const botClientId: string = clientId;
 
-const medalChoices = MEDALS.map((m) => ({
-  name: MEDAL_LABELS[m],
-  value: m,
-}));
+const medalChoices = [
+  ...MEDALS.map((m) => ({
+    name: `Dota · ${MEDAL_LABELS[m]}`,
+    value: m,
+  })),
+  ...PUBG_MEDALS.map((m) => ({
+    name: `PUBG · ${PUBG_MEDAL_LABELS[m]}`,
+    value: m,
+  })),
+];
 const registerRoleChoices = [
   ...STARTING_ROLES.map((r) => ({
     name: ROLE_LABELS[r],
@@ -274,25 +284,27 @@ const registerRoleChoices = [
 const commands = [
   new SlashCommandBuilder()
     .setName("register")
-    .setDescription("Link one Steam account to this Discord (one per person)")
+    .setDescription("Register for the live cup (Steam for Dota, PUBG name for PUBG)")
+    .addStringOption((o) =>
+      o
+        .setName("pubg_name")
+        .setDescription("PUBG in-game name (required when the live cup is PUBG)"),
+    )
     .addStringOption((o) =>
       o
         .setName("steam")
-        .setDescription("Full Steam profile URL (Share → Copy Page URL)")
-        .setRequired(true),
+        .setDescription("Steam profile URL (required for Dota and PUBG)"),
     )
     .addStringOption((o) =>
       o
         .setName("rank")
-        .setDescription("Your medal")
-        .setRequired(true)
+        .setDescription("Dota medal or PUBG rank")
         .addChoices(...medalChoices),
     )
     .addStringOption((o) =>
       o
         .setName("role")
-        .setDescription("Your main role — pick from the dropdown")
-        .setRequired(true)
+        .setDescription("Your main role (Dota)")
         .addChoices(...registerRoleChoices),
     )
     .addStringOption((o) =>
@@ -399,22 +411,24 @@ const commands = [
         )
         .addStringOption((o) =>
           o
+            .setName("pubg_name")
+            .setDescription("PUBG in-game name (required on a PUBG season)"),
+        )
+        .addStringOption((o) =>
+          o
             .setName("steam")
-            .setDescription("Full Steam profile URL")
-            .setRequired(true),
+            .setDescription("Steam profile URL (required for Dota and PUBG)"),
         )
         .addStringOption((o) =>
           o
             .setName("rank")
-            .setDescription("Medal")
-            .setRequired(true)
+            .setDescription("Dota medal or PUBG rank")
             .addChoices(...medalChoices),
         )
         .addStringOption((o) =>
           o
             .setName("role")
-            .setDescription("Main role")
-            .setRequired(true)
+            .setDescription("Main role (Dota)")
             .addChoices(...registerRoleChoices),
         )
         .addStringOption((o) =>
@@ -720,6 +734,25 @@ const commands = [
           o
             .setName("start_date")
             .setDescription("Planned start date YYYY-MM-DD (shows on site hero)"),
+        )
+        .addStringOption((o) =>
+          o
+            .setName("game")
+            .setDescription("Which game this season is")
+            .addChoices(
+              { name: "Dota 2", value: "DOTA" },
+              { name: "PUBG", value: "PUBG" },
+            ),
+        )
+        .addStringOption((o) =>
+          o
+            .setName("mode")
+            .setDescription("PUBG roster: solo 1, duo 2, squad 4")
+            .addChoices(
+              { name: "Squad (4)", value: "SQUAD" },
+              { name: "Duo (2)", value: "DUO" },
+              { name: "Solo (1)", value: "SOLO" },
+            ),
         ),
     )
     .addSubcommand((s) =>
@@ -729,9 +762,46 @@ const commands = [
         .addIntegerOption((o) =>
           o
             .setName("number")
-            .setDescription("Season number to make live")
+            .setDescription("Season number inside that game")
             .setRequired(true)
             .setMinValue(1),
+        )
+        .addStringOption((o) =>
+          o
+            .setName("game")
+            .setDescription("Which game, if both have this number")
+            .addChoices(
+              { name: "Dota 2", value: "DOTA" },
+              { name: "PUBG", value: "PUBG" },
+            ),
+        ),
+    )
+    .addSubcommand((s) =>
+      s
+        .setName("edit")
+        .setDescription("Admin: change name, game, or PUBG mode")
+        .addIntegerOption((o) =>
+          o.setName("number").setDescription("Season number").setRequired(true).setMinValue(1),
+        )
+        .addStringOption((o) => o.setName("name").setDescription("New display name"))
+        .addStringOption((o) =>
+          o
+            .setName("game")
+            .setDescription("Dota or PUBG")
+            .addChoices(
+              { name: "Dota 2", value: "DOTA" },
+              { name: "PUBG", value: "PUBG" },
+            ),
+        )
+        .addStringOption((o) =>
+          o
+            .setName("mode")
+            .setDescription("PUBG roster size")
+            .addChoices(
+              { name: "Squad (4)", value: "SQUAD" },
+              { name: "Duo (2)", value: "DUO" },
+              { name: "Solo (1)", value: "SOLO" },
+            ),
         ),
     )
     .addSubcommand((s) =>
@@ -740,6 +810,27 @@ const commands = [
         .setDescription(
           "Admin: end & archive the live season (clears team rooms + cup roles)",
         ),
+    ),
+  new SlashCommandBuilder()
+    .setName("pubg")
+    .setDescription("Admin: record one team's PUBG lobby result")
+    .addStringOption((o) =>
+      o.setName("label").setDescription("Lobby label, e.g. Game 1").setRequired(true),
+    )
+    .addStringOption((o) =>
+      o.setName("map").setDescription("Erangel, Miramar, Sanhok, Vikendi, or Rondo").setRequired(true),
+    )
+    .addStringOption((o) =>
+      o.setName("team").setDescription("Team name in this season").setRequired(true),
+    )
+    .addIntegerOption((o) =>
+      o.setName("place").setDescription("Finish place").setRequired(true).setMinValue(1).setMaxValue(16),
+    )
+    .addIntegerOption((o) =>
+      o.setName("kills").setDescription("Team kills, 1 point each").setRequired(true).setMinValue(0),
+    )
+    .addStringOption((o) =>
+      o.setName("players").setDescription("Optional lines: Name, kills, damage"),
     ),
   new SlashCommandBuilder()
     .setName("updates")
@@ -1351,7 +1442,7 @@ function playerDiscordIdFromOptions(interaction: ChatInputCommandInteraction): s
 }
 
 function medalLabel(medal: string): string {
-  return MEDAL_LABELS[medal as Medal] ?? medal;
+  return labelForMedal(medal);
 }
 
 const pendingRegister = new Map<
@@ -1844,9 +1935,46 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
         return;
       }
       await interaction.deferReply();
-      const steam = interaction.options.getString("steam", true);
-      const medal = interaction.options.getString("rank", true);
+      const liveCup = await getLiveSeason();
+      const pubgCup = liveCup?.game === "PUBG";
+      const steam = interaction.options.getString("steam") ?? "";
+      const pubgName = interaction.options.getString("pubg_name") ?? "";
+      const medal = interaction.options.getString("rank") ?? "";
       const playWindow = interaction.options.getString("when", true);
+      if (pubgCup) {
+        if (!pubgName || !steam || !medal) {
+          await interaction.editReply(
+            "PUBG registration needs `pubg_name:`, `steam:`, and `rank:`. One Discord links to one Steam.",
+          );
+          return;
+        }
+        const result = await registerPlayer({
+          discordId,
+          discordName,
+          steam,
+          pubgName,
+          medal,
+          role: "flex",
+          playWindow,
+        });
+        void notifySiteRefresh();
+        await trySetPlayWindowRoles(
+          interaction.guild,
+          discordId,
+          playWindowOrBoth(result.player.playWindow),
+        );
+        await trySetMemberRegisteredRole(interaction.guild, discordId, true);
+        await interaction.editReply({
+          content: registerReplyLines(result).join("\n"),
+        });
+        return;
+      }
+      if (!steam || !medal) {
+        await interaction.editReply(
+          "Dota registration needs `steam:` and `rank:`.",
+        );
+        return;
+      }
       const role = registerRoleOption(interaction);
       if (!role) {
         pendingRegister.set(discordId, { steam, medal, playWindow });
@@ -1874,6 +2002,34 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
       await interaction.editReply({
         content: registerReplyLines(result).join("\n"),
       });
+      return;
+    }
+
+    if (name === "pubg") {
+      if (!isOrganizer(member, discordId)) {
+        await interaction.reply({
+          content: `Only **${adminRoleName()}** can record lobby results.`,
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+      await interaction.deferReply();
+      const { parseLobbyPlayerLines, recordPubgTeamResult } = await import(
+        "../src/lib/pubg-lobby"
+      );
+      const playersRaw = interaction.options.getString("players") ?? "";
+      const result = await recordPubgTeamResult({
+        label: interaction.options.getString("label", true),
+        map: interaction.options.getString("map", true),
+        teamName: interaction.options.getString("team", true),
+        placement: interaction.options.getInteger("place", true),
+        kills: interaction.options.getInteger("kills", true),
+        players: playersRaw.trim() ? parseLobbyPlayerLines(playersRaw) : [],
+      });
+      void notifySiteRefresh();
+      await interaction.editReply(
+        `Saved **${interaction.options.getString("team", true)}** · place ${interaction.options.getInteger("place", true)} · **${result.points}** points.`,
+      );
       return;
     }
 
@@ -1985,12 +2141,14 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
             name: interaction.options.getString("name"),
             teamCount: interaction.options.getInteger("teams") ?? undefined,
             plannedStartAt,
+            game: interaction.options.getString("game"),
+            pubgMode: interaction.options.getString("mode"),
           });
           const current = await getCurrentSeason();
           await interaction.editReply(
             [
               `Created **${formatSeasonLabel(created)}**.`,
-              `Plan: **${created.teamCount} teams**${
+              `Plan: **${created.game}**${created.game === "PUBG" ? ` ${created.pubgMode}` : ""} · **${created.teamCount} teams**${
                 created.plannedStartAt
                   ? ` · starts **${created.plannedStartAt.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}**`
                   : ""
@@ -2001,9 +2159,35 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
           );
           return;
         }
+        if (sub === "edit") {
+          const number = interaction.options.getInteger("number", true);
+          const gameOpt = interaction.options.getString("game");
+          const seasons = await listSeasons();
+          const target =
+            seasons.find((row) => row.number === number && (!gameOpt || row.game === gameOpt)) ??
+            null;
+          if (!target) {
+            await interaction.editReply(`Season ${number} does not exist.`);
+            return;
+          }
+          const updated = await updateSeasonAdmin({
+            seasonId: target.id,
+            name: interaction.options.getString("name") ?? target.name,
+            plannedStartAt: target.plannedStartAt,
+            tournamentFormat: target.tournamentFormat,
+            teamCount: target.teamCount,
+            game: interaction.options.getString("game") ?? target.game,
+            pubgMode: interaction.options.getString("mode") ?? target.pubgMode,
+          });
+          await interaction.editReply(
+            `Updated **${formatSeasonLabel(updated)}** · ${updated.game}${updated.game === "PUBG" ? ` ${updated.pubgMode}` : ""}.`,
+          );
+          void notifySiteRefresh();
+          return;
+        }
         if (sub === "start") {
           const number = interaction.options.getInteger("number", true);
-          const switched = await startSeason(number);
+          const switched = await startSeason(number, interaction.options.getString("game"));
           // startSeason already archives the previous season (which clears Discord rooms via REST).
           // Extra Guild pass if rooms remain.
           if (switched.previous && interaction.guild) {
@@ -2511,9 +2695,10 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
         const result = await registerPlayer({
           discordId: user.id,
           discordName: user.globalName || user.username,
-          steam: interaction.options.getString("steam", true),
-          medal: interaction.options.getString("rank", true),
-          role: interaction.options.getString("role", true),
+          steam: interaction.options.getString("steam") ?? "",
+          pubgName: interaction.options.getString("pubg_name") ?? "",
+          medal: interaction.options.getString("rank") ?? "uncalibrated",
+          role: interaction.options.getString("role") ?? "flex",
           playWindow: interaction.options.getString("when", true),
         });
         void notifySiteRefresh();

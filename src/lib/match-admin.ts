@@ -56,7 +56,7 @@ export async function adminLinkMatchPlayer(input: {
         where: { id: { in: toFix.map((row) => row.id) } },
         data: {
           playerId: player.id,
-          steam32: player.steam32,
+          ...(player.steam32 != null ? { steam32: player.steam32 } : {}),
           unknown: false,
           asStandIn: false,
         },
@@ -174,6 +174,17 @@ export async function adminSetMatchTeams(input: {
   const match = await prisma.match.findUnique({ where: { id: input.matchId } });
   if (!match) throw new Error("Match not found.");
 
+  for (const teamId of [input.radiantTeamId, input.direTeamId]) {
+    if (!teamId) continue;
+    const team = await prisma.team.findFirst({
+      where: { id: teamId, seasonId: match.seasonId },
+      select: { id: true },
+    });
+    if (!team) {
+      throw new Error("Both teams must belong to this match's season.");
+    }
+  }
+
   const winnerTeamId =
     input.winnerSide === "radiant"
       ? input.radiantTeamId
@@ -200,6 +211,7 @@ export async function adminGetMatch(matchId: string) {
     where: { id: matchId },
     select: {
       id: true,
+      seasonId: true,
       createdAt: true,
       radiantScore: true,
       direScore: true,
@@ -311,8 +323,8 @@ export async function adminSetAuctionSoldPrice(input: {
  });
 }
 
-export async function adminListSoldLots() {
-  const seasonId = await currentSeasonId();
+export async function adminListSoldLots(seasonIdInput?: string | null) {
+  const seasonId = seasonIdInput?.trim() || (await currentSeasonId());
   return prisma.auctionLot.findMany({
     where: { seasonId, status: "sold", teamId: { not: null } },
     orderBy: { createdAt: "desc" },
@@ -325,7 +337,8 @@ export async function adminListSoldLots() {
 
 /** Quick register without Discord: placeholder discord id for website-only admin add. */
 export async function adminRegisterPlayerBySteam(input: {
-  steam: string;
+  steam?: string;
+  pubgName?: string;
   medal: string;
   role: string;
   playWindow: string;
@@ -335,16 +348,17 @@ export async function adminRegisterPlayerBySteam(input: {
   const stamp = Date.now();
   return registerPlayer({
     discordId: `admin-web:${stamp}`,
-    discordName: input.displayName?.trim() || `Admin add ${stamp}`,
+    discordName: input.displayName?.trim() || input.pubgName?.trim() || `Admin add ${stamp}`,
     steam: input.steam,
+    pubgName: input.pubgName,
     medal: input.medal,
     role: input.role,
     playWindow: input.playWindow,
   });
 }
 
-export async function adminListPlayersForPicker() {
-  const seasonId = await currentSeasonId();
+export async function adminListPlayersForPicker(seasonIdInput?: string | null) {
+  const seasonId = seasonIdInput?.trim() || (await currentSeasonId());
   return prisma.player.findMany({
     where: { seasons: { some: { seasonId } } },
     orderBy: { steamName: "asc" },
@@ -360,16 +374,7 @@ export async function adminListPlayersForPicker() {
 }
 
 export async function adminListTeamsForPicker(seasonId?: string | null) {
-  const resolved =
-    seasonId?.trim() ||
-    (await getLiveSeason())?.id ||
-    (
-      await prisma.season.findFirst({
-        where: { status: "upcoming" },
-        orderBy: { number: "desc" },
-        select: { id: true },
-      })
-    )?.id;
+  const resolved = seasonId?.trim() || (await getLiveSeason())?.id;
   if (!resolved) return [];
   const teams = await prisma.team.findMany({
     where: { seasonId: resolved },

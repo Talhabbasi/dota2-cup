@@ -10,7 +10,8 @@ datasource db {
 
 model Season {
   id        String    @id @default(cuid())
-  number    Int       @unique
+  /// Season count inside one game. Dota Season 1 and PUBG Season 1 can both exist.
+  number    Int
   name      String
   status    String    @default("upcoming")
   /// UPCOMING | AUCTION_ACTIVE | IN_PROGRESS | COMPLETED
@@ -21,6 +22,10 @@ model Season {
   /// AUCTION_BASED | TEAM_BASED
   tournamentFormat String @default("AUCTION_BASED")
   teamCount Int       @default(8)
+  /// DOTA | PUBG. Existing rows stay Dota.
+  game      String    @default("DOTA")
+  /// SOLO | DUO | SQUAD. Used only when game is PUBG.
+  pubgMode  String    @default("SQUAD")
   createdAt DateTime  @default(now())
   startedAt DateTime?
   endedAt   DateTime?
@@ -38,7 +43,9 @@ model Season {
   bracketPicks BracketPick[]
   snapshot     SeasonSnapshot?
   captainAccounts CaptainAccount[]
+  pubgLobbies  PubgLobby[]
 
+  @@unique([game, number])
   @@index([isActive])
 }
 
@@ -93,8 +100,11 @@ model Player {
   id          String   @id @default(cuid())
   discordId   String   @unique
   discordName String
-  steam32     Int      @unique
+  /// Null when a PUBG player has not linked Steam.
+  steam32     Int?     @unique
   steamName   String
+  /// PUBG in-game name. Dota players leave this empty.
+  pubgName    String?
   medal       String
   rolesJson   String
   /// UNSOLD | ON_AUCTION | SOLD (auction pool)
@@ -120,6 +130,7 @@ model Player {
   predictions MatchPrediction[]
   bracketPicks BracketPick[]
   aliases     PlayerAlias[]
+  pubgLobbyStats PubgLobbyPlayer[]
 
   @@index([auctionStatus])
 }
@@ -183,6 +194,7 @@ model Team {
   predictedWins   MatchPrediction[] @relation("PredictedTeam")
   bracketPicks    BracketPick[] @relation("BracketPredictedTeam")
   captainAccounts CaptainAccount[]
+  pubgLobbyTeams PubgLobbyTeam[]
 
   @@unique([seasonId, name])
   @@unique([seasonId, captainId])
@@ -413,6 +425,55 @@ model Payment {
 }
 
 /// Short audit trail of organizer actions from the admin panel (and optional bot).
+/// One custom-room match. Points are calculated, never typed.
+model PubgLobby {
+  id        String   @id @default(cuid())
+  seasonId  String
+  season    Season   @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  map       String
+  playedAt  DateTime
+  /// scheduled = booked lobby, played = results count toward the table.
+  status    String   @default("played")
+  /// Organizer label so Discord can add teams to the same room ("Game 1").
+  label     String   @default("")
+  /// Uploaded result image. Points come from the reviewed placement and kills.
+  sourceImagePath String?
+  createdAt DateTime @default(now())
+  teams     PubgLobbyTeam[]
+
+  @@index([seasonId, playedAt])
+}
+
+model PubgLobbyTeam {
+  id        String   @id @default(cuid())
+  lobbyId   String
+  lobby     PubgLobby @relation(fields: [lobbyId], references: [id], onDelete: Cascade)
+  teamId    String
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  /// Empty until the lobby is played. Several teams in one scheduled lobby may be unset.
+  placement Int?
+  kills     Int      @default(0)
+  players   PubgLobbyPlayer[]
+
+  @@unique([lobbyId, teamId])
+  @@unique([lobbyId, placement])
+  @@index([teamId])
+}
+
+model PubgLobbyPlayer {
+  id          String   @id @default(cuid())
+  lobbyTeamId String
+  lobbyTeam   PubgLobbyTeam @relation(fields: [lobbyTeamId], references: [id], onDelete: Cascade)
+  playerId    String?
+  player      Player?  @relation(fields: [playerId], references: [id], onDelete: SetNull)
+  name        String
+  kills       Int
+  damage      Int      @default(0)
+  knocks      Int      @default(0)
+
+  @@index([playerId])
+}
+
 model AdminActivityLog {
   id             String   @id @default(cuid())
   actorDiscordId String

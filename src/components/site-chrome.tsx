@@ -12,12 +12,14 @@ export function SiteChrome({
   seasonLabel,
   showRegister,
   showSeasons = false,
+  game = "DOTA",
   banner,
   children,
 }: {
   seasonLabel: string;
   showRegister: boolean;
   showSeasons?: boolean;
+  game?: string;
   banner?: ReactNode;
   children: ReactNode;
 }) {
@@ -32,10 +34,11 @@ export function SiteChrome({
           seasonLabel={seasonLabel}
           showRegister={showRegister}
           showSeasons={showSeasons}
+          game={game}
         />
       ) : null}
       <main className="flex-1">{children}</main>
-      {!isAdmin ? <SiteFooter seasonLabel={seasonLabel} /> : null}
+      {!isAdmin ? <SiteFooter seasonLabel={seasonLabel} game={game} /> : null}
     </>
   );
 }

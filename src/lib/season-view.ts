@@ -16,6 +16,7 @@ export type ResolvedViewSeason = {
   startedAt: string | null;
   tournamentFormat: string;
   teamCount: number;
+  game: string;
   isLive: boolean;
   isArchive: boolean;
   championName: string | null;
@@ -38,8 +39,22 @@ export async function resolveViewSeason(input?: {
 
   const live = await getLiveSeason();
   if (live) {
-    const row = await getSeasonByIdOrNumber(String(live.number));
-    return row ? toResolved(row) : null;
+    return {
+      id: live.id,
+      number: live.number,
+      name: live.name,
+      phase: live.phase,
+      plannedStartAt: live.plannedStartAt
+        ? live.plannedStartAt.toISOString()
+        : null,
+      startedAt: live.startedAt ? live.startedAt.toISOString() : null,
+      tournamentFormat: live.tournamentFormat,
+      teamCount: live.teamCount,
+      game: live.game,
+      isLive: true,
+      isArchive: false,
+      championName: null,
+    };
   }
 
   const seasons = await listPublicSeasons();
@@ -59,6 +74,7 @@ function toResolved(row: PublicSeasonRow): ResolvedViewSeason {
     startedAt: row.startedAt ? row.startedAt.toISOString() : null,
     tournamentFormat: row.tournamentFormat,
     teamCount: row.teamCount,
+    game: row.game,
     isLive: row.isActive,
     isArchive: row.status === "archived" || row.phase === "COMPLETED",
     championName: row.championName,

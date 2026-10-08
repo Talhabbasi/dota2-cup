@@ -1,26 +1,35 @@
 import { PageHeader } from "@/components/common";
 import { CaptainAuctionClient } from "@/components/captain-auction-client";
-import { getWebAuctionViewOrEmpty } from "@/lib/web-auction";
-import { pageMeta } from "@/lib/seo";
-import { CUP_NAME } from "@/lib/brand";
+import { authSession } from "@/lib/auth";
+import {
+  captainTeamIdForDiscord,
+  getWebAuctionViewOrEmpty,
+} from "@/lib/web-auction";
+import { livePageMeta } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
 
-export const metadata = pageMeta(
-  "Captain Auction Desk",
-  `Captain-only bidding console for the ${CUP_NAME} auction.`,
-);
+export function generateMetadata() {
+  return livePageMeta(
+    "Captain Auction Desk",
+    (brand) => `Captain-only bidding console for the ${brand.name} auction.`,
+  );
+}
 
 export default async function CaptainAuctionPage() {
-  const view = await getWebAuctionViewOrEmpty();
+  const session = await authSession();
+  const [view, discordTeamId] = await Promise.all([
+    getWebAuctionViewOrEmpty(),
+    captainTeamIdForDiscord(session?.user?.discordId),
+  ]);
   return (
     <div className="page">
       <PageHeader
         eyebrow="Captains"
         title="Bid desk"
-        subtitle="Use the login and passcode from Admin → Auction. Bidding validates purse and roster floor rules."
+        subtitle="Sign in with the Discord account appointed as captain. Bidding checks purse and roster size. A passcode from Admin still works."
       />
-      <CaptainAuctionClient initialView={view} />
+      <CaptainAuctionClient initialView={view} discordTeamId={discordTeamId} />
     </div>
   );
 }

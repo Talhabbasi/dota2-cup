@@ -2,7 +2,7 @@ import { PageHeader } from "@/components/common";
 import { AdminSeasonViewer } from "@/components/admin/season-viewer";
 import { requireAdmin } from "@/lib/admin-auth";
 import { resolveAdminSeasonView } from "@/lib/admin-season-view";
-import { MEDALS, MEDAL_LABELS, ROLE_LABELS } from "@/lib/constants";
+import { ROLE_LABELS, labelForMedal, medalsForGame } from "@/lib/constants";
 import {
   listPlayersForAdminSeason,
   listPlayersNotInLiveSeason,
@@ -31,10 +31,12 @@ export default async function AdminPlayersPage({
     adminListTeamsForPicker(view.id),
   ]);
 
-  const medalOptions = MEDALS.map((m) => ({
-    value: m,
-    label: MEDAL_LABELS[m],
-  }));
+  const medalOptions = medalsForGame(view.game).map(
+    (m) => ({
+      value: m,
+      label: labelForMedal(m),
+    }),
+  );
   const roleOptions = Object.entries(ROLE_LABELS).map(([value, label]) => ({
     value,
     label,
@@ -76,9 +78,10 @@ export default async function AdminPlayersPage({
           id: p.id,
           discordId: p.discordId,
           steamName: p.steamName,
+          pubgName: p.pubgName,
           medal: p.medal,
           medalLabel:
-            MEDAL_LABELS[p.medal as keyof typeof MEDAL_LABELS] ?? p.medal,
+            labelForMedal(p.medal),
           teamName: p.team?.name ?? null,
           isCaptain: p.isCaptain,
           rosterRole: p.rosterRole,
@@ -88,7 +91,7 @@ export default async function AdminPlayersPage({
           steamName: p.steamName,
           discordId: p.discordId,
           medalLabel:
-            MEDAL_LABELS[p.medal as keyof typeof MEDAL_LABELS] ?? p.medal,
+            labelForMedal(p.medal),
         }))}
         teams={teams.map((t) => ({ id: t.id, name: t.name }))}
         medalOptions={medalOptions}
@@ -96,6 +99,7 @@ export default async function AdminPlayersPage({
         windowOptions={windowOptions}
         readOnly={readOnly}
         publicSeasonParam={publicSeasonParam}
+        game={view.game}
       />
     </div>
   );

@@ -19,6 +19,32 @@ export const CUP_TITLE_SUFFIX = "Indoor Dota 2 Tournament in Pakistan";
 export const CUP_TAGLINE =
   "Indoor Dota 2 cup in Pakistan. Captains, brackets, and kickoffs in one place.";
 
+export const PUBG_CUP_NAME = "MM PUBG Cup";
+
+export const PUBG_CUP_TAGLINE =
+  "Indoor PUBG cup. Solo, duo, or squad. Placement points plus 1 point per kill.";
+
+export type CupBrand = ReturnType<typeof cupBrand>;
+
+export function cupBrand(game: "DOTA" | "PUBG") {
+  if (game === "PUBG") {
+    return {
+      game,
+      gameLabel: "PUBG",
+      name: PUBG_CUP_NAME,
+      titleSuffix: "Indoor PUBG Tournament in Pakistan",
+      description: `${PUBG_CUP_NAME} is an indoor PUBG tournament in Pakistan. Follow squads, lobby schedules, auction results, and the points table.`,
+    };
+  }
+  return {
+    game,
+    gameLabel: "Dota 2",
+    name: CUP_NAME,
+    titleSuffix: CUP_TITLE_SUFFIX,
+    description: CUP_DESCRIPTION,
+  };
+}
+
 /** Generic kicker — never hardcode franchise count (that comes from Season.teamCount). */
 export const CUP_KICKER = `Indoor ${COMMUNITY_NAME} · Pakistan`;
 

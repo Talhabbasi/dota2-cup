@@ -1,5 +1,7 @@
 import { PageHeader } from "@/components/common";
+import { AdminSeasonViewer } from "@/components/admin/season-viewer";
 import { requireAdmin } from "@/lib/admin-auth";
+import { resolveAdminSeasonView } from "@/lib/admin-season-view";
 import { getCupSettings } from "@/lib/cup-settings-cache";
 import { listSeasonsForAdmin } from "@/lib/seasons";
 import { pageMeta } from "@/lib/seo";
@@ -29,8 +31,14 @@ function toDateInput(value: Date | null) {
   return `${y}-${m}-${day}`;
 }
 
-export default async function AdminSeasonsPage() {
+export default async function AdminSeasonsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ season?: string }>;
+}) {
   await requireAdmin();
+  const sp = await searchParams;
+  const seasonView = await resolveAdminSeasonView(sp.season);
   const [seasons, settings] = await Promise.all([
     listSeasonsForAdmin(),
     getCupSettings(),
@@ -47,6 +55,8 @@ export default async function AdminSeasonsPage() {
     endedAt: row.endedAt,
     tournamentFormat: row.tournamentFormat,
     teamCount: row.teamCount,
+    game: row.game,
+    pubgMode: row.pubgMode,
     championName: row.championTeam?.name ?? null,
     isActive: Boolean(row.isActive),
     isLivePointer: settings?.currentSeasonId === row.id || Boolean(row.isActive),
@@ -64,6 +74,17 @@ export default async function AdminSeasonsPage() {
         title="Seasons"
         subtitle="Create, edit, set active, end & archive, delete. Planned start + team count sync to the site hero, banner, Teams, and Players pages."
       />
+      <AdminSeasonViewer
+        view={seasonView.view}
+        options={seasonView.options}
+        readOnly={seasonView.readOnly}
+        publicSeasonParam={seasonView.publicSeasonParam}
+        publicHref="/"
+      />
+      <p className="mb-4 text-sm text-muted-foreground">
+        This list is every cup, so you can create and activate one. The picker
+        above is what the other admin tabs use.
+      </p>
       <AdminSeasonsBoard
         seasons={rows}
         liveSeasonId={

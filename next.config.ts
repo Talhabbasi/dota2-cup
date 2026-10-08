@@ -13,6 +13,9 @@ function s3PublicHostname(): string | null {
 const s3CdnHost = s3PublicHostname();
 
 const nextConfig: NextConfig = {
+  // The dev browser and NextAuth redirect land on 127.0.0.1; client chunks
+  // are blocked unless that host is allowed.
+  allowedDevOrigins: ["127.0.0.1"],
   experimental: {
     staleTimes: {
       dynamic: 30,

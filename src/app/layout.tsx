@@ -4,8 +4,9 @@ import { ClosedBanner } from "@/components/closed-banner";
 import { NavigationLoader } from "@/components/navigation-loader";
 import { Providers } from "@/components/providers";
 import { SiteChrome } from "@/components/site-chrome";
-import { CUP_ICON_PATH, CUP_TITLE_SUFFIX } from "@/lib/brand";
-import { SITE_DESCRIPTION, SITE_NAME, SITE_URL } from "@/lib/seo";
+import { CUP_ICON_PATH } from "@/lib/brand";
+import { isPubgSeason } from "@/lib/games";
+import { SITE_URL, liveCupBrand } from "@/lib/seo";
 import {
   countCompletedSeasons,
   getCurrentSeasonSafe,
@@ -38,30 +39,33 @@ const bebas = Bebas_Neue({
   preload: false,
 });
 
-export const metadata: Metadata = {
-  metadataBase: new URL(SITE_URL),
-  title: {
-    default: `${SITE_NAME} | ${CUP_TITLE_SUFFIX}`,
-    template: `%s | ${SITE_NAME}`,
-  },
-  description: SITE_DESCRIPTION,
-  icons: {
-    icon: CUP_ICON_PATH,
-    apple: CUP_ICON_PATH,
-  },
-  openGraph: {
-    type: "website",
-    locale: "en_PK",
-    siteName: SITE_NAME,
-    description: SITE_DESCRIPTION,
-    images: [CUP_ICON_PATH],
-  },
-  twitter: {
-    card: "summary",
-    description: SITE_DESCRIPTION,
-    images: [CUP_ICON_PATH],
-  },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const brand = await liveCupBrand();
+  return {
+    metadataBase: new URL(SITE_URL),
+    title: {
+      default: `${brand.name} | ${brand.titleSuffix}`,
+      template: `%s | ${brand.name}`,
+    },
+    description: brand.description,
+    icons: {
+      icon: CUP_ICON_PATH,
+      apple: CUP_ICON_PATH,
+    },
+    openGraph: {
+      type: "website",
+      locale: "en_PK",
+      siteName: brand.name,
+      description: brand.description,
+      images: [CUP_ICON_PATH],
+    },
+    twitter: {
+      card: "summary",
+      description: brand.description,
+      images: [CUP_ICON_PATH],
+    },
+  };
+}
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -76,6 +80,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
     currentPlayer(),
     countCompletedSeasons(),
   ]);
+  const game = isPubgSeason(live) ? "PUBG" : "DOTA";
   const seasonLabel = live
     ? liveSeasonLabel(live)
     : seasons.length > 0
@@ -85,6 +90,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
+      data-game={game === "PUBG" ? "pubg" : "dota"}
       className={`${oxanium.variable} ${sora.variable} ${bebas.variable} dark h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
@@ -92,6 +98,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
           <NavigationLoader />
           <SiteChrome
             seasonLabel={seasonLabel}
+            game={game}
             showRegister={!player}
             showSeasons={completedCount > 0}
             banner={<ClosedBanner />}

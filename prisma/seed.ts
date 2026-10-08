@@ -15,7 +15,7 @@ async function main() {
   await prisma.auctionState.create({ data: { id: "singleton" } });
 
   const season = await prisma.season.upsert({
-    where: { number: 1 },
+    where: { game_number: { game: "DOTA", number: 1 } },
     create: {
       number: 1,
       name: SEASON_LABEL,

@@ -9,7 +9,7 @@ import {
   TeamBadge,
 } from "@/components/common";
 import { formatDuration, formatRoles, getPlayer, getPlayerMeta } from "@/lib/data";
-import { formatPoints, MEDAL_LABELS, type Medal } from "@/lib/constants";
+import { formatPoints, labelForMedal } from "@/lib/constants";
 import { PLAY_WINDOW_LABELS, playWindowOrBoth } from "@/lib/play-window";
 import {
   heroIconUrl,
@@ -18,7 +18,7 @@ import {
 } from "@/lib/opendota";
 import type { Metadata } from "next";
 import { isMatchStandIn } from "@/lib/stand-in";
-import { CUP_NAME } from "@/lib/brand";
+import { liveCupBrand } from "@/lib/seo";
 import { getPublicSeasonContext } from "@/lib/season-page";
 import { cn } from "@/lib/utils";
 
@@ -30,12 +30,15 @@ export async function generateMetadata({
   params: Promise<{ id: string }>;
 }): Promise<Metadata> {
   const { id } = await params;
-  const player = await getPlayerMeta(id);
+  const [player, brand] = await Promise.all([getPlayerMeta(id), liveCupBrand()]);
   if (!player) return { title: "Player" };
   const teamBit = player.teamName ? ` · ${player.teamName}` : "";
   return {
     title: player.name,
-    description: `${player.name}${teamBit} in ${CUP_NAME} — player profile, heroes, and match history.`,
+    description:
+      brand.game === "PUBG"
+        ? `${player.name}${teamBit} in ${brand.name} — player profile and season history.`
+        : `${player.name}${teamBit} in ${brand.name} — player profile, heroes, and match history.`,
   };
 }
 
@@ -61,11 +64,12 @@ export default async function PlayerPage({
 }) {
   const { id } = await params;
   const sp = await searchParams;
-  const { seasonId } = await getPublicSeasonContext(sp);
+  const { seasonId, view } = await getPublicSeasonContext(sp);
   const player = await getPlayer(id, { seasonId });
   if (!player) notFound();
+  const pubg = view?.game === "PUBG";
 
-  const catalog = await loadHeroCatalog();
+  const catalog = pubg ? [] : await loadHeroCatalog();
   const byId = new Map(catalog.map((h) => [h.id, h]));
   const byName = new Map(catalog.map((h) => [h.name.toLowerCase(), h]));
 
@@ -118,8 +122,8 @@ export default async function PlayerPage({
   }
   const topHeroes = [...heroCounts.values()].sort((a, b) => b.plays - a.plays);
 
-  const seasonQuery = (sid: string | null) =>
-    sid ? `/players/${player.id}?season=${sid}` : `/players/${player.id}`;
+  const seasonQuery = (live: boolean) =>
+    live ? `/players/${player.id}` : "/seasons";
 
   return (
     <div className="page">
@@ -133,14 +137,11 @@ export default async function PlayerPage({
             Career profile
           </p>
           <h1 className="mt-2 mb-2 font-display text-3xl tracking-wide text-foreground uppercase">
-            {player.steamName}
+            {pubg && player.pubgName ? player.pubgName : player.steamName}
           </h1>
           <p className="m-0 text-sm text-muted-foreground">
-            {MEDAL_LABELS[player.medal as Medal] ?? player.medal}
-            {" · "}
-            {formatRoles(player.roles)}
-            {" · "}
-            {PLAY_WINDOW_LABELS[playWindowOrBoth(player.playWindow)]}
+            {labelForMedal(player.medal)}
+            {pubg ? " medal" : ` · ${formatRoles(player.roles)} · ${PLAY_WINDOW_LABELS[playWindowOrBoth(player.playWindow)]}`}
           </p>
         </div>
         <ul className="m-0 grid list-none grid-cols-2 gap-3 border-b border-white/10 p-5 sm:grid-cols-4">
@@ -171,7 +172,7 @@ export default async function PlayerPage({
               return (
                 <Link
                   key={row.seasonId}
-                  href={seasonQuery(row.seasonId)}
+                  href={seasonQuery(row.live)}
                   className={cn(
                     "rounded-md border px-3 py-1.5 text-sm transition",
                     active
@@ -238,7 +239,9 @@ export default async function PlayerPage({
             <StatTile icon={<Swords />} label="Avg KDA" value={kda} />
           </li>
           <li>
+            {pubg ? null : (
             <StatTile label="Heroes" value={topHeroes.length || "—"} />
+            )}
           </li>
         </ul>
       </EsportsCard>
@@ -252,7 +255,7 @@ export default async function PlayerPage({
             {player.seasonHistory.map((row) => {
               const active = player.focusSeasonId === row.seasonId;
               return (
-                <Link key={row.seasonId} href={seasonQuery(row.seasonId)}>
+                <Link key={row.seasonId} href={seasonQuery(row.live)}>
                   <EsportsCard
                     className={cn(
                       "px-4 py-3 transition",

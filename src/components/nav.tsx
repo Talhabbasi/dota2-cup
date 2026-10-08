@@ -8,7 +8,7 @@ import { LogIn } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { CUP_ICON_PATH, CUP_NAME } from "@/lib/brand";
+import { CUP_ICON_PATH, CUP_NAME, PUBG_CUP_NAME } from "@/lib/brand";
 import { cn } from "@/lib/utils";
 
 function subscribeNoop() {
@@ -45,6 +45,7 @@ const AuthButtons = dynamic(
 const LINKS = [
   ["/", "Home"],
   ["/teams", "Teams"],
+  ["/auction/live", "Auction"],
   ["/schedule", "Schedule"],
   ["/playoffs", "Playoffs"],
   ["/matches", "Matches"],
@@ -60,11 +61,13 @@ export function Nav({
   showSeasons = false,
   seasonLabel,
   showRegister = true,
+  game = "DOTA",
 }: {
   showSeasons?: boolean;
   seasonLabel: string;
   /** Keep Register until this Discord account has a player row. */
   showRegister?: boolean;
+  game?: string;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -79,9 +82,11 @@ export function Nav({
     setMenuPathname(pathname);
     setMenuOpen(false);
   }
+  const pubg = game === "PUBG";
   const links = LINKS.filter(([href]) => {
     if (!showSeasons && href === "/seasons") return false;
     if (!showRegister && href === "/register") return false;
+    if (pubg && (href === "/heroes" || href === "/playoffs")) return false;
     return true;
   });
 
@@ -89,9 +94,10 @@ export function Nav({
     for (const [href] of LINKS) {
       if (!showSeasons && href === "/seasons") continue;
       if (!showRegister && href === "/register") continue;
+      if (pubg && (href === "/heroes" || href === "/playoffs")) continue;
       router.prefetch(href);
     }
-  }, [router, showSeasons, showRegister]);
+  }, [router, showSeasons, showRegister, pubg]);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -124,7 +130,7 @@ export function Nav({
             priority
           />
           <span className="truncate font-display text-[0.82rem] font-bold tracking-[0.12em] text-white uppercase">
-            {CUP_NAME}
+            {game === "PUBG" ? PUBG_CUP_NAME : CUP_NAME}
           </span>
           <Badge
             variant="outline"

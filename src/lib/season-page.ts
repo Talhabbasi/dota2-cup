@@ -1,11 +1,15 @@
 import { resolveViewSeason } from "./season-view";
 import { getLiveSeason } from "./seasons";
 
-export async function getPublicSeasonContext(searchParams?: {
+/**
+ * Main-site lists always use the active season.
+ * Past cups are opened from /seasons, not `?season=` on Teams or Matches.
+ */
+export async function getPublicSeasonContext(_searchParams?: {
   season?: string;
 }) {
-  const view = await resolveViewSeason({ season: searchParams?.season });
   const live = await getLiveSeason();
-  const seasonId = view?.id ?? live?.id ?? null;
+  const view = await resolveViewSeason();
+  const seasonId = live?.id ?? view?.id ?? null;
   return { view, live, seasonId };
 }

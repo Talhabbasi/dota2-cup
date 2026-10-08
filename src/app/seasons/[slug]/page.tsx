@@ -1,8 +1,11 @@
 import Link from "next/link";
+import { unstable_cache } from "next/cache";
 import { notFound } from "next/navigation";
+import { PUBLIC_PAGE_TAG, PUBLIC_REVALIDATE_SECONDS } from "@/lib/cache-tags";
+import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/common";
 import { PlayerInsightAwardsGrid } from "@/components/player-insight-awards";
-import { CUP_NAME } from "@/lib/brand";
+import { CUP_NAME, PUBG_CUP_NAME } from "@/lib/brand";
 import { getPublicPlayerInsight } from "@/lib/player-insight";
 import {
   getSeasonHistory,
@@ -13,19 +16,74 @@ import type { Metadata } from "next";
 
 export const revalidate = 30;
 
-function parseSeasonSlug(slug: string): number | null {
+function parseSeasonSlug(slug: string): { number: number; game: string | null } | null {
   const trimmed = slug.trim().toLowerCase();
+  const tagged = trimmed.match(/^(pubg|dota)-(\d+)$/);
+  if (tagged) {
+    return { number: Number(tagged[2]), game: tagged[1]!.toUpperCase() };
+  }
   const match = trimmed.match(/^season-(\d+)$/) ?? trimmed.match(/^(\d+)$/);
   if (!match) return null;
   const number = Number(match[1]);
-  return Number.isFinite(number) && number > 0 ? number : null;
+  return Number.isFinite(number) && number > 0 ? { number, game: null } : null;
 }
 
 function findCompletedSeason(
   seasons: SeasonHistoryRow[],
-  number: number,
+  parsed: { number: number; game: string | null },
 ): SeasonHistoryRow | null {
-  return seasons.find((row) => row.number === number) ?? null;
+  const matches = seasons.filter(
+    (row) =>
+      row.number === parsed.number &&
+      (parsed.game ? row.game === parsed.game : true),
+  );
+  if (parsed.game) return matches[0] ?? null;
+  return matches.length === 1 ? matches[0]! : null;
+}
+
+const loadArchiveSeason = unstable_cache(
+  async (number: number, game: string | null) => {
+    const parsed = { number, game };
+    const [seasons, early] = await Promise.all([
+      getSeasonHistory(),
+      findArchiveSeasonId(parsed).then(async (id) =>
+        id ? { id, insights: await getPublicPlayerInsight({ seasonId: id }) } : null,
+      ),
+    ]);
+    const season = findCompletedSeason(seasons, parsed);
+    if (!season) return null;
+    const insights =
+      early?.id === season.id
+        ? early.insights
+        : await getPublicPlayerInsight({ seasonId: season.id });
+    return {
+      season: {
+        id: season.id,
+        number: season.number,
+        game: season.game,
+        name: season.name,
+        champion: season.champion,
+      },
+      insights,
+    };
+  },
+  ["season-archive-page"],
+  { tags: [PUBLIC_PAGE_TAG], revalidate: PUBLIC_REVALIDATE_SECONDS },
+);
+
+async function findArchiveSeasonId(parsed: {
+  number: number;
+  game: string | null;
+}) {
+  const rows = await prisma.season.findMany({
+    where: {
+      number: parsed.number,
+      ...(parsed.game ? { game: parsed.game } : {}),
+    },
+    select: { id: true },
+    take: 2,
+  });
+  return rows.length === 1 ? rows[0]!.id : null;
 }
 
 export async function generateMetadata({
@@ -34,11 +92,12 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const { slug } = await params;
-  const number = parseSeasonSlug(slug);
-  if (!number) return { title: "Season" };
+  const parsed = parseSeasonSlug(slug);
+  if (!parsed) return { title: "Season" };
+  const gameLabel = parsed.game === "PUBG" ? "PUBG" : parsed.game === "DOTA" ? "Dota" : "";
   return pageMeta(
-    `Season ${number}`,
-    `Season ${number} champion and player insight for ${CUP_NAME}.`,
+    `${gameLabel ? `${gameLabel} ` : ""}Season ${parsed.number}`,
+    `Season ${parsed.number} champion and player insight for ${parsed.game === "PUBG" ? PUBG_CUP_NAME : CUP_NAME}.`,
   );
 }
 
@@ -48,14 +107,12 @@ export default async function SeasonDetailPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const number = parseSeasonSlug(slug);
-  if (!number) notFound();
+  const parsed = parseSeasonSlug(slug);
+  if (!parsed) notFound();
 
-  const seasons = await getSeasonHistory();
-  const season = findCompletedSeason(seasons, number);
-  if (!season) notFound();
-
-  const insights = await getPublicPlayerInsight({ seasonId: season.id });
+  const archive = await loadArchiveSeason(parsed.number, parsed.game);
+  if (!archive) notFound();
+  const { season, insights } = archive;
   const insightsHasAny =
     Boolean(insights.playerOfTournament) ||
     Boolean(insights.mostKills) ||
@@ -76,7 +133,7 @@ export default async function SeasonDetailPage({
 
       <PageHeader
         eyebrow="Archive"
-        title={`Season ${season.number}`}
+        title={`${season.game === "PUBG" ? "PUBG" : "Dota"} Season ${season.number}`}
         subtitle={`${season.name} — who won, and player insight awards.`}
         pills={[
           {

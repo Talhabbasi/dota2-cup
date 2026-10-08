@@ -18,6 +18,7 @@ import {
   actionEndSeasonArchive,
   actionUpdateSeason,
 } from "@/app/admin/actions";
+import { CUP_GAME, PUBG_MODE } from "@/lib/games";
 import {
   ALLOWED_TEAM_COUNTS,
   SEASON_PHASE,
@@ -36,11 +37,52 @@ type AdminSeasonRow = {
   endedAt: Date | null;
   tournamentFormat: string;
   teamCount: number;
+  game: string;
+  pubgMode: string;
   championName: string | null;
   isActive: boolean;
   isLivePointer: boolean;
   hasData: boolean;
 };
+
+function GameFields({
+  game,
+  pubgMode,
+}: {
+  game?: string;
+  pubgMode?: string;
+}) {
+  const [selected, setSelected] = useState(game ?? CUP_GAME.DOTA);
+  const pubg = selected === CUP_GAME.PUBG;
+  return (
+    <>
+      <AdminField label="Game">
+        <select
+          name="game"
+          value={selected}
+          onChange={(event) => setSelected(event.target.value)}
+          className={adminControlClass}
+        >
+          <option value={CUP_GAME.DOTA}>Dota 2</option>
+          <option value={CUP_GAME.PUBG}>PUBG</option>
+        </select>
+      </AdminField>
+      {pubg ? (
+        <AdminField label="PUBG mode">
+          <select
+            name="pubgMode"
+            defaultValue={pubgMode ?? PUBG_MODE.SQUAD}
+            className={adminControlClass}
+          >
+            <option value={PUBG_MODE.SQUAD}>Squad (4)</option>
+            <option value={PUBG_MODE.DUO}>Duo (2)</option>
+            <option value={PUBG_MODE.SOLO}>Solo (1)</option>
+          </select>
+        </AdminField>
+      ) : null}
+    </>
+  );
+}
 
 function SeasonEditForm({ row }: { row: AdminSeasonRow }) {
   return (
@@ -90,6 +132,7 @@ function SeasonEditForm({ row }: { row: AdminSeasonRow }) {
           ))}
         </select>
       </AdminField>
+      <GameFields game={row.game} pubgMode={row.pubgMode} />
       <div className="sm:col-span-2">
         <AdminSubmitButton className="text-xs">Save edits</AdminSubmitButton>
       </div>
@@ -156,6 +199,7 @@ export function AdminSeasonsBoard({
                   ))}
                 </select>
               </AdminField>
+              <GameFields game={CUP_GAME.PUBG} pubgMode={PUBG_MODE.SQUAD} />
               <div className="flex flex-wrap gap-2 sm:col-span-2">
                 <AdminSubmitButton>Create season</AdminSubmitButton>
                 <button
@@ -232,6 +276,9 @@ export function AdminSeasonsBoard({
                       )}
                     </td>
                     <td className="py-3 pr-3">{row.phase}</td>
+                    <td className="py-3 pr-3 text-xs">
+                      {row.game === "PUBG" ? `PUBG ${row.pubgMode}` : "Dota"}
+                    </td>
                     <td className="py-3 pr-3 text-xs">{row.tournamentFormat}</td>
                     <td className="py-3 pr-3">{row.teamCount}</td>
                     <td className="py-3 pr-3">{row.championName ?? "—"}</td>

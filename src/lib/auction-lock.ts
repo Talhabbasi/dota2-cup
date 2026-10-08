@@ -34,5 +34,5 @@ export async function requireAuctionInactive(db: AuctionDb) {
 }
 
 export async function lockAuction(db: AuctionDb) {
-  await db.$queryRaw`SELECT pg_advisory_xact_lock(628104, 1)`;
+  await db.$executeRaw`SELECT pg_advisory_xact_lock(628104, 1)`;
 }

@@ -8,6 +8,7 @@ import { formatRoles } from "./data";
 import { PLAY_WINDOW_SHORT, playWindowOrBoth } from "./play-window";
 import { rebalanceTeamRoster } from "./players-admin";
 import { prisma } from "./prisma";
+import { liveRoster } from "./live-roster";
 import { currentSeasonFilter } from "./seasons";
 import { parseRolesJson } from "./roles";
 
@@ -136,9 +137,10 @@ export async function adminChangeCaptain(input: {
   }
 
   const joining = next.teamId !== team.id;
-  if (joining && team.players.length >= MAX_ROSTER) {
+  const roster = await liveRoster();
+  if (joining && team.players.length >= roster.max) {
     throw new Error(
-      `**${team.name}** already has ${MAX_ROSTER} players. Remove someone, then change captain.`,
+      `**${team.name}** already has ${roster.max} players. Remove someone, then change captain.`,
     );
   }
 

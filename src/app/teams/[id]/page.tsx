@@ -16,7 +16,7 @@ import {
   playWindowOrBoth,
 } from "@/lib/play-window";
 import { isRosterSub, parseRolesJson, sortTeamRoster } from "@/lib/roles";
-import { CUP_NAME } from "@/lib/brand";
+import { liveCupBrand } from "@/lib/seo";
 
 export const revalidate = 30;
 
@@ -26,11 +26,11 @@ export async function generateMetadata({
   params: Promise<{ id: string }>;
 }): Promise<Metadata> {
   const { id } = await params;
-  const name = await getTeamName(id);
+  const [name, brand] = await Promise.all([getTeamName(id), liveCupBrand()]);
   if (!name) return { title: "Team" };
   return {
     title: name,
-    description: `${name} roster, captain, and ${CUP_NAME} results for this indoor Dota 2 season.`,
+    description: `${name} roster, captain, and ${brand.name} results for this indoor ${brand.gameLabel} season.`,
   };
 }
 

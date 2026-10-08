@@ -90,9 +90,11 @@ function wrapUnique(error: unknown): never {
   throw error;
 }
 
-async function requireTeam(name: string) {
+async function requireTeam(name: string, seasonId?: string | null) {
   const trimmed = name.trim();
-  const season = await currentSeasonFilter();
+  const season = seasonId?.trim()
+    ? { seasonId: seasonId.trim() }
+    : await currentSeasonFilter();
   const teams = await prisma.team.findMany({
     where: season,
     select: { id: true, name: true },
@@ -445,12 +447,21 @@ export async function createScheduledMatch(input: {
   slotKey?: string;
   bestOf?: number;
   skipPlayoffGate?: boolean;
+  seasonId?: string | null;
 }) {
   if (!hasScheduleTable()) {
     throw new Error("Schedule table is missing. Run `npm run db:push`.");
   }
-  const radiant = await requireTeam(input.teamA);
-  const dire = await requireTeam(input.teamB);
+  const seasonId = input.seasonId?.trim() || (await currentSeasonId());
+  const season = await prisma.season.findUnique({
+    where: { id: seasonId },
+    select: { game: true },
+  });
+  if (season?.game === "PUBG") {
+    throw new Error("PUBG seasons book a lobby with a map and several teams, not a Team A vs Team B match.");
+  }
+  const radiant = await requireTeam(input.teamA, seasonId);
+  const dire = await requireTeam(input.teamB, seasonId);
   if (radiant.id === dire.id) {
     throw new Error("Pick two different teams.");
   }
@@ -469,7 +480,7 @@ export async function createScheduledMatch(input: {
   try {
     return await prisma.scheduledFixture.create({
       data: {
-        seasonId: await currentSeasonId(),
+        seasonId,
         radiantTeamId: radiant.id,
         direTeamId: dire.id,
         scheduledAt,
@@ -504,10 +515,10 @@ export async function updateScheduledMatch(input: {
   let radiantId = fixture.radiantTeamId;
   let direId = fixture.direTeamId;
   if (input.teamA?.trim()) {
-    radiantId = (await requireTeam(input.teamA)).id;
+    radiantId = (await requireTeam(input.teamA, fixture.seasonId)).id;
   }
   if (input.teamB?.trim()) {
-    direId = (await requireTeam(input.teamB)).id;
+    direId = (await requireTeam(input.teamB, fixture.seasonId)).id;
   }
   if (radiantId === direId) {
     throw new Error("Pick two different teams.");

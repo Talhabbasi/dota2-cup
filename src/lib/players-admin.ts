@@ -3,16 +3,17 @@ import { syncPlayerRosterToSeason } from "./season-roster";
 import {
   MAX_CAPTAINS,
   MAX_ROSTER,
-  MEDAL_LABELS,
   MEDALS,
+  PUBG_MEDALS,
+  labelForMedal,
   MIN_ROSTER,
   STARTING_PURSE,
   STARTING_ROLES,
   parseMedal,
-  type Medal,
 } from "./constants";
 import { formatRoles } from "./data";
 import { playerMustPay } from "./payments";
+import { liveRoster } from "./live-roster";
 import { parsePlayWindow } from "./play-window";
 import { prisma } from "./prisma";
 import {
@@ -134,8 +135,9 @@ export async function adminAddPlayerToTeam(input: {
   if (!team) {
     throw new Error(`Team "${input.teamName}" not found.`);
   }
-  if (team.players.length >= MAX_ROSTER) {
-    throw new Error(`**${team.name}** already has ${MAX_ROSTER} players.`);
+  const roster = await liveRoster();
+  if (team.players.length >= roster.max) {
+    throw new Error(`**${team.name}** already has ${roster.max} players.`);
   }
 
   await db.player.update({
@@ -566,6 +568,7 @@ export async function listPlayersForAdminSeason(seasonId: string) {
           id: true,
           discordId: true,
           steamName: true,
+          pubgName: true,
           medal: true,
           rolesJson: true,
         },
@@ -577,6 +580,7 @@ export async function listPlayersForAdminSeason(seasonId: string) {
     id: row.player.id,
     discordId: row.player.discordId,
     steamName: row.player.steamName,
+    pubgName: row.player.pubgName,
     medal: row.medal || row.player.medal,
     rolesJson: row.rolesJson || row.player.rolesJson,
     teamId: row.teamId,
@@ -649,8 +653,7 @@ export function formatPlayerDirectory(
     const id = player.discordId.split(":")[0];
     const mention = `<@${id}> \`${id}\``;
     const roles = formatRoles(parseRolesJson(player.rolesJson));
-    const medal =
-      MEDAL_LABELS[player.medal as Medal] ?? player.medal;
+    const medal = labelForMedal(player.medal);
     const slot = player.isCaptain
       ? "captain"
       : player.rosterRole === "sub"
@@ -706,10 +709,10 @@ export function formatUnsignedPlayers(
     `**Unsigned players** (${players.length}) — not on a team, still in the auction pool`,
     "",
   ];
-  for (const medal of MEDALS) {
+  for (const medal of [...MEDALS, ...PUBG_MEDALS]) {
     const list = groups.get(medal);
     if (!list || list.length === 0) continue;
-    lines.push(`**${MEDAL_LABELS[medal]}** (${list.length})`);
+    lines.push(`**${labelForMedal(medal)}** (${list.length})`);
     for (const player of list) {
       const mention = `<@${player.discordId.split(":")[0]}>`;
       const roles = formatRoles(parseRolesJson(player.rolesJson));

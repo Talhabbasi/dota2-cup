@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/common";
 import { requireAdmin } from "@/lib/admin-auth";
+import { resolveAdminSeasonView } from "@/lib/admin-season-view";
 import {
   adminGetMatch,
   adminListPlayersForPicker,
@@ -13,6 +14,7 @@ import { screenshotDisplayUrl } from "@/lib/screenshot-url";
 import {
   AdminBackLink,
   AdminCard,
+  AdminOutsideSeason,
   AdminField,
   AdminSection,
   AdminStatus,
@@ -40,17 +42,26 @@ export const metadata = pageMeta("Admin Match", "Edit match result and OCR.");
 
 export default async function AdminMatchDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ season?: string }>;
 }) {
   await requireAdmin();
   const { id } = await params;
-  const [match, players, teams] = await Promise.all([
-    adminGetMatch(id),
-    adminListPlayersForPicker(),
-    adminListTeamsForPicker(),
-  ]);
+  const sp = await searchParams;
+  const { view, readOnly } = await resolveAdminSeasonView(sp.season);
+  const backHref = `/admin/matches?season=${view.id}`;
+  const match = await adminGetMatch(id);
   if (!match) notFound();
+  if (match.seasonId !== view.id) {
+    return <AdminOutsideSeason href={backHref} label="All matches" />;
+  }
+  const canEdit = !readOnly;
+  const [players, teams] = await Promise.all([
+    adminListPlayersForPicker(match.seasonId),
+    adminListTeamsForPicker(match.seasonId),
+  ]);
 
   const radiantName = match.radiantTeam?.name ?? "Radiant?";
   const direName = match.direTeam?.name ?? "Dire?";
@@ -58,7 +69,7 @@ export default async function AdminMatchDetailPage({
 
   return (
     <div className="page">
-      <AdminBackLink href="/admin/matches" label="All matches" />
+      <AdminBackLink href={backHref} label="All matches" />
       <PageHeader
         eyebrow="Admin · Match"
         title={`${radiantName} vs ${direName}`}
@@ -94,13 +105,14 @@ export default async function AdminMatchDetailPage({
               first, then linked here.
             </p>
           )}
-          <AdminMatchScreenshotUpload matchId={match.id} />
+          {canEdit ? <AdminMatchScreenshotUpload matchId={match.id} /> : null}
         </AdminSection>
       </AdminCard>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <AdminCard tone="accent">
           <AdminSection title="Teams & result">
+            {canEdit ? (
             <AdminConfirmForm
               action={actionSetMatchTeams}
               message={`Save teams/winner for ${radiantName} vs ${direName}?`}
@@ -168,6 +180,13 @@ export default async function AdminMatchDetailPage({
                 Save teams &amp; winner
               </AdminSubmitButton>
             </AdminConfirmForm>
+            ) : (
+              <p className="m-0 text-sm text-muted-foreground">
+                {radiantName} vs {direName}
+                {match.winnerTeam?.name ? ` · winner ${match.winnerTeam.name}` : ""}.
+                This season is read-only.
+              </p>
+            )}
           </AdminSection>
         </AdminCard>
 
@@ -214,6 +233,7 @@ export default async function AdminMatchDetailPage({
                         {seat.hero}
                       </span>
                     </div>
+                    {canEdit ? (
                     <div className="flex flex-wrap gap-2">
                       <AdminConfirmForm
                         action={actionLinkMatchPlayer}
@@ -287,6 +307,7 @@ export default async function AdminMatchDetailPage({
                         </AdminConfirmForm>
                       )}
                     </div>
+                    ) : null}
                   </li>
                 );
               })}

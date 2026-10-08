@@ -11,7 +11,13 @@ export type AdminLotRow = {
   purse: number;
 };
 
-export function AdminAuctionBoard({ lots }: { lots: AdminLotRow[] }) {
+export function AdminAuctionBoard({
+  lots,
+  seasonId,
+}: {
+  lots: AdminLotRow[];
+  seasonId: string;
+}) {
   const teams = [
     ...new Set(lots.map((l) => l.teamName).filter(Boolean)),
   ].sort((a, b) => a.localeCompare(b));
@@ -22,7 +28,7 @@ export function AdminAuctionBoard({ lots }: { lots: AdminLotRow[] }) {
       hint="Click a lot to correct the sold price."
       items={lots}
       getId={(l) => l.id}
-      hrefFor={(l) => `/admin/auction/${l.id}`}
+      hrefFor={(l) => `/admin/auction/${l.id}?season=${seasonId}`}
       searchPlaceholder="Search player or team…"
       searchText={(l) => `${l.playerName} ${l.teamName}`}
       emptyLabel="No sold lots this season."

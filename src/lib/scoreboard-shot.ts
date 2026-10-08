@@ -678,7 +678,9 @@ export async function applyParsedScoreboard(
     aliasesByPlayer.set(row.playerId, list);
   }
 
-  const roster: RosterPlayer[] = seasonPlayers.map((row) => ({
+  const roster: RosterPlayer[] = seasonPlayers.flatMap((row) => {
+    if (row.player.steam32 == null) return [];
+    return [{
     id: row.player.id,
     steamName: row.player.steamName,
     steam32: row.player.steam32,
@@ -689,7 +691,8 @@ export async function applyParsedScoreboard(
       discordName: row.player.discordName,
       aliases: aliasesByPlayer.get(row.player.id),
     }),
-  }));
+  }];
+  });
 
   const radiantTeam = resolveTeam(parsed.radiantTeam, teams);
   const direTeam = resolveTeam(parsed.direTeam, teams);

@@ -17,11 +17,10 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import {
   MAX_ROSTER,
-  MEDAL_LABELS,
+  labelForMedal,
   MIN_ROSTER,
   ROLE_SHORT,
   STARTING_ROLES,
-  type Medal,
   type StartingRole,
 } from "@/lib/constants";
 import { cn } from "@/lib/utils";
@@ -55,7 +54,7 @@ function starterPos(player: TeamPlayerView, index: number): number {
 }
 
 function medalLabel(medal: string) {
-  return MEDAL_LABELS[medal as Medal] ?? medal;
+  return labelForMedal(medal);
 }
 
 function RosterPlayerRow({

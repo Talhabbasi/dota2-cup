@@ -5,7 +5,8 @@ import {
   type Guild,
   type VoiceChannel,
 } from "discord.js";
-import { adminRoleName, MIN_ROSTER } from "./constants";
+import { adminRoleName } from "./constants";
+import { liveRoster } from "./live-roster";
 import { registeredRoleName } from "./payments-channel-access";
 import { PLAY_WINDOW_ROLE_NAMES } from "./play-window";
 import { prisma } from "./prisma";
@@ -105,6 +106,7 @@ async function provisionTeamVoice(
     players: { discordId: string; steamName?: string | null; isCaptain: boolean }[];
   },
 ) {
+  const roster = await liveRoster();
   const captain = team.players.find((p) => p.isCaptain) ?? null;
   const name = voiceChannelName(team.name, captain?.steamName ?? null);
   const existing = category.children.cache.find(
@@ -117,15 +119,15 @@ async function provisionTeamVoice(
     if (channel.name !== name) {
       await channel.setName(name, "Sync team / captain name");
     }
-    if (channel.userLimit !== MIN_ROSTER) {
-      await channel.setUserLimit(MIN_ROSTER, "Starting five voice cap");
+    if (channel.userLimit !== roster.min) {
+      await channel.setUserLimit(roster.min, "Roster voice cap");
     }
   } else {
     channel = await guild.channels.create({
       name,
       type: ChannelType.GuildVoice,
       parent: category.id,
-      userLimit: MIN_ROSTER,
+      userLimit: roster.min,
       reason: `${CUP_NAME} voice for ${team.name}`,
     });
   }

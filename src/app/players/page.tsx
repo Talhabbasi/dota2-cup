@@ -2,23 +2,25 @@ import { Crown, Gem, Users } from "lucide-react";
 import { PageHeader, StatTile } from "@/components/common";
 import { PlayersGrid, type PlayerCardView } from "@/components/players-grid";
 import { SeasonArchiveBannerServer } from "@/components/season-archive-banner-server";
-import { MEDAL_LABELS, MEDALS, type Medal } from "@/lib/constants";
+import { MEDALS, labelForMedal } from "@/lib/constants";
 import { formatRoles } from "@/lib/data";
 import { toIso } from "@/lib/format";
 import { PLAY_WINDOW_SHORT, playWindowOrBoth } from "@/lib/play-window";
 import { isRosterSub } from "@/lib/roles";
 import { loadPlayersForSeason } from "@/lib/season-data";
 import { getPublicSeasonContext } from "@/lib/season-page";
-import { pageMeta } from "@/lib/seo";
-import { CUP_NAME } from "@/lib/brand";
+import { livePageMeta } from "@/lib/seo";
 import { formatSeasonStartDate, seasonPlanLine } from "@/lib/season-constants";
 
 export const revalidate = 30;
 
-export const metadata = pageMeta(
-  "Players",
-  `Registered ${CUP_NAME} players, medals, roles, and team assignments for the indoor Dota 2 tournament.`,
-);
+export function generateMetadata() {
+  return livePageMeta("Players", (brand) =>
+    brand.game === "PUBG"
+      ? `Registered ${brand.name} players and team assignments for the indoor PUBG tournament.`
+      : `Registered ${brand.name} players, medals, roles, and team assignments for the indoor Dota 2 tournament.`,
+  );
+}
 
 function medalRank(medal: string) {
   const i = (MEDALS as readonly string[]).indexOf(medal);
@@ -37,6 +39,7 @@ export default async function PlayersPage({
   const views: PlayerCardView[] = players.map((p) => ({
     id: p.id,
     steamName: p.steamName,
+    pubgName: p.pubgName,
     medal: p.medal,
     rolesLabel: formatRoles(p.roles),
     roleKeys: p.roles,
@@ -95,7 +98,7 @@ export default async function PlayersPage({
               label="Highest medal"
               value={
                 topMedal
-                  ? MEDAL_LABELS[topMedal.medal as Medal] ?? topMedal.medal
+                  ? labelForMedal(topMedal.medal)
                   : "—"
               }
             />
@@ -129,7 +132,7 @@ export default async function PlayersPage({
           </p>
         </div>
       ) : (
-        <PlayersGrid players={views} />
+        <PlayersGrid players={views} game={view?.game ?? "DOTA"} />
       )}
     </div>
   );

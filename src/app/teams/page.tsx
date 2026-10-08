@@ -11,17 +11,19 @@ import {
 } from "@/lib/season-data";
 import { getPublicSeasonContext } from "@/lib/season-page";
 import { isRosterSub } from "@/lib/roles";
-import { pageMeta } from "@/lib/seo";
-import { CUP_NAME } from "@/lib/brand";
+import { livePageMeta } from "@/lib/seo";
 import { seasonPlanLine } from "@/lib/season-constants";
 import { seasonEmptyTeamsCopy } from "@/lib/season-public-copy";
 
 export const revalidate = 30;
 
-export const metadata = pageMeta(
-  "Teams & Rosters",
-  `Meet the ${CUP_NAME} franchises, captains, and rosters for this indoor Dota 2 season in Pakistan.`,
-);
+export function generateMetadata() {
+  return livePageMeta(
+    "Teams & Rosters",
+    (brand) =>
+      `Meet the ${brand.name} franchises, captains, and rosters for this indoor ${brand.gameLabel} season in Pakistan.`,
+  );
+}
 
 /** Approximate recent form from W/L totals when match history isn't on the list. */
 function formFromRecord(wins: number, losses: number): FormDot[] {

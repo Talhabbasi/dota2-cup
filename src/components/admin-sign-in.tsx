@@ -32,7 +32,7 @@ export function AdminSignIn({
         setPending(false);
         return;
       }
-      window.location.href = result?.url || callbackUrl;
+      window.location.href = callbackUrl;
     } catch {
       setError("Could not sign in. Try again.");
       setPending(false);

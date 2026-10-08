@@ -1,4 +1,4 @@
-import { MEDAL_LABELS, formatPoints } from "./constants";
+import { formatPoints, labelForMedal } from "./constants";
 import { formatRoles } from "./data";
 import { isLiveCupTeam, publicAuctionLotWhere, publicTeamWhere } from "./dummy";
 import { prisma } from "./prisma";
@@ -37,7 +37,7 @@ export type SeasonAuctionBlock = {
 };
 
 function medalLabel(medal: string) {
-  return MEDAL_LABELS[medal as keyof typeof MEDAL_LABELS] ?? medal;
+  return labelForMedal(medal);
 }
 
 export async function getAuctionResultsBySeason(): Promise<SeasonAuctionBlock[]> {

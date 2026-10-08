@@ -24,6 +24,16 @@ export function verifyAdminPassword(
   }
 }
 
+/** Local admin login is only accepted on localhost or port 3000. */
+export function isLocalAdminHost(hostHeader: string | null | undefined): boolean {
+  const host = (hostHeader ?? "").split(",")[0]?.trim().toLowerCase() ?? "";
+  if (!host) return false;
+  if (host === "localhost" || host.startsWith("localhost:")) return true;
+  if (host === "127.0.0.1" || host.startsWith("127.0.0.1:")) return true;
+  if (host === "[::1]" || host.startsWith("[::1]:")) return true;
+  return host.endsWith(":3000");
+}
+
 export function adminEmailConfigured(): string | null {
   const email = process.env.ADMIN_EMAIL?.trim().toLowerCase();
   return email || null;
@@ -61,8 +71,41 @@ export function adminPasswordPlaintextMisconfigured(): string | null {
   return null;
 }
 
+export type AdminLoginAccount = {
+  loginId: string;
+  hash: string;
+  email: string;
+  name: string;
+};
+
+/**
+ * localhost / port 3000 uses ADMIN_EMAIL + ADMIN_PASSWORD_HASH.
+ * Every other host uses ADMIN_PUBLIC_USERNAME + ADMIN_PUBLIC_PASSWORD_HASH.
+ */
+export function adminLoginForHost(
+  hostHeader: string | null | undefined,
+): AdminLoginAccount | null {
+  if (adminPasswordPlaintextMisconfigured()) return null;
+  if (isLocalAdminHost(hostHeader)) {
+    const loginId = adminEmailConfigured();
+    const hash = adminPasswordHashConfigured();
+    if (!loginId || !hash) return null;
+    return { loginId, hash, email: loginId, name: "Admin" };
+  }
+  const loginId = process.env.ADMIN_PUBLIC_USERNAME?.trim().toLowerCase() || null;
+  const hash = process.env.ADMIN_PUBLIC_PASSWORD_HASH?.trim() || null;
+  if (!loginId || !hash) return null;
+  return {
+    loginId,
+    hash,
+    email: `${loginId}@admin.local`,
+    name: loginId,
+  };
+}
+
 export function adminPasswordLoginConfigured(): boolean {
   if (adminPasswordPlaintextMisconfigured()) return false;
-  const hasId = Boolean(adminEmailConfigured() || adminUsernameConfigured());
-  return hasId && Boolean(adminPasswordHashConfigured());
+  return Boolean(
+    adminLoginForHost("localhost:3000") || adminLoginForHost("example.com"),
+  );
 }

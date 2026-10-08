@@ -83,6 +83,7 @@ async function findLatestSharedCupMatch(excludeId?: string) {
     const chunk = roster.slice(i, i + 3);
     await Promise.all(
       chunk.map(async (player) => {
+        if (player.steam32 == null) return;
         const rows = await fetchPlayerMatchRows(player.steam32);
         for (const row of rows) {
           if (!row.match_id || !row.start_time || row.start_time < cutoff) {

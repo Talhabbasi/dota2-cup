@@ -1,5 +1,5 @@
 import { unstable_cache } from "next/cache";
-import { MIN_ROSTER } from "./constants";
+import { liveRoster } from "./live-roster";
 import { matchKickoffWindow } from "./play-window";
 import { prisma } from "./prisma";
 import { PUBLIC_PAGE_TAG, PUBLIC_REVALIDATE_SECONDS } from "./cache-tags";
@@ -150,11 +150,12 @@ async function liveTeams() {
 
 async function requireLiveRosters() {
   const teams = await liveTeams();
-  const under = teams.filter((team) => team.players.length < MIN_ROSTER);
+  const roster = await liveRoster();
+  const under = teams.filter((team) => team.players.length < roster.min);
   if (under.length > 0) {
     throw new Error(
-      `These teams need at least ${MIN_ROSTER} players: ${under
-        .map((team) => `**${team.name}** (${team.players.length}/${MIN_ROSTER})`)
+      `These teams need at least ${roster.min} players: ${under
+        .map((team) => `**${team.name}** (${team.players.length}/${roster.min})`)
         .join(", ")}.`,
     );
   }

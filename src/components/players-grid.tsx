@@ -16,14 +16,15 @@ import { Pagination, usePagedList } from "@/components/pagination";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import {
-  MEDAL_LABELS,
   MEDALS,
+  labelForMedal,
   type Medal,
 } from "@/lib/constants";
 
 export type PlayerCardView = {
   id: string;
   steamName: string;
+  pubgName?: string | null;
   medal: string;
   rolesLabel: string;
   roleKeys: string[];
@@ -89,7 +90,18 @@ function registeredInRange(iso: string, filter: TimeFilterKey, now: Date) {
   return created >= monthStart;
 }
 
-export function PlayersGrid({ players }: { players: PlayerCardView[] }) {
+function playerLabel(player: PlayerCardView, game: string) {
+  if (game === "PUBG" && player.pubgName) return player.pubgName;
+  return player.steamName;
+}
+
+export function PlayersGrid({
+  players,
+  game = "DOTA",
+}: {
+  players: PlayerCardView[];
+  game?: string;
+}) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<FilterKey>("all");
   const [timeFilter, setTimeFilter] = useState<TimeFilterKey>("all");
@@ -105,9 +117,10 @@ export function PlayersGrid({ players }: { players: PlayerCardView[] }) {
       if (!registeredInRange(p.createdAt, timeFilter, now)) return false;
       if (!q) return true;
       return (
-        p.steamName.toLowerCase().includes(q) ||
+        playerLabel(p, game).toLowerCase().includes(q) ||
+        (p.pubgName?.toLowerCase().includes(q) ?? false) ||
         (p.teamName?.toLowerCase().includes(q) ?? false) ||
-        p.rolesLabel.toLowerCase().includes(q) ||
+        (game === "PUBG" ? false : p.rolesLabel.toLowerCase().includes(q)) ||
         p.playWindowLabel.toLowerCase().includes(q)
       );
     });
@@ -140,7 +153,7 @@ export function PlayersGrid({ players }: { players: PlayerCardView[] }) {
       list.sort((a, b) => a.steamName.localeCompare(b.steamName));
     }
     return list;
-  }, [players, query, filter, timeFilter, sort]);
+  }, [players, query, filter, timeFilter, sort, game]);
 
   const unsigned = players.filter((p) => !p.teamId).length;
   const { page, pageCount, slice, setPage } = usePagedList(filtered, 20);
@@ -254,9 +267,11 @@ export function PlayersGrid({ players }: { players: PlayerCardView[] }) {
               <EsportsTableRow>
                 <EsportsTableHead>Player</EsportsTableHead>
                 <EsportsTableHead>Team</EsportsTableHead>
+                {game === "PUBG" ? null : (
                 <EsportsTableHead className="hidden md:table-cell">
                   Roles
                 </EsportsTableHead>
+                )}
                 <EsportsTableHead>Medal</EsportsTableHead>
                 <EsportsTableHead className="hidden text-right! sm:table-cell">
                   Floor
@@ -275,12 +290,12 @@ export function PlayersGrid({ players }: { players: PlayerCardView[] }) {
                       >
                         <Avatar className="size-8 shrink-0 bg-[#0a0d14] ring-1 ring-white/15">
                           <AvatarFallback className="bg-transparent text-[0.62rem] font-bold tracking-[0.12em]">
-                            {initials(player.steamName)}
+                            {initials(playerLabel(player, game))}
                           </AvatarFallback>
                         </Avatar>
                         <span className="min-w-0">
                           <span className="block truncate font-medium">
-                            {player.steamName}
+                            {playerLabel(player, game)}
                           </span>
                           <span className="mt-0.5 flex flex-wrap gap-1">
                             {player.isCaptain ? (
@@ -325,12 +340,14 @@ export function PlayersGrid({ players }: { players: PlayerCardView[] }) {
                         </span>
                       )}
                     </EsportsTableCell>
+                    {game === "PUBG" ? null : (
                     <EsportsTableCell className="hidden text-muted-foreground md:table-cell">
                       {player.rolesLabel || "—"}
                     </EsportsTableCell>
+                    )}
                     <EsportsTableCell>
                       <span className="team-medal-pill">
-                        {MEDAL_LABELS[medal] ?? player.medal}
+                        {labelForMedal(player.medal)}
                       </span>
                     </EsportsTableCell>
                     <EsportsTableCell className="hidden text-right! font-mono text-sm tabular-nums text-muted-foreground sm:table-cell">

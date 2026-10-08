@@ -27,6 +27,7 @@ export async function loadPlayersForSeason(seasonId: string) {
         select: {
           id: true,
           steamName: true,
+          pubgName: true,
           medal: true,
           rolesJson: true,
           playWindow: true,
@@ -43,6 +44,7 @@ export async function loadPlayersForSeason(seasonId: string) {
     return {
       id: row.player.id,
       steamName: row.player.steamName,
+      pubgName: row.player.pubgName,
       medal,
       playWindow: row.playWindow ?? row.player.playWindow,
       createdAt: toIso(row.player.createdAt),

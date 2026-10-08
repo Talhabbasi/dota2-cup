@@ -3,6 +3,8 @@ import { AdminSeasonViewer } from "@/components/admin/season-viewer";
 import { requireAdmin } from "@/lib/admin-auth";
 import { resolveAdminSeasonView } from "@/lib/admin-season-view";
 import { adminListRecentMatches } from "@/lib/match-admin";
+import { listPubgLobbies } from "@/lib/pubg-lobby";
+import { matchPoints } from "@/lib/pubg-scoring";
 import { formatScheduleWhen } from "@/lib/schedule";
 import { pageMeta } from "@/lib/seo";
 import { AdminMatchesBoard } from "@/components/admin/matches-board";
@@ -21,7 +23,10 @@ export default async function AdminMatchesPage({
   const sp = await searchParams;
   const { view, options, readOnly, publicSeasonParam } =
     await resolveAdminSeasonView(sp.season);
-  const rawMatches = await adminListRecentMatches(80, view.id);
+  const pubg = view.game === "PUBG";
+  const lobbies = pubg ? await listPubgLobbies(view.id) : [];
+  const played = lobbies.filter((lobby) => lobby.status !== "scheduled");
+  const rawMatches = pubg ? [] : await adminListRecentMatches(80, view.id);
 
   const matches = rawMatches.map((match) => {
     const needsTeam =
@@ -50,17 +55,23 @@ export default async function AdminMatchesPage({
         eyebrow="Admin"
         title="Matches"
         subtitle={
-          readOnly
-            ? `Archive Season ${view.number} — read-only. Open the public page for full detail.`
-            : "Fix OCR links and stand-ins. To record a new result, open the fixture under Schedule."
+          pubg
+            ? "Custom-room results for this PUBG season. Book the lobby under Schedule, then record places here or on PUBG results."
+            : readOnly
+              ? `Archive Dota Season ${view.number} — read-only.`
+              : "Team A vs Team B. Fix OCR links and stand-ins, or record the result from Schedule."
         }
-        pills={[
-          { value: matches.length, label: "recent" },
-          {
-            value: matches.filter((m) => m.unmatchedCount > 0).length,
-            label: "need OCR fix",
-          },
-        ]}
+        pills={
+          pubg
+            ? [{ value: played.length, label: "lobbies" }]
+            : [
+                { value: matches.length, label: "recent" },
+                {
+                  value: matches.filter((m) => m.unmatchedCount > 0).length,
+                  label: "need OCR fix",
+                },
+              ]
+        }
       />
       <AdminSeasonViewer
         view={view}
@@ -69,11 +80,42 @@ export default async function AdminMatchesPage({
         publicSeasonParam={publicSeasonParam}
         publicHref="/matches"
       />
+      {pubg ? (
+        played.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            No played lobbies for this season.
+          </p>
+        ) : (
+          <div className="grid gap-3">
+            {played.map((lobby) => (
+              <article key={lobby.id} className="rounded-xl border border-white/10 p-4">
+                <h2 className="mt-0 mb-2 text-base font-semibold">
+                  {lobby.label || "Lobby"} · {lobby.map}
+                </h2>
+                <p className="mb-3 text-sm text-muted-foreground">
+                  {formatScheduleWhen(lobby.playedAt)}
+                </p>
+                <ul className="m-0 grid list-none gap-1 p-0 text-sm">
+                  {lobby.teams
+                    .filter((row) => row.placement != null)
+                    .map((row) => (
+                      <li key={row.id}>
+                        #{row.placement} {row.team.name} · {row.kills} kills ·{" "}
+                        {matchPoints(row.placement ?? 0, row.kills)} pts
+                      </li>
+                    ))}
+                </ul>
+              </article>
+            ))}
+          </div>
+        )
+      ) : (
       <AdminMatchesBoard
         matches={matches}
         readOnly={readOnly}
         publicSeasonParam={publicSeasonParam}
       />
+      )}
     </div>
   );
 }

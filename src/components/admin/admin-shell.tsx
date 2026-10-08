@@ -2,11 +2,13 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { signOut } from "next-auth/react";
 import {
   CalendarDays,
+  Crosshair,
   ChartColumn,
+  Crown,
   Gavel,
   LayoutDashboard,
   LogOut,
@@ -21,7 +23,7 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
-import { CUP_ICON_PATH, CUP_NAME } from "@/lib/brand";
+import { CUP_ICON_PATH, CUP_NAME, PUBG_CUP_NAME } from "@/lib/brand";
 import { cn } from "@/lib/utils";
 import { AdminToastProvider } from "@/components/admin/admin-toast";
 
@@ -54,12 +56,14 @@ const NAV = [
     group: "Cup",
     items: [
       { href: "/admin/matches", label: "Matches", icon: Swords },
+      { href: "/admin/pubg", label: "PUBG results", icon: Crosshair },
       { href: "/admin/players", label: "Players", icon: Users },
       { href: "/admin/teams", label: "Teams", icon: UsersRound },
       { href: "/admin/schedule", label: "Schedule", icon: CalendarDays },
       { href: "/admin/seasons", label: "Seasons", icon: Trophy },
       { href: "/admin/payments", label: "Payments", icon: Wallet },
       { href: "/admin/auction", label: "Auction", icon: Gavel },
+      { href: "/admin/captains", label: "Captains", icon: Crown },
       { href: "/admin/predictions", label: "Predictions", icon: Target },
     ],
   },
@@ -86,6 +90,7 @@ export function AdminShell({
   children: ReactNode;
 }) {
   const pathname = usePathname();
+  const season = useSearchParams().get("season");
   const [open, setOpen] = useCloseOnPathChange(pathname);
   const pageTitle = titleFromPath(pathname);
 
@@ -125,7 +130,8 @@ export function AdminShell({
           />
           <div className="min-w-0">
             <p className="m-0 truncate text-sm font-semibold text-foreground">
-              {CUP_NAME}
+              <span className="brand-name-dota">{CUP_NAME}</span>
+              <span className="brand-name-pubg">{PUBG_CUP_NAME}</span>
             </p>
             <p className="m-0 text-[0.65rem] tracking-[0.14em] text-muted-foreground uppercase">
               Admin
@@ -158,7 +164,9 @@ export function AdminShell({
                   return (
                     <li key={item.href}>
                       <Link
-                        href={item.href}
+                        href={
+                          season ? `${item.href}?season=${season}` : item.href
+                        }
                         className={cn(
                           "flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition",
                           active
@@ -180,7 +188,11 @@ export function AdminShell({
         <div className="border-t border-white/8 p-3">
           <button
             type="button"
-            onClick={() => signOut({ callbackUrl: "/admin" })}
+            onClick={() =>
+              signOut({ redirect: false }).then(() => {
+                window.location.href = "/admin";
+              })
+            }
             className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-muted-foreground transition hover:bg-rose-500/10 hover:text-rose-300"
           >
             <LogOut className="size-4" />

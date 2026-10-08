@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getUpcomingFixture } from "@/lib/data";
 import { formatScheduleWhen } from "@/lib/schedule";
 import { getLiveSeason, listPublicSeasons } from "@/lib/seasons";
+import { isPubgSeason } from "@/lib/games";
 import {
   SEASON_STATUS,
   seasonPlanLine,
@@ -88,7 +89,7 @@ export async function ClosedBanner() {
               className="size-1.5 rounded-full bg-amber-400 shadow-[0_0_8px_rgba(245,158,11,0.85)]"
               aria-hidden
             />
-            Season
+            {isPubgSeason(plan) ? "PUBG" : "Dota"}
           </span>
           <span className="text-white/25" aria-hidden>
             ·

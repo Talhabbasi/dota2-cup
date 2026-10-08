@@ -225,6 +225,23 @@ export function AdminEmpty({ children }: { children: ReactNode }) {
   );
 }
 
+export function AdminOutsideSeason({
+  href,
+  label,
+}: {
+  href: string;
+  label: string;
+}) {
+  return (
+    <div className="page">
+      <AdminBackLink href={href} label={label} />
+      <p className="m-0 text-sm text-muted-foreground">
+        This record is not part of the selected season.
+      </p>
+    </div>
+  );
+}
+
 export function AdminBackLink({
   href,
   label,

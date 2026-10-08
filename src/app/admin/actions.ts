@@ -39,7 +39,7 @@ import { uploadMatchScreenshot, isObjectStorageConfigured } from "@/lib/object-s
 import { ingestScoreboardScreenshot, listScoreboardKnownNames } from "@/lib/scoreboard-shot";
 import { recordManualSeriesWinner } from "@/lib/results";
 import { prisma } from "@/lib/prisma";
-import type { Medal } from "@/lib/constants";
+import { MEDALS, type Medal } from "@/lib/constants";
 import {
   activateSeason,
   createSeasonAdmin,
@@ -182,14 +182,16 @@ export async function actionRegisterPlayer(formData: FormData) {
   const discordId = String(formData.get("discordId") ?? "").trim();
   const discordName = String(formData.get("discordName") ?? "").trim();
   const steam = String(formData.get("steam") ?? "").trim();
+  const pubgName = String(formData.get("pubgName") ?? "").trim();
   const medal = String(formData.get("medal") ?? "");
   const role = String(formData.get("role") ?? "");
   const playWindow = String(formData.get("playWindow") ?? "both");
   if (discordId) {
     await registerPlayer({
       discordId,
-      discordName: discordName || discordId,
+      discordName: discordName || pubgName || discordId,
       steam,
+      pubgName,
       medal,
       role,
       playWindow,
@@ -201,10 +203,11 @@ export async function actionRegisterPlayer(formData: FormData) {
   } else {
     await adminRegisterPlayerBySteam({
       steam,
+      pubgName,
       medal,
       role,
       playWindow,
-      displayName: discordName || undefined,
+      displayName: discordName || pubgName || undefined,
     });
     await note(session, "player.register", `Registered Steam player ${discordName || steam}`, {
       steam,
@@ -356,7 +359,8 @@ export async function actionCreateFixture(formData: FormData) {
   const bestOfRaw = String(formData.get("bestOf") ?? "").trim();
   const bestOf =
     bestOfRaw === "1" || bestOfRaw === "3" ? Number(bestOfRaw) : undefined;
-  await createScheduledMatch({ teamA, teamB, date, time, kind, bestOf });
+  const seasonId = String(formData.get("seasonId") ?? "").trim();
+  await createScheduledMatch({ teamA, teamB, date, time, kind, bestOf, seasonId });
   await note(
     session,
     "schedule.create",
@@ -456,7 +460,9 @@ export async function actionUpdateCupSwitches(formData: FormData) {
     patch.predictionsEnabled = predictions === "on";
   }
   if (maxMedal === "none") patch.maxMedalToApply = null;
-  else if (maxMedal) patch.maxMedalToApply = maxMedal as Medal;
+  else if ((MEDALS as readonly string[]).includes(maxMedal)) {
+    patch.maxMedalToApply = maxMedal as Medal;
+  }
   await updateCupFeatureSettings(patch);
   if (registration === "on" || registration === "off") {
     const { setRegistrationOpen } = await import("@/lib/registration-status");
@@ -493,7 +499,8 @@ export async function actionUpdateCupSwitches(formData: FormData) {
 export async function actionMarkPaid(formData: FormData) {
   const session = await requireAdmin();
   const discordId = String(formData.get("discordId") ?? "");
-  await adminMarkPaid(discordId, "web-admin");
+  const seasonId = String(formData.get("seasonId") ?? "");
+  await adminMarkPaid(discordId, "web-admin", seasonId);
   await note(session, "payment.mark", `Marked ${await who(discordId)} as paid`, {
     discordId,
   });
@@ -503,8 +510,9 @@ export async function actionMarkPaid(formData: FormData) {
 export async function actionClearPaid(formData: FormData) {
   const session = await requireAdmin();
   const discordId = String(formData.get("discordId") ?? "");
+  const seasonId = String(formData.get("seasonId") ?? "");
   const name = await who(discordId);
-  await adminClearPaid(discordId);
+  await adminClearPaid(discordId, seasonId);
   await note(session, "payment.clear", `Cleared payment for ${name}`, {
     discordId,
   });
@@ -730,6 +738,8 @@ export async function actionCreateSeason(formData: FormData) {
   const plannedRaw = String(formData.get("plannedStartAt") ?? "").trim();
   const tournamentFormat = String(formData.get("tournamentFormat") ?? "").trim();
   const teamCount = Number(String(formData.get("teamCount") ?? "8"));
+  const game = String(formData.get("game") ?? "").trim();
+  const pubgMode = String(formData.get("pubgMode") ?? "").trim();
   const plannedStartAt = plannedRaw
     ? new Date(`${plannedRaw}T12:00:00.000Z`)
     : null;
@@ -739,6 +749,8 @@ export async function actionCreateSeason(formData: FormData) {
       plannedStartAt,
       tournamentFormat,
       teamCount,
+      game,
+      pubgMode,
     });
     await note(session, "season.create", `Created ${season.name}`, {
       seasonId: season.id,
@@ -759,6 +771,8 @@ export async function actionUpdateSeason(formData: FormData) {
   const plannedRaw = String(formData.get("plannedStartAt") ?? "").trim();
   const tournamentFormat = String(formData.get("tournamentFormat") ?? "").trim();
   const teamCount = Number(String(formData.get("teamCount") ?? "8"));
+  const game = String(formData.get("game") ?? "").trim();
+  const pubgMode = String(formData.get("pubgMode") ?? "").trim();
   if (!seasonId) throw new Error("Missing season.");
   try {
     const season = await updateSeasonAdmin({
@@ -767,6 +781,8 @@ export async function actionUpdateSeason(formData: FormData) {
       plannedStartAt: plannedRaw ? new Date(`${plannedRaw}T12:00:00.000Z`) : null,
       tournamentFormat,
       teamCount,
+      game,
+      pubgMode,
     });
     await note(session, "season.update", `Updated ${season.name}`, { seasonId });
     revalidateAdmin();
@@ -1020,4 +1036,68 @@ export async function actionWebAuctionNext(formData: FormData) {
   await introduceNextWebPlayer(auctionControl(formData));
   revalidatePath("/admin/auction");
   revalidatePath("/auction/live");
+}
+
+export async function actionSchedulePubgLobby(formData: FormData) {
+  const session = await requireAdmin();
+  const { schedulePubgLobby } = await import("@/lib/pubg-lobby");
+  const playedRaw = String(formData.get("playedAt") ?? "").trim();
+  const teamIds = formData.getAll("teamIds").map((value) => String(value));
+  const label = String(formData.get("label") ?? "");
+  const lobby = await schedulePubgLobby({
+    seasonId: String(formData.get("seasonId") ?? ""),
+    label,
+    map: String(formData.get("map") ?? ""),
+    playedAt: new Date(playedRaw),
+    teamIds,
+  });
+  await note(
+    session,
+    "schedule.create",
+    `Booked PUBG lobby ${label} on ${lobby.map} · ${lobby.teams.length} teams`,
+    { lobbyId: lobby.id, seasonId: lobby.seasonId },
+  );
+  revalidateAdmin();
+  revalidatePath("/admin/schedule");
+  revalidatePath("/admin/pubg");
+}
+
+export async function actionRecordPubgResult(formData: FormData) {
+  const session = await requireAdmin();
+  const { parseLobbyPlayerLines, recordPubgTeamResult } = await import("@/lib/pubg-lobby");
+  const playedRaw = String(formData.get("playedAt") ?? "").trim();
+  const playersRaw = String(formData.get("players") ?? "");
+  const file = formData.get("screenshot");
+  let sourceImagePath: string | null = null;
+  if (file instanceof File && file.size > 0) {
+    const { uploadImageToS3 } = await import("@/lib/object-storage");
+    const uploaded = await uploadImageToS3({
+      buffer: Buffer.from(await file.arrayBuffer()),
+      mime: file.type,
+      keyHint: String(formData.get("label") ?? "lobby"),
+      folder: "pubg",
+    });
+    sourceImagePath = uploaded.screenshotPath;
+  }
+  const result = await recordPubgTeamResult({
+    seasonId: String(formData.get("seasonId") ?? ""),
+    label: String(formData.get("label") ?? ""),
+    map: String(formData.get("map") ?? ""),
+    playedAt: playedRaw ? new Date(playedRaw) : new Date(),
+    teamName: String(formData.get("teamName") ?? ""),
+    placement: Number(formData.get("placement") ?? ""),
+    kills: Number(formData.get("kills") ?? ""),
+    players: playersRaw.trim() ? parseLobbyPlayerLines(playersRaw) : [],
+    sourceImagePath,
+  });
+  await note(
+    session,
+    "match.set_result",
+    `PUBG ${String(formData.get("teamName") ?? "")} place ${String(formData.get("placement") ?? "")} · ${result.points} pts`,
+    { lobbyId: result.lobbyId },
+  );
+  revalidateAdmin();
+  revalidatePath("/admin/pubg");
+  revalidatePath("/table");
+  revalidatePath("/player-insight");
 }

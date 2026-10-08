@@ -1,7 +1,8 @@
 import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/common";
 import { requireAdmin } from "@/lib/admin-auth";
-import { MEDALS, MEDAL_LABELS, ROLE_LABELS } from "@/lib/constants";
+import { ROLE_LABELS, labelForMedal, medalsForGame } from "@/lib/constants";
+import { resolveAdminSeasonView } from "@/lib/admin-season-view";
 import { prisma } from "@/lib/prisma";
 import { adminListTeamsForPicker } from "@/lib/match-admin";
 import { PLAY_WINDOW_LABELS } from "@/lib/play-window";
@@ -11,6 +12,7 @@ import {
   AdminBackLink,
   AdminCard,
   AdminField,
+  AdminOutsideSeason,
   AdminSection,
   adminControlClass,
 } from "@/components/admin/ui";
@@ -32,45 +34,60 @@ export const metadata = pageMeta("Admin Player", "Edit player profile.");
 
 export default async function AdminPlayerDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ season?: string }>;
 }) {
   await requireAdmin();
   const { id } = await params;
-  const [player, teams] = await Promise.all([
-    prisma.player.findUnique({
-      where: { id },
+  const sp = await searchParams;
+  const { view, readOnly } = await resolveAdminSeasonView(sp.season);
+  const backHref = `/admin/players?season=${view.id}`;
+  const player = await prisma.player.findUnique({ where: { id } });
+  if (!player) notFound();
+  const [membership, teams] = await Promise.all([
+    prisma.seasonPlayer.findUnique({
+      where: { seasonId_playerId: { seasonId: view.id, playerId: player.id } },
       include: { team: { select: { id: true, name: true } } },
     }),
-    adminListTeamsForPicker(),
+    adminListTeamsForPicker(view.id),
   ]);
-  if (!player) notFound();
+  if (!membership) {
+    return <AdminOutsideSeason href={backHref} label="All players" />;
+  }
 
-  const roles = parseRolesJson(player.rolesJson);
+  const pubg = view.game === "PUBG";
+  const roles = parseRolesJson(membership.rolesJson || player.rolesJson);
   const currentRole = roles[0] ?? "";
+  const medal = membership.medal || player.medal;
+  const team = membership.team;
 
   return (
     <div className="page">
-      <AdminBackLink href="/admin/players" label="All players" />
+      <AdminBackLink href={backHref} label="All players" />
       <PageHeader
         eyebrow="Admin · Player"
-        title={player.steamName}
+        title={pubg && player.pubgName ? player.pubgName : player.steamName}
         subtitle={
           <code className="text-xs text-muted-foreground">{player.discordId}</code>
         }
         pills={[
           {
-            label:
-              MEDAL_LABELS[player.medal as keyof typeof MEDAL_LABELS] ??
-              player.medal,
+            label: labelForMedal(medal) ?? medal,
           },
-          { label: player.team?.name ?? "Unsigned" },
+          { label: team?.name ?? "Unsigned" },
         ]}
       />
 
       <div className="grid gap-6 lg:grid-cols-3">
         <AdminCard tone="accent" className="lg:col-span-1">
           <AdminSection title="Profile">
+            {readOnly ? (
+              <p className="m-0 text-sm text-muted-foreground">
+                This season is read-only.
+              </p>
+            ) : (
             <AdminConfirmForm
               action={actionUpdatePlayer}
               message={`Save profile changes for ${player.steamName}?`}
@@ -87,16 +104,17 @@ export default async function AdminPlayerDetailPage({
               <AdminField label="Medal">
                 <select
                   name="medal"
-                  defaultValue={player.medal}
+                  defaultValue={medal}
                   className={adminControlClass}
                 >
-                  {MEDALS.map((m) => (
+                  {medalsForGame(view.game).map((m) => (
                     <option key={m} value={m}>
-                      {MEDAL_LABELS[m]}
+                      {labelForMedal(m)}
                     </option>
                   ))}
                 </select>
               </AdminField>
+              {pubg ? null : (
               <AdminField label="Role">
                 <select
                   name="role"
@@ -110,6 +128,7 @@ export default async function AdminPlayerDetailPage({
                   ))}
                 </select>
               </AdminField>
+              )}
               <AdminField label="Weekend window">
                 <select
                   name="playWindow"
@@ -127,11 +146,17 @@ export default async function AdminPlayerDetailPage({
                 Save profile
               </AdminSubmitButton>
             </AdminConfirmForm>
+            )}
           </AdminSection>
         </AdminCard>
 
         <AdminCard>
           <AdminSection title="Scoreboard alias">
+            {readOnly ? (
+              <p className="m-0 text-sm text-muted-foreground">
+                Aliases stay with the player. This season is read-only.
+              </p>
+            ) : (
             <AdminActionForm
               action={actionAddAlias}
               successMessage="Alias added"
@@ -150,26 +175,27 @@ export default async function AdminPlayerDetailPage({
                 Add alias
               </AdminSubmitButton>
             </AdminActionForm>
+            )}
           </AdminSection>
         </AdminCard>
 
         <AdminCard>
           <AdminSection title="Roster">
-            {player.team ? (
+            {team ? (
               <div className="grid gap-2">
                 <p className="m-0 text-sm text-muted-foreground">
                   On{" "}
-                  <strong className="text-foreground">{player.team.name}</strong>
-                  {player.rosterRole === "sub"
+                  <strong className="text-foreground">{team.name}</strong>
+                  {membership.rosterRole === "sub"
                     ? " as substitute"
                     : " as starter"}
                   .
                 </p>
-                {!player.isCaptain ? (
+                {!readOnly && !membership.isCaptain && !pubg ? (
                   <AdminConfirmForm
                     action={actionSetRosterSlot}
                     message={
-                      player.rosterRole === "sub"
+                      membership.rosterRole === "sub"
                         ? `Make ${player.steamName} a starter?`
                         : `Make ${player.steamName} a substitute?`
                     }
@@ -182,21 +208,22 @@ export default async function AdminPlayerDetailPage({
                     <input
                       type="hidden"
                       name="slot"
-                      value={player.rosterRole === "sub" ? "starter" : "sub"}
+                      value={membership.rosterRole === "sub" ? "starter" : "sub"}
                     />
                     <AdminSubmitButton
                       variant="secondary" className="w-full text-xs"
                       pendingLabel="Updating…"
                     >
-                      {player.rosterRole === "sub"
+                      {membership.rosterRole === "sub"
                         ? "Make starter"
                         : "Make substitute"}
                     </AdminSubmitButton>
                   </AdminConfirmForm>
                 ) : null}
+                {!readOnly ? (
                 <AdminConfirmForm
                   action={actionRemoveFromTeam}
-                  message={`Remove ${player.steamName} from ${player.team.name}?`}
+                  message={`Remove ${player.steamName} from ${team.name}?`}
                 >
                   <input
                     type="hidden"
@@ -210,7 +237,10 @@ export default async function AdminPlayerDetailPage({
                     Remove from team
                   </AdminSubmitButton>
                 </AdminConfirmForm>
+                ) : null}
               </div>
+            ) : readOnly ? (
+              <p className="m-0 text-sm text-muted-foreground">Unsigned in this season.</p>
             ) : (
               <AdminConfirmForm
                 action={actionAddToTeam}

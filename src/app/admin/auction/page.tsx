@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { PageHeader } from "@/components/common";
+import { AdminSeasonViewer } from "@/components/admin/season-viewer";
 import { requireAdmin } from "@/lib/admin-auth";
+import { resolveAdminSeasonView } from "@/lib/admin-season-view";
 import { adminListSoldLots, adminListTeamsForPicker } from "@/lib/match-admin";
 import { pageMeta } from "@/lib/seo";
 import { AdminAuctionBoard } from "@/components/admin/auction-board";
@@ -11,6 +13,7 @@ import { listCaptainAccounts } from "@/lib/captain-accounts";
 import { getWebAuctionView } from "@/lib/web-auction";
 import { getLiveSeason } from "@/lib/seasons";
 import { prisma } from "@/lib/prisma";
+import { medalsForGame } from "@/lib/constants";
 import { AUCTION_PLAYER_STATUS } from "@/lib/web-auction";
 
 export const dynamic = "force-dynamic";
@@ -19,37 +22,43 @@ export const metadata = pageMeta(
   "Live auction desk, captain logins, and sold-lot fixes.",
 );
 
-export default async function AdminAuctionPage() {
+export default async function AdminAuctionPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ season?: string }>;
+}) {
   await requireAdmin();
+  const sp = await searchParams;
+  const seasonView = await resolveAdminSeasonView(sp.season);
   const [lots, view, season, teams, accounts] = await Promise.all([
-    adminListSoldLots(),
+    adminListSoldLots(seasonView.view.id),
     getWebAuctionView(),
     getLiveSeason(),
-    adminListTeamsForPicker(),
-    listCaptainAccounts(),
+    adminListTeamsForPicker(seasonView.view.id),
+    listCaptainAccounts(seasonView.view.id),
   ]);
 
-  const poolRows = season
-    ? await prisma.seasonPlayer.findMany({
-        where: { seasonId: season.id, teamId: null },
+  const poolRows = await prisma.seasonPlayer.findMany({
+    where: { seasonId: seasonView.view.id, teamId: null },
+    select: {
+      player: {
         select: {
-          player: {
-            select: {
-              id: true,
-              steamName: true,
-              medal: true,
-              auctionStatus: true,
-              basePrice: true,
-            },
-          },
+          id: true,
+          steamName: true,
+          medal: true,
+          auctionStatus: true,
+          basePrice: true,
         },
-        orderBy: { player: { steamName: "asc" } },
-        take: 80,
-      })
-    : [];
+      },
+    },
+    orderBy: { player: { steamName: "asc" } },
+    take: 80,
+  });
   const pool = poolRows.map((row) => row.player);
-
-  const format = season?.tournamentFormat ?? "AUCTION_BASED";
+  const viewingLive = seasonView.view.isLive && season?.id === seasonView.view.id;
+  const format = viewingLive
+    ? (season?.tournamentFormat ?? "AUCTION_BASED")
+    : "AUCTION_BASED";
 
   return (
     <div className="page">
@@ -67,10 +76,28 @@ export default async function AdminAuctionPage() {
           </Link>
         }
       />
+      <AdminSeasonViewer
+        view={seasonView.view}
+        options={seasonView.options}
+        readOnly={seasonView.readOnly}
+        publicSeasonParam={seasonView.publicSeasonParam}
+        publicHref="/auction"
+      />
 
       <AdminCard tone="accent" className="mb-6">
         <AdminSection title="Live auction desk">
-          <AdminAuctionDesk view={view} format={format} />
+          {viewingLive ? (
+            <AdminAuctionDesk
+              view={view}
+              format={format}
+              medals={medalsForGame(seasonView.view.game)}
+            />
+          ) : (
+            <p className="m-0 text-sm text-muted-foreground">
+              The live bidding desk follows the active cup. This view lists sold
+              players for the selected season only.
+            </p>
+          )}
         </AdminSection>
       </AdminCard>
 
@@ -81,6 +108,7 @@ export default async function AdminAuctionPage() {
             <code>/auction/captain</code>.
           </p>
           <CaptainCredentialsPanel
+            readOnly={seasonView.readOnly}
             teams={teams.map((t) => ({
               id: t.id,
               name: t.name,
@@ -125,6 +153,7 @@ export default async function AdminAuctionPage() {
       <AdminCard>
         <AdminSection title="Sold lots (price fix)">
           <AdminAuctionBoard
+            seasonId={seasonView.view.id}
             lots={lots.map((lot) => ({
               id: lot.id,
               playerName: lot.player.steamName,

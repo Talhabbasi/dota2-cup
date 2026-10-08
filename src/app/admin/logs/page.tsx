@@ -8,7 +8,9 @@ import {
   EsportsTableHeader,
   EsportsTableRow,
 } from "@/components/common/esports-table";
+import { AdminSeasonViewer } from "@/components/admin/season-viewer";
 import { requireAdmin } from "@/lib/admin-auth";
+import { resolveAdminSeasonView } from "@/lib/admin-season-view";
 import { listAdminActivityLogs } from "@/lib/admin-log";
 import { pageMeta } from "@/lib/seo";
 
@@ -29,8 +31,15 @@ function formatWhen(d: Date) {
   }).format(d);
 }
 
-export default async function AdminLogsPage() {
+export default async function AdminLogsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ season?: string }>;
+}) {
   await requireAdmin();
+  const sp = await searchParams;
+  const { view, options, readOnly, publicSeasonParam } =
+    await resolveAdminSeasonView(sp.season);
   const logs = await listAdminActivityLogs(150);
 
   return (
@@ -41,6 +50,17 @@ export default async function AdminLogsPage() {
         subtitle="Plain-language history of organizer changes — who did what."
         pills={[{ value: logs.length, label: "shown" }]}
       />
+      <AdminSeasonViewer
+        view={view}
+        options={options}
+        readOnly={readOnly}
+        publicSeasonParam={publicSeasonParam}
+        publicHref="/"
+      />
+      <p className="mb-4 text-sm text-muted-foreground">
+        The log is the organizer history for the whole site. Lists on the other
+        tabs follow the season selected above.
+      </p>
 
       {logs.length === 0 ? (
         <p className="text-sm text-muted-foreground">

@@ -5,11 +5,12 @@ import { RegisterSignIn } from "@/components/register-signin";
 import { isRegistrationOpen, formatEntryFee } from "@/lib/registration-status";
 import { parseRolesJson } from "@/lib/roles";
 import { playWindowOrBoth } from "@/lib/play-window";
-import { pageMeta } from "@/lib/seo";
+import { livePageMeta } from "@/lib/seo";
 import { steam32To64, steamProfileUrl } from "@/lib/steam";
-import { COMMUNITY_NAME, CUP_NAME } from "@/lib/brand";
+import { COMMUNITY_NAME } from "@/lib/brand";
+import { isPubgSeason, rosterRules } from "@/lib/games";
 import { getCupFeatureSettings } from "@/lib/cup-features";
-import { MEDAL_LABELS } from "@/lib/constants";
+import { labelForMedal } from "@/lib/constants";
 import { getLiveSeason } from "@/lib/seasons";
 import {
   formatSeasonStartDate,
@@ -19,10 +20,13 @@ import {
 
 export const dynamic = "force-dynamic";
 
-export const metadata = pageMeta(
-  "Register to Play",
-  `Register for ${CUP_NAME} with Discord and Steam. Indoor Dota 2 tournament sign-up for Pakistan weekend matches.`,
-);
+export function generateMetadata() {
+  return livePageMeta("Register to Play", (brand) =>
+    brand.game === "PUBG"
+      ? `Register for ${brand.name} with Discord and your PUBG name. Indoor PUBG tournament sign-up in Pakistan.`
+      : `Register for ${brand.name} with Discord and Steam. Indoor Dota 2 tournament sign-up for Pakistan weekend matches.`,
+  );
+}
 
 export default async function RegisterPage() {
   const { session, player } = await currentPlayer();
@@ -42,9 +46,15 @@ export default async function RegisterPage() {
     : null;
   const startLabel = formatSeasonStartDate(live?.plannedStartAt);
 
+  const pubg = isPubgSeason(live);
+  const roster = rosterRules(live);
   const existing = player
     ? {
-        steamUrl: steamProfileUrl(steam32To64(player.steam32)),
+        steamUrl:
+          player.steam32 == null
+            ? ""
+            : steamProfileUrl(steam32To64(player.steam32)),
+        pubgName: player.pubgName ?? "",
         medal: player.medal,
         role: parseRolesJson(player.rolesJson)[0] ?? "mid",
         playWindow: playWindowOrBoth(player.playWindow),
@@ -91,17 +101,24 @@ export default async function RegisterPage() {
             <p className="eyebrow">Sign-up{planLine ? ` · ${planLine}` : ""}</p>
             <h1>Register</h1>
             <p className="lede">
-              Link one Discord account to one Steam account. Same rules as{" "}
-              <code>/register</code> in Discord — either place works. Entry fee is{" "}
-              {formatEntryFee()} per starter (subs free). After you register, post
-              the payment screenshot in Discord #payments.
+              {pubg
+                ? `Sign up with Discord, your PUBG name, your Steam profile, and your PUBG rank. One Discord links to one Steam, same as the Dota cup. This cup is ${roster.label}. Entry fee is ${formatEntryFee()} per player (${roster.teamFeePkr.toLocaleString("en-PK")} PKR for a full entry).`
+                : "Link one Discord account to one Steam account."}{" "}
+              Same rules as <code>/register</code> in Discord — either place works.
+              {!pubg ? (
+                <>
+                  {" "}
+                  Entry fee is {formatEntryFee()} per starter (subs free).
+                </>
+              ) : null}{" "}
+              After you register, post the payment screenshot in Discord #payments.
               {live
                 ? ` ${live.name} is ${tournamentFormatLabel(live.tournamentFormat).toLowerCase()} · ${live.teamCount} teams${
                     startLabel ? ` · starts ${startLabel}` : ""
                   }.`
                 : ""}
               {features.maxMedalToApply
-                ? ` Max medal: ${MEDAL_LABELS[features.maxMedalToApply]} and below.`
+                ? ` Max medal: ${labelForMedal(features.maxMedalToApply)} and below.`
                 : ""}
             </p>
         </div>
@@ -111,8 +128,9 @@ export default async function RegisterPage() {
         {!session?.user ? (
           <div className="register-gate">
             <p>
-              Sign in with Discord, then add your Steam profile, medal, role,
-              and weekend window.
+              {pubg
+                ? "Sign in with Discord, then add your PUBG name, Steam profile, and rank."
+                : "Sign in with Discord, then add your Steam profile, medal, role, and weekend window."}
             </p>
             <RegisterSignIn />
           </div>
@@ -121,7 +139,7 @@ export default async function RegisterPage() {
             {player ? (
               <p className="muted">
                 You are already registered as{" "}
-                <strong>{player.steamName}</strong>.{" "}
+                <strong>{player.pubgName || player.steamName}</strong>.{" "}
                 <Link href={`/players/${player.id}`} className="text-link">
                   View your profile
                 </Link>
@@ -131,6 +149,8 @@ export default async function RegisterPage() {
             <RegisterForm
               discordName={session.user.name ?? "Discord"}
               existing={existing}
+              pubg={pubg}
+              rosterLabel={pubg ? roster.label : ""}
             />
           </>
         )}

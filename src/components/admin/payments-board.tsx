@@ -46,6 +46,7 @@ export function AdminPaymentsBoard({
   summary,
   players,
   teams,
+  seasonId,
 }: {
   summary: {
     collected: number;
@@ -58,6 +59,7 @@ export function AdminPaymentsBoard({
   };
   players: PaymentPlayerRow[];
   teams: PaymentTeamRow[];
+  seasonId: string;
 }) {
   return (
     <div className="space-y-8">
@@ -115,6 +117,13 @@ export function AdminPaymentsBoard({
               </EsportsTableRow>
             </EsportsTableHeader>
             <EsportsTableBody>
+              {teams.length === 0 ? (
+                <EsportsTableRow>
+                  <EsportsTableCell colSpan={5} className="text-muted-foreground">
+                    No teams in this season.
+                  </EsportsTableCell>
+                </EsportsTableRow>
+              ) : null}
               {teams.map((t) => (
                 <EsportsTableRow key={t.id}>
                   <EsportsTableCell className="font-medium">{t.name}</EsportsTableCell>
@@ -148,7 +157,7 @@ export function AdminPaymentsBoard({
         hint="Click a player to mark or clear payment."
         items={players}
         getId={(p) => p.id}
-        hrefFor={(p) => `/admin/payments/${p.id}`}
+        hrefFor={(p) => `/admin/payments/${p.id}?season=${seasonId}`}
         searchPlaceholder="Search name or team…"
         searchText={(p) => `${p.steamName} ${p.teamName ?? ""} ${p.slot}`}
         emptyLabel="No players to track."

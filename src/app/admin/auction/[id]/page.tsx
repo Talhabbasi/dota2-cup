@@ -1,12 +1,14 @@
 import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/common";
 import { requireAdmin } from "@/lib/admin-auth";
+import { resolveAdminSeasonView } from "@/lib/admin-season-view";
 import { formatPoints } from "@/lib/constants";
 import { adminGetSoldLot } from "@/lib/match-admin";
 import { pageMeta } from "@/lib/seo";
 import {
   AdminBackLink,
   AdminCard,
+  AdminOutsideSeason,
   AdminField,
   AdminSection,
   adminControlClass,
@@ -22,17 +24,25 @@ export const metadata = pageMeta("Admin Lot", "Correct sold price.");
 
 export default async function AdminAuctionLotPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ season?: string }>;
 }) {
   await requireAdmin();
   const { id } = await params;
+  const sp = await searchParams;
+  const { view, readOnly } = await resolveAdminSeasonView(sp.season);
+  const backHref = `/admin/auction?season=${view.id}`;
   const lot = await adminGetSoldLot(id);
   if (!lot || lot.status !== "sold") notFound();
+  if (lot.seasonId !== view.id) {
+    return <AdminOutsideSeason href={backHref} label="All sold lots" />;
+  }
 
   return (
     <div className="page">
-      <AdminBackLink href="/admin/auction" label="All sold lots" />
+      <AdminBackLink href={backHref} label="All sold lots" />
       <PageHeader
         eyebrow="Admin · Auction"
         title={lot.player.steamName}
@@ -41,6 +51,11 @@ export default async function AdminAuctionLotPage({
 
       <AdminCard tone="accent" className="max-w-md">
         <AdminSection title="Correct price">
+          {readOnly ? (
+            <p className="m-0 text-sm text-muted-foreground">
+              Sold for {formatPoints(lot.soldPrice ?? 0)}. This season is read-only.
+            </p>
+          ) : (
           <AdminConfirmForm
             action={actionSetSoldPrice}
             message={`Change sold price for ${lot.player.steamName}? Purse will adjust.`}
@@ -66,6 +81,7 @@ export default async function AdminAuctionLotPage({
               Set price
             </AdminSubmitButton>
           </AdminConfirmForm>
+          )}
         </AdminSection>
       </AdminCard>
     </div>

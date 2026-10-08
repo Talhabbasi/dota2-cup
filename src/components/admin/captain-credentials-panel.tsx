@@ -22,9 +22,11 @@ type AccountRow = {
 export function CaptainCredentialsPanel({
   teams,
   accounts,
+  readOnly = false,
 }: {
   teams: TeamOpt[];
   accounts: AccountRow[];
+  readOnly?: boolean;
 }) {
   const [created, setCreated] = useState<{
     loginName: string;
@@ -36,6 +38,12 @@ export function CaptainCredentialsPanel({
 
   return (
     <div className="grid gap-4">
+      {readOnly ? (
+        <p className="m-0 text-sm text-muted-foreground">
+          Captain logins for this season are listed below. New logins are created on the active cup.
+        </p>
+      ) : (
+      <>
       <form
         className="grid gap-3 sm:grid-cols-2"
         onSubmit={(event) => {
@@ -106,6 +114,8 @@ export function CaptainCredentialsPanel({
           </p>
         </div>
       ) : null}
+      </>
+      )}
 
       <ul className="m-0 grid list-none gap-2 p-0">
         {accounts.map((row) => (
@@ -116,6 +126,7 @@ export function CaptainCredentialsPanel({
             <span>
               <code>{row.loginName}</code> → {row.teamName}
             </span>
+            {readOnly ? null : (
             <AdminActionForm
               action={actionRevokeCaptainAccount}
               successMessage="Revoked"
@@ -126,6 +137,7 @@ export function CaptainCredentialsPanel({
                 Revoke
               </AdminSubmitButton>
             </AdminActionForm>
+            )}
           </li>
         ))}
       </ul>

@@ -18,14 +18,16 @@ import {
 import { AdminField, adminControlClass } from "@/components/admin/ui";
 import { LiveAuctionBoard } from "@/components/live-auction-board";
 import type { WebAuctionView } from "@/lib/web-auction";
-import { MEDALS, MEDAL_LABELS } from "@/lib/constants";
+import { labelForMedal } from "@/lib/constants";
 
 export function AdminAuctionDesk({
   view,
   format,
+  medals,
 }: {
   view: WebAuctionView;
   format: string;
+  medals: readonly string[];
 }) {
   const [current, setCurrent] = useState(view);
   const [connected, setConnected] = useState(false);
@@ -53,10 +55,10 @@ export function AdminAuctionDesk({
           className="grid gap-2"
         >
           <AdminField label="Medal pool">
-            <select name="medal" defaultValue="divine" className={adminControlClass}>
-              {MEDALS.map((m) => (
+            <select name="medal" defaultValue={medals[0]} className={adminControlClass}>
+              {medals.map((m) => (
                 <option key={m} value={m}>
-                  {MEDAL_LABELS[m]}
+                  {labelForMedal(m)}
                 </option>
               ))}
             </select>

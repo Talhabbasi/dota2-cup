@@ -78,10 +78,13 @@ export function LiveAuctionBoard({
         {view.currentPlayer ? (
           <>
             <h2 className="mt-2 mb-1 font-display text-3xl tracking-wide uppercase">
-              {view.currentPlayer.steamName}
+              {view.game === "PUBG"
+                ? view.currentPlayer.pubgName || view.currentPlayer.steamName
+                : view.currentPlayer.steamName}
             </h2>
             <p className="m-0 text-sm text-muted-foreground">
-              {view.medalLabel ?? view.currentPlayer.medal} · floor{" "}
+              {view.medalLabel ?? view.currentPlayer.medal}
+              {view.game === "PUBG" ? " medal" : ""} · floor{" "}
               {view.currentPlayer.basePrice}
             </p>
           </>

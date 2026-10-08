@@ -12,15 +12,17 @@ import {
   getPredictionLeaderboard,
 } from "@/lib/predictions";
 import { getCurrentSeasonSafe } from "@/lib/seasons";
-import { pageMeta } from "@/lib/seo";
-import { CUP_NAME } from "@/lib/brand";
+import { livePageMeta } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
 
-export const metadata = pageMeta(
-  "Match Predictions",
-  `Pick ${CUP_NAME} winners. Organizers open and close picks from admin. One combined points board.`,
-);
+export function generateMetadata() {
+  return livePageMeta(
+    "Match Predictions",
+    (brand) =>
+      `Pick ${brand.name} winners. Organizers open and close picks from admin. One combined points board.`,
+  );
+}
 
 export default async function PredictionsPage() {
   const [{ session, player }, season, features] = await Promise.all([

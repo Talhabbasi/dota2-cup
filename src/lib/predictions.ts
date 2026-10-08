@@ -637,15 +637,16 @@ export async function getPredictionLeaderboard(
   if (!season) return emptyLeaderboard;
 
   const seasonFilter = { seasonId: season.id };
-  const fixtures = await prisma.scheduledFixture.findMany({
-    where: { ...publicFixtureWhere, ...seasonFilter },
-    select: { kind: true, status: true },
-  });
   const revealed =
     options?.forAdmin === true ||
     season.status === "archived" ||
     season.phase === "COMPLETED" ||
-    groupStageIsComplete(fixtures);
+    groupStageIsComplete(
+      await prisma.scheduledFixture.findMany({
+        where: { ...publicFixtureWhere, ...seasonFilter },
+        select: { kind: true, status: true },
+      }),
+    );
 
   if (!revealed) {
     try {
@@ -666,26 +667,21 @@ export async function getPredictionLeaderboard(
     }
   }
 
-  let picks: {
-    playerId: string;
-    pointsAwarded: number;
-    player: { steamName: string; discordName: string };
-  }[] = [];
-  try {
-    picks = await prisma.matchPrediction.findMany({
-      where: {
-        seasonId: season.id,
-        player: publicPlayerWhere,
-      },
-      select: {
-        playerId: true,
-        pointsAwarded: true,
-        player: { select: { steamName: true, discordName: true } },
-      },
-    });
-  } catch {
-    return { ...emptyLeaderboard, revealed: true };
-  }
+  const pickSelect = {
+    playerId: true,
+    pointsAwarded: true,
+    player: { select: { steamName: true, discordName: true } },
+  } as const;
+  const pickWhere = { seasonId: season.id, player: publicPlayerWhere };
+  const [picks, bracketPicks] = await Promise.all([
+    prisma.matchPrediction
+      .findMany({ where: pickWhere, select: pickSelect })
+      .catch(() => null),
+    prisma.bracketPick
+      .findMany({ where: pickWhere, select: pickSelect })
+      .catch(() => [] /* table may not exist until db push */),
+  ]);
+  if (!picks) return { ...emptyLeaderboard, revealed: true };
 
   const byPlayer = new Map<
     string,
@@ -704,32 +700,17 @@ export async function getPredictionLeaderboard(
     byPlayer.set(pick.playerId, current);
   }
 
-  try {
-    const bracketPicks = await prisma.bracketPick.findMany({
-      where: {
-        seasonId: season.id,
-        player: publicPlayerWhere,
-      },
-      select: {
-        playerId: true,
-        pointsAwarded: true,
-        player: { select: { steamName: true, discordName: true } },
-      },
-    });
-    for (const pick of bracketPicks) {
-      const current = byPlayer.get(pick.playerId) ?? {
-        name: pick.player.steamName || pick.player.discordName,
-        points: 0,
-        correct: 0,
-        picks: 0,
-      };
-      current.points += pick.pointsAwarded;
-      current.picks += 1;
-      if (pick.pointsAwarded > 0) current.correct += 1;
-      byPlayer.set(pick.playerId, current);
-    }
-  } catch {
-    /* table may not exist until db push */
+  for (const pick of bracketPicks) {
+    const current = byPlayer.get(pick.playerId) ?? {
+      name: pick.player.steamName || pick.player.discordName,
+      points: 0,
+      correct: 0,
+      picks: 0,
+    };
+    current.points += pick.pointsAwarded;
+    current.picks += 1;
+    if (pick.pointsAwarded > 0) current.correct += 1;
+    byPlayer.set(pick.playerId, current);
   }
 
   const sorted = [...byPlayer.entries()].sort((a, b) => {

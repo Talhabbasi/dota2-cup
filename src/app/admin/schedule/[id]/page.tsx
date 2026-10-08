@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/common";
 import { requireAdmin } from "@/lib/admin-auth";
+import { resolveAdminSeasonView } from "@/lib/admin-season-view";
 import { adminListTeamsForPicker } from "@/lib/match-admin";
 import { prisma } from "@/lib/prisma";
 import {
@@ -12,6 +13,7 @@ import { pageMeta } from "@/lib/seo";
 import {
   AdminBackLink,
   AdminCard,
+  AdminOutsideSeason,
   AdminField,
   AdminSection,
   AdminStatus,
@@ -71,23 +73,30 @@ function fixtureLocalParts(scheduledAt: Date | string) {
 
 export default async function AdminFixtureDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ season?: string }>;
 }) {
   await requireAdmin();
   const { id } = await params;
-  const [fixture, teams] = await Promise.all([
-    prisma.scheduledFixture.findUnique({
-      where: { id },
-      include: {
-        radiantTeam: { select: { id: true, name: true } },
-        direTeam: { select: { id: true, name: true } },
-        match: { select: { id: true, winnerTeamId: true, openDotaId: true } },
-      },
-    }),
-    adminListTeamsForPicker(),
-  ]);
+  const sp = await searchParams;
+  const { view, readOnly } = await resolveAdminSeasonView(sp.season);
+  const backHref = `/admin/schedule?season=${view.id}`;
+  const fixture = await prisma.scheduledFixture.findUnique({
+    where: { id },
+    include: {
+      radiantTeam: { select: { id: true, name: true } },
+      direTeam: { select: { id: true, name: true } },
+      match: { select: { id: true, winnerTeamId: true, openDotaId: true } },
+    },
+  });
   if (!fixture) notFound();
+  if (fixture.seasonId !== view.id) {
+    return <AdminOutsideSeason href={backHref} label="All fixtures" />;
+  }
+  const canEdit = !readOnly;
+  const teams = await adminListTeamsForPicker(fixture.seasonId);
 
   const { date, hour } = fixtureLocalParts(fixture.scheduledAt);
   const isPending = fixture.status === "scheduled";
@@ -107,7 +116,7 @@ export default async function AdminFixtureDetailPage({
 
   return (
     <div className="page">
-      <AdminBackLink href="/admin/schedule" label="All fixtures" />
+      <AdminBackLink href={backHref} label="All fixtures" />
       <PageHeader
         eyebrow="Admin · Schedule"
         title={`${teamA} vs ${teamB}`}
@@ -120,7 +129,7 @@ export default async function AdminFixtureDetailPage({
         ]}
       />
 
-      {isPending ? (
+      {isPending && canEdit ? (
         <>
           <AdminScoreboardUpload
             fixtureId={fixture.id}
@@ -225,7 +234,7 @@ export default async function AdminFixtureDetailPage({
             {fixture.matchId ? (
               <p className="mt-3 mb-0 text-sm">
                 <a
-                  href={`/admin/matches/${fixture.matchId}`}
+                  href={`/admin/matches/${fixture.matchId}?season=${view.id}`}
                   className="text-primary underline-offset-2 hover:underline"
                 >
                   Open match editor
@@ -237,6 +246,7 @@ export default async function AdminFixtureDetailPage({
         </AdminCard>
       )}
 
+      {canEdit ? (
       <div className="grid gap-6 lg:grid-cols-2">
         <AdminCard tone="accent">
           <AdminSection title="Edit">
@@ -320,6 +330,11 @@ export default async function AdminFixtureDetailPage({
           </AdminSection>
         </AdminCard>
       </div>
+      ) : (
+        <p className="m-0 text-sm text-muted-foreground">
+          {teamA} vs {teamB}. This season is read-only.
+        </p>
+      )}
     </div>
   );
 }

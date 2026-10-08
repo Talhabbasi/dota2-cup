@@ -1,9 +1,11 @@
 import { randomBytes } from "node:crypto";
-import { BID_CLOCK_SECONDS, BID_INCREMENT, MAX_ROSTER, MIN_ROSTER,
-  MEDAL_LABELS, basePriceFor, parseMedal, type Medal } from "./constants";
+import { BID_CLOCK_SECONDS, BID_INCREMENT,
+  basePriceFor, labelForMedal, parseMedalForGame } from "./constants";
 import { prisma } from "./prisma";
 import { isDummyDiscordId } from "./dummy";
 import { AuctionError, withAuctionLock, requireAuctionSeason, type AuctionDb } from "./auction-lock";
+import { rosterRules } from "./games";
+import { liveRoster } from "./live-roster";
 
 export const AUCTION_PLAYER_STATUS = {
   UNSOLD: "UNSOLD",
@@ -14,6 +16,7 @@ export const AUCTION_PLAYER_STATUS = {
 type WebPlayer = {
   id: string;
   steamName: string;
+  pubgName?: string | null;
   medal: string;
   rolesJson: string;
   basePrice: number;
@@ -41,8 +44,9 @@ export type WebAuctionSession = {
   lotId: string | null;
   pausedRemainingMs: number | null;
   seasonId: string;
+  game?: string;
   status: "idle" | "running" | "paused";
-  medal: Medal | null;
+  medal: string | null;
   queue: string[];
   currentPlayerId: string | null;
   currentBid: number;
@@ -75,6 +79,7 @@ export type WebAuctionView = {
   lastSale: WebSale | null;
   teamBalances: { id: string; name: string; purse: number; rosterCount: number }[];
   seasonId: string | null;
+  game: string | null;
   channelId: string | null;
   messageId: string | null;
   sandbox: false;
@@ -125,7 +130,7 @@ function viewFrom(session: WebAuctionSession | null): WebAuctionView {
     serverTime: now,
     status: session?.status ?? "idle",
     medal: session?.medal ?? null,
-    medalLabel: session?.medal ? MEDAL_LABELS[session.medal] : null,
+    medalLabel: session?.medal ? labelForMedal(session.medal) : null,
     secondsLeft: session?.status === "paused"
       ? Math.ceil((session.pausedRemainingMs ?? 0) / 1000)
       : Math.max(0, Math.ceil(((session?.endsAtMs ?? now) - now) / 1000)),
@@ -140,6 +145,7 @@ function viewFrom(session: WebAuctionSession | null): WebAuctionView {
     lastSale: session?.lastSale ?? null,
     teamBalances: session ? balances(session) : [],
     seasonId: session?.seasonId ?? null,
+    game: session?.game ?? null,
     channelId: session?.channelId ?? null,
     messageId: session?.messageId ?? null,
     sandbox: false,
@@ -219,22 +225,46 @@ export async function getWebAuctionViewOrEmpty() {
   }
 }
 
+export async function captainTeamIdForDiscord(discordId: string | null | undefined) {
+  if (!discordId) return null;
+  const { getLiveSeason } = await import("./seasons");
+  const season = await getLiveSeason();
+  if (!season) return null;
+  const row = await prisma.seasonPlayer.findFirst({
+    where: {
+      seasonId: season.id,
+      isCaptain: true,
+      teamId: { not: null },
+      player: {
+        OR: [
+          { discordId },
+          { discordId: { startsWith: `${discordId}:` } },
+        ],
+      },
+    },
+    select: { teamId: true },
+  });
+  return row?.teamId ?? null;
+}
+
 export async function startWebAuction(rankInput: string) {
-  const medal = parseMedal(rankInput);
   return withAuctionLock(async db => {
     const season = await requireAuctionSeason(db);
+    const medal = parseMedalForGame(rankInput, season.game);
+    const roster = rosterRules(season);
+    if (roster.max <= 1) throw new AuctionError("Solo cups do not auction teammates. Each player is their own entry.");
     const settings = await db.cupSettings.findUnique({ where:{id:"singleton"} });
     if (settings?.auctionEnabled === false || season.tournamentFormat !== "AUCTION_BASED") throw new AuctionError("Auction is turned off for this season.");
     const existing = await readSession(db);
     if (existing && existing.status !== "idle") throw new AuctionError("Finish the current pool first.");
     const members = await db.seasonPlayer.findMany({ where:{seasonId:season.id, teamId:null, isCaptain:false}, include:{player:true}, orderBy:{player:{steamName:"asc"}} });
     const eligible = members.filter(m => !isDummyDiscordId(m.player.discordId) && (m.medal ?? m.player.medal).toLowerCase() === medal);
-    if (!eligible.length) throw new AuctionError(`No unsigned ${MEDAL_LABELS[medal]} players registered in this season.`);
+    if (!eligible.length) throw new AuctionError(`No unsigned ${labelForMedal(medal)} players registered in this season.`);
     const session: WebAuctionSession = {
       version:2, revision:existing?.revision ?? 0, lotId:null, pausedRemainingMs:null,
-      seasonId:season.id, status:"running", medal, queue:eligible.map(m=>m.playerId), currentPlayerId:null,
+      seasonId:season.id, game:season.game, status:"running", medal, queue:eligible.map(m=>m.playerId), currentPlayerId:null,
       currentBid:0, currentBidderTeamId:null, endsAtMs:null, awaitingDecision:false, event:"lot",
-      players:Object.fromEntries(eligible.map(m=>[m.playerId,{id:m.playerId, steamName:m.player.steamName, medal:m.medal ?? m.player.medal, rolesJson:m.rolesJson ?? m.player.rolesJson, basePrice:m.player.basePrice ?? basePriceFor(m.medal ?? m.player.medal)}])),
+      players:Object.fromEntries(eligible.map(m=>[m.playerId,{id:m.playerId, steamName:m.player.steamName, pubgName:m.player.pubgName, medal:m.medal ?? m.player.medal, rolesJson:season.game === "PUBG" ? "[]" : (m.rolesJson ?? m.player.rolesJson), basePrice:m.player.basePrice ?? basePriceFor(m.medal ?? m.player.medal)}])),
       teams:{}, lastSale:null, channelId:null, messageId:null,
     };
     if (Object.values(session.players).some(p=>!Number.isSafeInteger(p.basePrice) || p.basePrice < 1)) throw new AuctionError("All player base prices must be positive whole numbers.");
@@ -250,7 +280,7 @@ export async function startWebAuction(rankInput: string) {
     const captainsAreAssigned = teamCaptains.length === season.teamCount && teamCaptains.every(
       team => team.seasonPlayers.length === 1 && team.seasonPlayers[0].playerId === team.captainId,
     );
-    if (!captainsAreAssigned || Object.values(session.teams).some(t=>t.rosterCount<1 || t.rosterCount>MAX_ROSTER || t.purse<0)) throw new AuctionError("Check each team's captain, roster, and purse before starting.");
+    if (!captainsAreAssigned || Object.values(session.teams).some(t=>t.rosterCount<1 || t.rosterCount>roster.max || t.purse<0)) throw new AuctionError("Check each team's captain, roster, and purse before starting.");
     await openLot(db,session,session.queue.shift()!);
     await db.season.update({where:{id:season.id},data:{phase:"AUCTION_ACTIVE"}});
     await writeSession(db,session);
@@ -340,15 +370,16 @@ export async function placeWebBid(input:BidInput) {
 }
 
 async function checkBudget(db:AuctionDb,session:WebAuctionSession,team:WebTeam,amount:number) {
-  if(team.rosterCount>=MAX_ROSTER) throw new AuctionError(`${team.name} already has ${MAX_ROSTER} players.`);
-  const needed=Math.max(0,MIN_ROSTER-team.rosterCount-1);
+  const roster = await liveRoster();
+  if(team.rosterCount>=roster.max) throw new AuctionError(`${team.name} already has ${roster.max} players.`);
+  const needed=Math.max(0,roster.min-team.rosterCount-1);
   // Reserve the cheapest remaining eligible players, across all medal pools.
   const available=await db.seasonPlayer.findMany({where:{seasonId:session.seasonId,teamId:null,isCaptain:false,playerId:{not:session.currentPlayerId!}},include:{player:true}});
   const floors=available.filter(m=>!isDummyDiscordId(m.player.discordId)).map(m=>m.player.basePrice ?? basePriceFor(m.medal ?? m.player.medal));
   if(floors.some(price=>!Number.isSafeInteger(price) || price<1)) throw new AuctionError("A remaining player's base price is invalid. Contact the organizer.");
   floors.sort((a,b)=>a-b);
   const reserve=floors.slice(0,needed).reduce((sum,n)=>sum+n,0);
-  if(floors.length<needed || team.purse<amount+reserve) throw new AuctionError(`${team.name} cannot afford ${amount} while keeping enough to fill ${MIN_ROSTER} starters.`);
+  if(floors.length<needed || team.purse<amount+reserve) throw new AuctionError(`${team.name} cannot afford ${amount} while keeping enough to fill ${roster.min} starters.`);
 }
 
 export function placeWebBidByDiscord(input:{discordId:string;amount?:number;bump?:number;lotId?:string|null;requestId?:string}) {
@@ -375,7 +406,8 @@ async function settle(kind:"sold"|"unsold",lotId?:string|null,revision?:number) 
       await checkBudget(db,session,team,session.currentBid);
       const deducted=await db.team.updateMany({where:{id:team.id,purse:{gte:session.currentBid}},data:{purse:{decrement:session.currentBid}}});
       if(deducted.count !== 1) throw new AuctionError("Team budget changed. Review before selling.");
-      const assignment={teamId:team.id,teamJoinedAt:new Date(),rosterRole:team.rosterCount>=MIN_ROSTER ? "sub" : null,isCaptain:false};
+      const roster = await liveRoster();
+      const assignment={teamId:team.id,teamJoinedAt:new Date(),rosterRole:roster.subs > 0 && team.rosterCount>=roster.min ? "sub" : null,isCaptain:false};
       await db.seasonPlayer.update({where:{id:member.id},data:assignment});
       await db.player.update({where:{id:playerId},data:{...assignment,auctionStatus:AUCTION_PLAYER_STATUS.SOLD}});
       team.purse-=session.currentBid;
@@ -392,7 +424,8 @@ async function settle(kind:"sold"|"unsold",lotId?:string|null,revision?:number) 
       session.currentBid=0;session.currentBidderTeamId=null;session.endsAtMs=null;
       session.pausedRemainingMs=null;session.awaitingDecision=false;session.event="done";
       // A medal pool ending does not mean the entire auction has finished.
-      const short=Object.values(session.teams).some(t=>t.rosterCount<MIN_ROSTER);
+      const rosterNow = await liveRoster();
+      const short=Object.values(session.teams).some(t=>t.rosterCount<rosterNow.min);
       await db.season.update({where:{id:session.seasonId},data:{phase:short ? "AUCTION_ACTIVE" : "IN_PROGRESS"}});
     }
     await writeSession(db,session);
