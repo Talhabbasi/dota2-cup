@@ -1,5 +1,4 @@
 import { PageHeader } from "@/components/common";
-import { AdminSeasonViewer } from "@/components/admin/season-viewer";
 import { requireAdmin } from "@/lib/admin-auth";
 import { resolveAdminSeasonView } from "@/lib/admin-season-view";
 import { adminListTeamsForPicker } from "@/lib/match-admin";
@@ -19,7 +18,7 @@ export default async function AdminTeamsPage({
 }) {
   await requireAdmin();
   const sp = await searchParams;
-  const { view, options, readOnly, publicSeasonParam } =
+  const { view, readOnly, publicSeasonParam } =
     await resolveAdminSeasonView(sp.season);
 
   const [teams, players, season] = await Promise.all([
@@ -49,13 +48,6 @@ export default async function AdminTeamsPage({
           { value: teams.length, label: "franchises" },
           { value: unsigned.length, label: "unsigned" },
         ]}
-      />
-      <AdminSeasonViewer
-        view={view}
-        options={options}
-        readOnly={readOnly}
-        publicSeasonParam={publicSeasonParam}
-        publicHref="/teams"
       />
       <AdminTeamsBoard
         teams={teams.map((team) => {

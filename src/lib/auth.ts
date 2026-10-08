@@ -6,9 +6,7 @@ import {
   adminLoginForHost,
   verifyAdminPassword,
 } from "./admin-password";
-import { verifyCaptainLogin } from "./captain-accounts";
 import { prisma } from "./prisma";
-import { AuctionError } from "./auction-lock";
 import { isSiteAdmin } from "./site-admin";
 
 export const authOptions: NextAuthOptions = {
@@ -47,66 +45,27 @@ export const authOptions: NextAuthOptions = {
         };
       },
     }),
-    CredentialsProvider({
-      id: "captain-credentials",
-      name: "Captain",
-      credentials: {
-        loginName: { label: "Captain login", type: "text" },
-        passcode: { label: "Passcode", type: "password" },
-      },
-      async authorize(credentials) {
-        const loginName = credentials?.loginName?.trim() ?? "";
-        const passcode = credentials?.passcode ?? "";
-        if (!loginName || !passcode) return null;
-        const captain = await verifyCaptainLogin({ loginName, passcode });
-        if (!captain) return null;
-        return {
-          id: `captain:${captain.accountId}`,
-          name: captain.teamName,
-          email: `${captain.loginName}@captain.local`,
-          captainTeamId: captain.teamId,
-          captainAccountId: captain.accountId,
-          captainAccountToken: captain.accountToken,
-        };
-      },
-    }),
   ],
   callbacks: {
     async jwt({ token, user, account }) {
       if (account?.provider === "admin-credentials" && user) {
         token.authProvider = "credentials";
         token.isAdmin = true;
-        token.isCaptainBidder = false;
         token.discordId = undefined;
-        token.captainTeamId = undefined;
-        token.captainAccountId = undefined;
-        token.captainAccountToken = undefined;
-      } else if (account?.provider === "captain-credentials" && user) {
-        token.captainAccountToken = (user as { captainAccountToken?: string }).captainAccountToken;
-        token.authProvider = "captain";
-        token.isAdmin = false;
-        token.isCaptainBidder = true;
-        token.discordId = undefined;
-        token.captainTeamId = (user as { captainTeamId?: string }).captainTeamId;
-        token.captainAccountId = (user as { captainAccountId?: string })
-          .captainAccountId;
       } else if (account?.provider === "discord" && token.sub) {
         token.authProvider = "discord";
         token.discordId = token.sub;
-        token.isCaptainBidder = false;
-        token.captainTeamId = undefined;
-        token.captainAccountId = undefined;
-        token.captainAccountToken = undefined;
       }
 
       if (token.authProvider === "credentials") {
         token.isAdmin = true;
-      } else if (token.authProvider === "captain") {
-        token.isAdmin = false;
-        token.isCaptainBidder = true;
-      } else if (token.discordId || token.sub) {
+      } else if (token.authProvider !== "captain" && (token.discordId || token.sub)) {
         const discordId = (token.discordId as string | undefined) ?? token.sub;
         token.isAdmin = await isSiteAdmin(discordId);
+      } else {
+        // Tokens from the removed captain passcode login carry no Discord identity.
+        token.isAdmin = false;
+        token.discordId = undefined;
       }
       return token;
     },
@@ -115,20 +74,13 @@ export const authOptions: NextAuthOptions = {
         if (token.authProvider === "credentials") {
           session.user.discordId = undefined;
           session.user.isAdmin = true;
-          session.user.isCaptainBidder = false;
-        } else if (token.authProvider === "captain") {
+        } else if (token.authProvider !== "captain") {
+          session.user.discordId =
+            (token.discordId as string | undefined) ?? token.sub ?? undefined;
+          session.user.isAdmin = Boolean(token.isAdmin);
+        } else {
           session.user.discordId = undefined;
           session.user.isAdmin = false;
-          session.user.isCaptainBidder = true;
-          session.user.captainTeamId = token.captainTeamId;
-          session.user.captainAccountId = token.captainAccountId;
-          session.user.captainAccountToken = token.captainAccountToken;
-        } else {
-          const discordId =
-            (token.discordId as string | undefined) ?? token.sub ?? undefined;
-          session.user.discordId = discordId;
-          session.user.isAdmin = Boolean(token.isAdmin);
-          session.user.isCaptainBidder = false;
         }
       }
       return session;
@@ -141,19 +93,6 @@ export const authOptions: NextAuthOptions = {
 
 export async function authSession() {
   return getServerSession(authOptions);
-}
-
-export async function requireCaptainBidder() {
-  const session = await authSession();
-  if (!session?.user?.isCaptainBidder || !session.user.captainTeamId) {
-    throw new AuctionError("Captain auction login required.", 401);
-  }
-  return {
-    session,
-    teamId: session.user.captainTeamId,
-    accountId: session.user.captainAccountId,
-    accountToken: session.user.captainAccountToken,
-  };
 }
 
 export async function currentPlayer() {

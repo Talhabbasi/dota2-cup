@@ -1,4 +1,3 @@
-import { randomBytes } from "node:crypto";
 import { BID_CLOCK_SECONDS, BID_INCREMENT,
   basePriceFor, labelForMedal, parseMedalForGame } from "./constants";
 import { prisma } from "./prisma";
@@ -22,12 +21,17 @@ type WebPlayer = {
   basePrice: number;
 };
 
+export type WebTeamPlayer = { id: string; name: string; price: number | null; captain: boolean };
+
 type WebTeam = {
   id: string;
   name: string;
   purse: number;
   rosterCount: number;
+  players?: WebTeamPlayer[];
 };
+
+export type WebUpcomingPlayer = { id: string; name: string; medal: string; basePrice: number };
 
 export type WebSale = {
   playerName: string;
@@ -45,6 +49,8 @@ export type WebAuctionSession = {
   pausedRemainingMs: number | null;
   seasonId: string;
   game?: string;
+  /** Base price of every unsigned player still eligible in any pool, for the purse reserve check. */
+  floors?: Record<string, number>;
   status: "idle" | "running" | "paused";
   medal: string | null;
   queue: string[];
@@ -77,7 +83,8 @@ export type WebAuctionView = {
   awaitingDecision: boolean;
   event: WebAuctionSession["event"];
   lastSale: WebSale | null;
-  teamBalances: { id: string; name: string; purse: number; rosterCount: number }[];
+  teamBalances: { id: string; name: string; purse: number; rosterCount: number; players: WebTeamPlayer[] }[];
+  upcoming: WebUpcomingPlayer[];
   seasonId: string | null;
   game: string | null;
   channelId: string | null;
@@ -87,10 +94,7 @@ export type WebAuctionView = {
 
 export type AuctionControl = { lotId: string; revision: number };
 export type BidInput = {
-  teamId?: string;
-  accountId?: string;
-  accountToken?: string;
-  discordId?: string;
+  discordId: string;
   amount?: number;
   bump?: number;
   lotId: string;
@@ -119,7 +123,20 @@ function expired(session: WebAuctionSession, now = Date.now()) {
 }
 
 function balances(session: WebAuctionSession) {
-  return Object.values(session.teams).sort((a,b) => a.name.localeCompare(b.name));
+  return Object.values(session.teams)
+    .map((t) => ({ id: t.id, name: t.name, purse: t.purse, rosterCount: t.rosterCount, players: t.players ?? [] }))
+    .sort((a,b) => a.name.localeCompare(b.name));
+}
+
+function displayName(session: WebAuctionSession, player: WebPlayer) {
+  return session.game === "PUBG" ? player.pubgName || player.steamName : player.steamName;
+}
+
+function upcoming(session: WebAuctionSession): WebUpcomingPlayer[] {
+  return session.queue.flatMap((id) => {
+    const player = session.players[id];
+    return player ? [{ id, name: displayName(session, player), medal: player.medal, basePrice: player.basePrice }] : [];
+  });
 }
 
 function viewFrom(session: WebAuctionSession | null): WebAuctionView {
@@ -144,6 +161,7 @@ function viewFrom(session: WebAuctionSession | null): WebAuctionView {
     event: session?.event ?? "idle",
     lastSale: session?.lastSale ?? null,
     teamBalances: session ? balances(session) : [],
+    upcoming: session && session.status !== "idle" ? upcoming(session) : [],
     seasonId: session?.seasonId ?? null,
     game: session?.game ?? null,
     channelId: session?.channelId ?? null,
@@ -166,11 +184,23 @@ async function writeSession(db: AuctionDb, session: WebAuctionSession) {
   await db.auctionState.upsert({ where: { id: "singleton" }, create: { id: "singleton", ...data }, update: data });
 }
 
-async function activeSession(db: AuctionDb) {
+type LiveConfig = {
+  season: Awaited<ReturnType<typeof requireAuctionSeason>>;
+  settings: { auctionEnabled: boolean } | null;
+};
+
+/** Season and cup settings do not change mid-pool, so read them before taking the lock. */
+async function liveConfig(): Promise<LiveConfig> {
+  const [season, settings] = await Promise.all([
+    requireAuctionSeason(prisma),
+    prisma.cupSettings.findUnique({ where: { id: "singleton" }, select: { auctionEnabled: true } }),
+  ]);
+  return { season, settings };
+}
+
+async function activeSession(db: AuctionDb, { season, settings }: LiveConfig) {
   const session = await readSession(db);
   if (!session || session.status === "idle") throw new AuctionError("No auction running.");
-  const season = await requireAuctionSeason(db);
-  const settings = await db.cupSettings.findUnique({ where: { id: "singleton" } });
   if (season.id !== session.seasonId || season.tournamentFormat !== "AUCTION_BASED" || settings?.auctionEnabled === false) {
     throw new AuctionError("This auction is no longer active. Contact the organizer.");
   }
@@ -191,13 +221,45 @@ function requireControl(session: WebAuctionSession, control?: AuctionControl) {
 }
 
 async function refreshTeams(db: AuctionDb, session: WebAuctionSession) {
-  const teams = await db.team.findMany({ where: { seasonId: session.seasonId }, include: { _count: { select: { seasonPlayers: true } } } });
-  session.teams = Object.fromEntries(teams.map(t => [t.id, { id:t.id, name:t.name, purse:t.purse, rosterCount:t._count.seasonPlayers }]));
+  session.teams = (await loadTeams(db, session.seasonId, session.game)).teams;
+}
+
+async function loadTeams(db: AuctionDb, seasonId: string, game?: string | null) {
+  const teams = await db.team.findMany({
+    where: { seasonId },
+    select: {
+      id: true, name: true, purse: true, captainId: true,
+      seasonPlayers: { select: { playerId: true, isCaptain: true, teamJoinedAt: true, player: { select: { steamName: true, pubgName: true } } } },
+      lotsWon: { where: { seasonId, status: "sold" }, select: { playerId: true, soldPrice: true } },
+    },
+  });
+  const captainsOk = teams.every(t => {
+    const captains = t.seasonPlayers.filter(m => m.isCaptain);
+    return captains.length === 1 && captains[0].playerId === t.captainId;
+  });
+  const record: Record<string, WebTeam> = Object.fromEntries(teams.map(t => {
+    const prices = new Map(t.lotsWon.map(l => [l.playerId, l.soldPrice]));
+    const players = [...t.seasonPlayers]
+      .sort((a,b) => Number(b.isCaptain) - Number(a.isCaptain) || (a.teamJoinedAt?.getTime() ?? 0) - (b.teamJoinedAt?.getTime() ?? 0))
+      .map(m => ({
+        id: m.playerId,
+        name: game === "PUBG" ? m.player.pubgName || m.player.steamName : m.player.steamName,
+        price: prices.get(m.playerId) ?? null,
+        captain: m.isCaptain,
+      }));
+    return [t.id, { id:t.id, name:t.name, purse:t.purse, rosterCount:t.seasonPlayers.length, players }];
+  }));
+  return { teams: record, captainsOk };
 }
 
 async function openLot(db: AuctionDb, session: WebAuctionSession, playerId: string) {
-  const membership = await db.seasonPlayer.findUnique({ where: { seasonId_playerId: { seasonId:session.seasonId, playerId } } });
-  if (!membership || membership.teamId) throw new AuctionError("The next player is no longer eligible. Contact the organizer.");
+  // `floors` lists every unsigned player this auction knows about; sold players leave it under the lock.
+  if (session.floors) {
+    if (!(playerId in session.floors)) throw new AuctionError("The next player is no longer eligible. Contact the organizer.");
+  } else {
+    const membership = await db.seasonPlayer.findUnique({ where: { seasonId_playerId: { seasonId:session.seasonId, playerId } } });
+    if (!membership || membership.teamId) throw new AuctionError("The next player is no longer eligible. Contact the organizer.");
+  }
   const player = session.players[playerId];
   const lot = await db.auctionLot.create({ data: { seasonId:session.seasonId, playerId, role:player.medal, status:"open" } });
   session.lotId = lot.id;
@@ -248,39 +310,35 @@ export async function captainTeamIdForDiscord(discordId: string | null | undefin
 }
 
 export async function startWebAuction(rankInput: string) {
+  const { season, settings } = await liveConfig();
+  const medal = parseMedalForGame(rankInput, season.game);
+  const roster = rosterRules(season);
+  if (roster.max <= 1) throw new AuctionError("Solo cups do not auction teammates. Each player is their own entry.");
+  if (settings?.auctionEnabled === false || season.tournamentFormat !== "AUCTION_BASED") throw new AuctionError("Auction is turned off for this season.");
+  // Pool and team reads run before the lock; openLot and the sale writes re-check eligibility under it.
+  const [{ teams, captainsOk }, members] = await Promise.all([
+    loadTeams(prisma, season.id, season.game),
+    prisma.seasonPlayer.findMany({ where:{seasonId:season.id, teamId:null, isCaptain:false}, include:{player:true}, orderBy:{player:{steamName:"asc"}} }),
+  ]);
+  const teamList = Object.values(teams);
+  const pool = members.filter(m => !isDummyDiscordId(m.player.discordId));
+  const priceOf = (m: (typeof members)[number]) => m.player.basePrice ?? basePriceFor(m.medal ?? m.player.medal);
+  const eligible = pool.filter(m => (m.medal ?? m.player.medal).toLowerCase() === medal);
+  if (!eligible.length) throw new AuctionError(`No unsigned ${labelForMedal(medal)} players registered in this season.`);
+  if (teamList.length !== season.teamCount) throw new AuctionError(`Create all ${season.teamCount} teams before starting.`);
+  if (!captainsOk || teamList.some(t=>t.rosterCount<1 || t.rosterCount>roster.max || t.purse<0)) throw new AuctionError("Check each team's captain, roster, and purse before starting.");
   return withAuctionLock(async db => {
-    const season = await requireAuctionSeason(db);
-    const medal = parseMedalForGame(rankInput, season.game);
-    const roster = rosterRules(season);
-    if (roster.max <= 1) throw new AuctionError("Solo cups do not auction teammates. Each player is their own entry.");
-    const settings = await db.cupSettings.findUnique({ where:{id:"singleton"} });
-    if (settings?.auctionEnabled === false || season.tournamentFormat !== "AUCTION_BASED") throw new AuctionError("Auction is turned off for this season.");
     const existing = await readSession(db);
     if (existing && existing.status !== "idle") throw new AuctionError("Finish the current pool first.");
-    const members = await db.seasonPlayer.findMany({ where:{seasonId:season.id, teamId:null, isCaptain:false}, include:{player:true}, orderBy:{player:{steamName:"asc"}} });
-    const eligible = members.filter(m => !isDummyDiscordId(m.player.discordId) && (m.medal ?? m.player.medal).toLowerCase() === medal);
-    if (!eligible.length) throw new AuctionError(`No unsigned ${labelForMedal(medal)} players registered in this season.`);
     const session: WebAuctionSession = {
       version:2, revision:existing?.revision ?? 0, lotId:null, pausedRemainingMs:null,
       seasonId:season.id, game:season.game, status:"running", medal, queue:eligible.map(m=>m.playerId), currentPlayerId:null,
       currentBid:0, currentBidderTeamId:null, endsAtMs:null, awaitingDecision:false, event:"lot",
-      players:Object.fromEntries(eligible.map(m=>[m.playerId,{id:m.playerId, steamName:m.player.steamName, pubgName:m.player.pubgName, medal:m.medal ?? m.player.medal, rolesJson:season.game === "PUBG" ? "[]" : (m.rolesJson ?? m.player.rolesJson), basePrice:m.player.basePrice ?? basePriceFor(m.medal ?? m.player.medal)}])),
-      teams:{}, lastSale:null, channelId:null, messageId:null,
+      players:Object.fromEntries(eligible.map(m=>[m.playerId,{id:m.playerId, steamName:m.player.steamName, pubgName:m.player.pubgName, medal:m.medal ?? m.player.medal, rolesJson:season.game === "PUBG" ? "[]" : (m.rolesJson ?? m.player.rolesJson), basePrice:priceOf(m)}])),
+      floors:Object.fromEntries(pool.map(m=>[m.playerId,priceOf(m)])),
+      teams, lastSale:null, channelId:null, messageId:null,
     };
-    if (Object.values(session.players).some(p=>!Number.isSafeInteger(p.basePrice) || p.basePrice < 1)) throw new AuctionError("All player base prices must be positive whole numbers.");
-    await refreshTeams(db,session);
-    if (Object.keys(session.teams).length !== season.teamCount) throw new AuctionError(`Create all ${season.teamCount} teams before starting.`);
-    const teamCaptains = await db.team.findMany({
-      where: { seasonId: season.id },
-      select: {
-        captainId: true,
-        seasonPlayers: { where: { isCaptain: true }, select: { playerId: true } },
-      },
-    });
-    const captainsAreAssigned = teamCaptains.length === season.teamCount && teamCaptains.every(
-      team => team.seasonPlayers.length === 1 && team.seasonPlayers[0].playerId === team.captainId,
-    );
-    if (!captainsAreAssigned || Object.values(session.teams).some(t=>t.rosterCount<1 || t.rosterCount>roster.max || t.purse<0)) throw new AuctionError("Check each team's captain, roster, and purse before starting.");
+    if (Object.values(session.floors!).some(p=>!Number.isSafeInteger(p) || p < 1)) throw new AuctionError("All player base prices must be positive whole numbers.");
     await openLot(db,session,session.queue.shift()!);
     await db.season.update({where:{id:season.id},data:{phase:"AUCTION_ACTIVE"}});
     await writeSession(db,session);
@@ -294,8 +352,9 @@ export function pauseWebAuction(control?: AuctionControl) { return controlAuctio
 export function resumeWebAuction(control?: AuctionControl) { return controlAuction("resume",control); }
 
 async function controlAuction(action:"timer"|"pause"|"resume",control?:AuctionControl) {
+  const config=await liveConfig();
   return withAuctionLock(async db=>{
-    const session=await activeSession(db);
+    const session=await activeSession(db,config);
     requireControl(session,control);
     const now=Date.now();
     if(action === "resume") {
@@ -326,42 +385,48 @@ function validInteger(value:unknown) { return typeof value === "number" && Numbe
 export async function placeWebBid(input:BidInput) {
   if (!input.lotId || typeof input.requestId !== "string" || !/^[\w-]{8,100}$/.test(input.requestId)) throw new AuctionError("A lot and request identifier are required.",400);
   if ((input.amount !== undefined && !validInteger(input.amount)) || (input.bump !== undefined && (!validInteger(input.bump) || input.bump < BID_INCREMENT)) || (input.amount === undefined && input.bump === undefined) || (input.amount !== undefined && input.bump !== undefined)) throw new AuctionError("Provide one positive whole-number bid or increment.",400);
+  const bidId=`bid:${input.requestId}`;
+  // Identity, idempotency and config reads do not need the auction lock; run them together first.
+  if (!input.discordId) throw new AuctionError("Sign in with Discord as a captain to bid.",401);
+  const [season,settings,previous,roster,snapshot,captain]=await Promise.all([
+    requireAuctionSeason(prisma),
+    prisma.cupSettings.findUnique({where:{id:"singleton"}}),
+    prisma.bid.findUnique({where:{id:bidId}}),
+    liveRoster(),
+    readSession(),
+    prisma.seasonPlayer.findFirst({where:{season:{isActive:true},isCaptain:true,player:{OR:[{discordId:input.discordId},{discordId:{startsWith:`${input.discordId}:`}}]}},select:{teamId:true,seasonId:true}}),
+  ]);
+  const teamId=captain?.seasonId === season.id ? captain.teamId : null;
+  if(!teamId) throw new AuctionError("Only this season's captains can bid.",403);
+  if(previous) {
+    if(previous.teamId !== teamId || previous.lotId !== input.lotId || (input.amount !== undefined && previous.amount !== input.amount)) throw new AuctionError("This request identifier has already been used.");
+    return viewFrom(snapshot);
+  }
+  if(season.tournamentFormat !== "AUCTION_BASED" || settings?.auctionEnabled === false) throw new AuctionError("This auction is no longer active. Contact the organizer.");
+  const bidderTeamId=teamId;
+  // Reject stale bids without queueing for the lock; the same checks run again under it.
+  if(!snapshot || snapshot.status === "idle") throw new AuctionError("No auction running.");
+  bidAmount(snapshot,bidderTeamId,input);
   return withAuctionLock(async db=>{
-    const season=await requireAuctionSeason(db);
-    let teamId=input.teamId;
-    if(input.discordId) {
-      const captain=await db.seasonPlayer.findFirst({where:{seasonId:season.id,isCaptain:true,player:{OR:[{discordId:input.discordId},{discordId:{startsWith:`${input.discordId}:`}}]}}});
-      teamId=captain?.teamId ?? undefined;
-    } else {
-      const account=input.accountId ? await db.captainAccount.findUnique({where:{id:input.accountId}}) : null;
-      if(!account || account.revokedAt || account.seasonId !== season.id || account.teamId !== teamId || !input.accountToken || account.token !== input.accountToken) throw new AuctionError("Captain access expired or was revoked. Sign in again.",403);
+    const session=await readSession(db);
+    if(!session || session.status === "idle") throw new AuctionError("No auction running.");
+    if(session.seasonId !== season.id) throw new AuctionError("This auction is no longer active. Contact the organizer.");
+    const amount=bidAmount(session,bidderTeamId,input);
+    // Purses and rosters only change through settle (under this lock) while a pool runs,
+    // so the session copy is current. Sessions started before `floors` existed re-read the DB.
+    if(!session.floors) {
+      await refreshTeams(db,session);
+      const unsigned=await unsignedPool(db,session.seasonId);
+      if(!unsigned.some(m=>m.playerId === session.currentPlayerId)) throw new AuctionError("This player is no longer available.");
     }
-    if(!teamId) throw new AuctionError("Only this season's captains can bid.",403);
-    const bidId=`bid:${input.requestId}`;
-    const previous=await db.bid.findUnique({where:{id:bidId}});
-    if(previous) {
-      if(previous.teamId !== teamId || previous.lotId !== input.lotId || (input.amount !== undefined && previous.amount !== input.amount)) throw new AuctionError("This request identifier has already been used.");
-      return viewFrom(await readSession(db));
-    }
-    const session=await activeSession(db);
-    requireLot(session,input.lotId);
-    if(session.status !== "running") throw new AuctionError("Auction is paused.");
-    if(session.awaitingDecision || expired(session)) throw new AuctionError("Bidding closed. Waiting for Sold or Pass.");
-    await refreshTeams(db,session);
-    const team=session.teams[teamId];
+    const team=session.teams[bidderTeamId];
     if(!team) throw new AuctionError("Team not found in this auction.",403);
-    const member=await db.seasonPlayer.findUnique({where:{seasonId_playerId:{seasonId:session.seasonId,playerId:session.currentPlayerId!}}});
-    if(!member || member.teamId) throw new AuctionError("This player is no longer available.");
-    const amount=input.amount ?? (session.currentBidderTeamId ? session.currentBid+input.bump! : session.currentBid);
-    const minimum=session.currentBidderTeamId ? session.currentBid+BID_INCREMENT : session.currentBid;
-    if(!validInteger(amount) || amount<minimum) throw new AuctionError(`Bid changed. Minimum bid is ${minimum}.`);
-    if(session.currentBidderTeamId===teamId) throw new AuctionError("You are already the high bidder.");
-    await checkBudget(db,session,team,amount);
+    assertBudget(session,team,amount,roster,await floorsFor(db,session));
     // Recheck after database work, while still holding the lock. A queued request gets no extra time.
     if(expired(session)) throw new AuctionError("Bidding closed before your bid could be accepted.");
-    await db.bid.create({data:{id:bidId,lotId:session.lotId!,playerId:session.currentPlayerId!,teamId,amount}});
+    await db.bid.create({data:{id:bidId,lotId:session.lotId!,playerId:session.currentPlayerId!,teamId:bidderTeamId,amount}});
     session.currentBid=amount;
-    session.currentBidderTeamId=teamId;
+    session.currentBidderTeamId=bidderTeamId;
     session.endsAtMs=Date.now()+BID_CLOCK_SECONDS*1000;
     session.event="bid";
     await writeSession(db,session);
@@ -369,13 +434,39 @@ export async function placeWebBid(input:BidInput) {
   });
 }
 
-async function checkBudget(db:AuctionDb,session:WebAuctionSession,team:WebTeam,amount:number) {
-  const roster = await liveRoster();
+function bidAmount(session:WebAuctionSession,teamId:string,input:BidInput) {
+  requireLot(session,input.lotId);
+  if(session.status !== "running") throw new AuctionError("Auction is paused.");
+  if(session.awaitingDecision || expired(session)) throw new AuctionError("Bidding closed. Waiting for Sold or Pass.");
+  const amount=input.amount ?? (session.currentBidderTeamId ? session.currentBid+input.bump! : session.currentBid);
+  const minimum=session.currentBidderTeamId ? session.currentBid+BID_INCREMENT : session.currentBid;
+  if(!validInteger(amount) || amount<minimum) throw new AuctionError(`Bid changed. Minimum bid is ${minimum}.`);
+  if(session.currentBidderTeamId===teamId) throw new AuctionError("You are already the high bidder.");
+  return amount;
+}
+
+type UnsignedMember = { playerId:string; medal:string|null; player:{ discordId:string; medal:string; basePrice:number|null } };
+
+function unsignedPool(db:AuctionDb,seasonId:string):Promise<UnsignedMember[]> {
+  return db.seasonPlayer.findMany({where:{seasonId,teamId:null,isCaptain:false},select:{playerId:true,medal:true,player:{select:{discordId:true,medal:true,basePrice:true}}}});
+}
+
+/** Base prices of the other unsigned players this auction could still fill a roster with. */
+async function floorsFor(db:AuctionDb,session:WebAuctionSession):Promise<number[]> {
+  if(session.floors) {
+    return Object.entries(session.floors).filter(([id])=>id !== session.currentPlayerId).map(([,price])=>price);
+  }
+  const unsigned=await unsignedPool(db,session.seasonId);
+  return unsigned
+    .filter(m=>m.playerId !== session.currentPlayerId && !isDummyDiscordId(m.player.discordId))
+    .map(m=>m.player.basePrice ?? basePriceFor(m.medal ?? m.player.medal));
+}
+
+function assertBudget(session:WebAuctionSession,team:WebTeam,amount:number,roster:{min:number;max:number},otherFloors:number[]) {
   if(team.rosterCount>=roster.max) throw new AuctionError(`${team.name} already has ${roster.max} players.`);
   const needed=Math.max(0,roster.min-team.rosterCount-1);
   // Reserve the cheapest remaining eligible players, across all medal pools.
-  const available=await db.seasonPlayer.findMany({where:{seasonId:session.seasonId,teamId:null,isCaptain:false,playerId:{not:session.currentPlayerId!}},include:{player:true}});
-  const floors=available.filter(m=>!isDummyDiscordId(m.player.discordId)).map(m=>m.player.basePrice ?? basePriceFor(m.medal ?? m.player.medal));
+  const floors=[...otherFloors];
   if(floors.some(price=>!Number.isSafeInteger(price) || price<1)) throw new AuctionError("A remaining player's base price is invalid. Contact the organizer.");
   floors.sort((a,b)=>a-b);
   const reserve=floors.slice(0,needed).reduce((sum,n)=>sum+n,0);
@@ -387,45 +478,47 @@ export function placeWebBidByDiscord(input:{discordId:string;amount?:number;bump
 }
 
 async function settle(kind:"sold"|"unsold",lotId?:string|null,revision?:number) {
+  const [config,roster]=await Promise.all([liveConfig(),liveRoster()]);
   return withAuctionLock(async db=>{
-    const session=await activeSession(db);
+    const session=await activeSession(db,config);
     requireLot(session,lotId);
     if(revision !== undefined && revision !== session.revision) throw new AuctionError("The auction changed. Review the latest bid before confirming.");
-    const lot=await db.auctionLot.findUnique({where:{id:session.lotId!}});
-    if(!lot || lot.status !== "open") throw new AuctionError("This lot has already been settled.");
     if(kind === "sold" && !session.awaitingDecision && !expired(session)) throw new AuctionError("Wait for the bidding clock to close before confirming Sold.");
     if(kind === "unsold" && session.currentBidderTeamId && !session.awaitingDecision && !expired(session)) throw new AuctionError("Wait for the bidding clock to close before passing a bid player.");
-    await refreshTeams(db,session);
+    if(!session.floors) await refreshTeams(db,session);
     const playerId=session.currentPlayerId!;
     const player=session.players[playerId];
-    const member=await db.seasonPlayer.findUnique({where:{seasonId_playerId:{seasonId:session.seasonId,playerId}}});
-    if(!member || member.teamId) throw new AuctionError("This player has already been assigned or is no longer registered.");
     const team=session.currentBidderTeamId ? session.teams[session.currentBidderTeamId] : null;
+    // Guarded writes double as the checks: any count of 0 throws and rolls the whole sale back.
     if(kind === "sold") {
       if(!team) throw new AuctionError("No high bidder. Use Pass.");
-      await checkBudget(db,session,team,session.currentBid);
+      assertBudget(session,team,session.currentBid,roster,await floorsFor(db,session));
       const deducted=await db.team.updateMany({where:{id:team.id,purse:{gte:session.currentBid}},data:{purse:{decrement:session.currentBid}}});
       if(deducted.count !== 1) throw new AuctionError("Team budget changed. Review before selling.");
-      const roster = await liveRoster();
       const assignment={teamId:team.id,teamJoinedAt:new Date(),rosterRole:roster.subs > 0 && team.rosterCount>=roster.min ? "sub" : null,isCaptain:false};
-      await db.seasonPlayer.update({where:{id:member.id},data:assignment});
+      const moved=await db.seasonPlayer.updateMany({where:{seasonId:session.seasonId,playerId,teamId:null},data:assignment});
+      if(moved.count !== 1) throw new AuctionError("This player has already been assigned or is no longer registered.");
       await db.player.update({where:{id:playerId},data:{...assignment,auctionStatus:AUCTION_PLAYER_STATUS.SOLD}});
       team.purse-=session.currentBid;
       team.rosterCount++;
+      team.players=[...(team.players ?? []),{id:playerId,name:displayName(session,player),price:session.currentBid,captain:false}];
+      if(session.floors) delete session.floors[playerId];
     } else {
       await db.player.update({where:{id:playerId},data:{auctionStatus:AUCTION_PLAYER_STATUS.UNSOLD}});
     }
-    await db.auctionLot.update({where:{id:lot.id},data:{status:kind,teamId:kind === "sold" ? team!.id : null,soldPrice:kind === "sold" ? session.currentBid : null}});
-    session.lastSale={playerName:player.steamName,teamName:kind === "sold" ? team!.name : null,price:kind === "sold" ? session.currentBid : null,medal:player.medal,rolesJson:player.rolesJson,balances:balances(session)};
+    const closed=await db.auctionLot.updateMany({where:{id:session.lotId!,status:"open"},data:{status:kind,teamId:kind === "sold" ? team!.id : null,soldPrice:kind === "sold" ? session.currentBid : null}});
+    if(closed.count !== 1) throw new AuctionError("This lot has already been settled.");
+    session.lastSale={playerName:player.steamName,teamName:kind === "sold" ? team!.name : null,price:kind === "sold" ? session.currentBid : null,medal:player.medal,rolesJson:player.rolesJson,balances:balances(session).map(({name,purse,rosterCount})=>({name,purse,rosterCount}))};
     const next=session.queue.shift();
-    if(next) await openLot(db,session,next);
-    else {
+    if(next) {
+      await openLot(db,session,next);
+      session.endsAtMs=Date.now()+BID_CLOCK_SECONDS*1000;
+    } else {
       session.status="idle";session.lotId=null;session.currentPlayerId=null;
       session.currentBid=0;session.currentBidderTeamId=null;session.endsAtMs=null;
       session.pausedRemainingMs=null;session.awaitingDecision=false;session.event="done";
       // A medal pool ending does not mean the entire auction has finished.
-      const rosterNow = await liveRoster();
-      const short=Object.values(session.teams).some(t=>t.rosterCount<rosterNow.min);
+      const short=Object.values(session.teams).some(t=>t.rosterCount<roster.min);
       await db.season.update({where:{id:session.seasonId},data:{phase:short ? "AUCTION_ACTIVE" : "IN_PROGRESS"}});
     }
     await writeSession(db,session);
@@ -461,5 +554,3 @@ export async function clearWebAuctionMessage() {
     await writeSession(db,session);
   });
 }
-export function generateCaptainPasscode() { return randomBytes(8).toString("hex"); }
-export function generateCaptainToken() { return randomBytes(24).toString("hex"); }

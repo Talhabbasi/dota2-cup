@@ -1,5 +1,4 @@
 import { PageHeader } from "@/components/common";
-import { AdminSeasonViewer } from "@/components/admin/season-viewer";
 import { requireAdmin } from "@/lib/admin-auth";
 import { resolveAdminSeasonView } from "@/lib/admin-season-view";
 import { adminListRecentMatches } from "@/lib/match-admin";
@@ -21,7 +20,7 @@ export default async function AdminMatchesPage({
 }) {
   await requireAdmin();
   const sp = await searchParams;
-  const { view, options, readOnly, publicSeasonParam } =
+  const { view, readOnly, publicSeasonParam } =
     await resolveAdminSeasonView(sp.season);
   const pubg = view.game === "PUBG";
   const lobbies = pubg ? await listPubgLobbies(view.id) : [];
@@ -72,13 +71,6 @@ export default async function AdminMatchesPage({
                 },
               ]
         }
-      />
-      <AdminSeasonViewer
-        view={view}
-        options={options}
-        readOnly={readOnly}
-        publicSeasonParam={publicSeasonParam}
-        publicHref="/matches"
       />
       {pubg ? (
         played.length === 0 ? (

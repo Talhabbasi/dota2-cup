@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { signOut } from "next-auth/react";
 import {
   CalendarDays,
@@ -26,6 +26,8 @@ import { useEffect, useState, type ReactNode } from "react";
 import { CUP_ICON_PATH, CUP_NAME, PUBG_CUP_NAME } from "@/lib/brand";
 import { cn } from "@/lib/utils";
 import { AdminToastProvider } from "@/components/admin/admin-toast";
+import { AdminSeasonPicker } from "@/components/admin/season-viewer";
+import type { AdminSeasonOption } from "@/lib/admin-season-view";
 
 /** Close mobile drawer when the route changes (adjust during render). */
 function useCloseOnPathChange(pathname: string) {
@@ -84,11 +86,16 @@ function titleFromPath(pathname: string) {
 
 export function AdminShell({
   userLabel,
+  seasonOptions,
+  savedSeasonId,
   children,
 }: {
   userLabel: string;
+  seasonOptions: AdminSeasonOption[];
+  savedSeasonId: string | null;
   children: ReactNode;
 }) {
+  const router = useRouter();
   const pathname = usePathname();
   const season = useSearchParams().get("season");
   const [open, setOpen] = useCloseOnPathChange(pathname);
@@ -190,7 +197,8 @@ export function AdminShell({
             type="button"
             onClick={() =>
               signOut({ redirect: false }).then(() => {
-                window.location.href = "/admin";
+                router.replace("/admin");
+                router.refresh();
               })
             }
             className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-muted-foreground transition hover:bg-rose-500/10 hover:text-rose-300"
@@ -228,8 +236,12 @@ export function AdminShell({
               {pageTitle}
             </h1>
           </div>
-          <div className="ml-auto flex min-w-0 items-center gap-2">
-            <div className="hidden min-w-0 text-right sm:block">
+          <div className="ml-auto flex min-w-0 items-center gap-3">
+            <AdminSeasonPicker
+              options={seasonOptions}
+              savedSeasonId={savedSeasonId}
+            />
+            <div className="hidden min-w-0 text-right xl:block">
               <p className="m-0 truncate text-sm font-medium text-foreground">
                 {userLabel}
               </p>

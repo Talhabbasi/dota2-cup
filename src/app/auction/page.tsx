@@ -89,7 +89,7 @@ export default async function AuctionPage() {
         title="Auction"
         subtitle={
           <>
-            Who sold, which franchise won the lot, and the winning bid — season by
+            Who sold, which franchise won the lot, and the winning bid this
             season.{" "}
             <a href="/auction/live" className="text-link">
               Live board

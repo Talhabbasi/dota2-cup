@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { prisma } from "./prisma";
 import { getLiveSeason } from "./seasons";
@@ -49,7 +50,9 @@ function toOption(
   };
 }
 
-export async function listAdminSeasonOptions(): Promise<AdminSeasonOption[]> {
+export const listAdminSeasonOptions = cache(async function listAdminSeasonOptions(): Promise<
+  AdminSeasonOption[]
+> {
   const [rows, live] = await Promise.all([
     prisma.season.findMany({
       orderBy: [{ game: "asc" }, { number: "desc" }],
@@ -66,7 +69,7 @@ export async function listAdminSeasonOptions(): Promise<AdminSeasonOption[]> {
     getLiveSeason(),
   ]);
   return rows.map((row) => toOption(row, live?.id ?? null));
-}
+});
 
 /**
  * Resolve which season admin lists should show.

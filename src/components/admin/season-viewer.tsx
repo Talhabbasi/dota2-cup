@@ -2,11 +2,8 @@
 
 import Link from "next/link";
 import { useEffect } from "react";
-import { usePathname, useRouter } from "next/navigation";
-import {
-  adminCardClass,
-  adminControlClass,
-} from "@/components/admin/ui";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { adminControlClass } from "@/components/admin/ui";
 import type { AdminSeasonOption } from "@/lib/admin-season-view";
 import { ADMIN_SEASON_COOKIE } from "@/lib/season-view-cookie";
 import { cn } from "@/lib/utils";
@@ -23,79 +20,91 @@ function seasonOptionLabel(season: AdminSeasonOption) {
   return `${game} · Season ${season.number}${name}${state}`;
 }
 
-export function AdminSeasonViewer({
-  view,
+/** Mirrors resolveAdminSeasonView so the picker shows the season the page loaded. */
+function pickSeason(
+  options: AdminSeasonOption[],
+  raw: string | null,
+): AdminSeasonOption | null {
+  const fallback = options.find((o) => o.isLive) ?? options[0] ?? null;
+  const value = raw?.trim();
+  if (!value) return fallback;
+  const byId = options.find((o) => o.id === value);
+  if (byId) return byId;
+  const asNum = Number(value);
+  const numbered = Number.isFinite(asNum)
+    ? options.filter((o) => o.number === asNum)
+    : [];
+  return numbered.length === 1 ? numbered[0]! : fallback;
+}
+
+export function AdminSeasonPicker({
   options,
-  readOnly,
-  publicSeasonParam: _publicSeasonParam,
-  publicHref,
+  savedSeasonId,
 }: {
-  view: AdminSeasonOption;
   options: AdminSeasonOption[];
-  readOnly: boolean;
-  publicSeasonParam: string;
-  /** Public page to open for full archive detail, e.g. /matches */
-  publicHref: string;
+  savedSeasonId: string | null;
 }) {
   const router = useRouter();
   const pathname = usePathname();
-  const publicUrl = readOnly ? "/seasons" : publicHref;
+  const param = useSearchParams().get("season");
+  const view = pickSeason(options, param || savedSeasonId);
+  const liveId = options.find((o) => o.isLive)?.id ?? null;
+
   useEffect(() => {
-    rememberSeason(view.id);
-  }, [view.id]);
+    if (view) rememberSeason(view.id);
+  }, [view]);
+
+  if (!view) return null;
+  const readOnly = !view.isLive;
 
   return (
-    <div
-      className={cn(
-        adminCardClass,
-        "mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between",
-        readOnly && "border-amber-500/30 bg-amber-500/5",
-      )}
-    >
-      <div className="min-w-0 flex-1 space-y-2">
-        <label className="block text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-          Viewing season
-        </label>
-        <select
-          className={cn(adminControlClass, "max-w-md")}
-          value={view.id}
-          onChange={(e) => {
-            const next = options.find((o) => o.id === e.target.value);
-            if (!next) return;
-            rememberSeason(next.id);
-            router.push(`${pathname}?season=${next.id}`);
-          }}
-        >
-          {options.map((o) => (
-            <option key={o.id} value={o.id}>
-              {seasonOptionLabel(o)}
-            </option>
-          ))}
-        </select>
-        <p className="m-0 text-sm text-muted-foreground">
-          {readOnly
-            ? "Archive view — read-only. Live Season writes (register, auction, new matches) stay on the active cup."
-            : "Live season — edits apply here."}
-        </p>
-      </div>
-      <div className="flex flex-wrap gap-2">
-        <Link
-          href={publicUrl}
-          className="rounded-lg border border-white/14 bg-white/[0.04] px-3.5 py-2 text-sm font-semibold text-foreground transition hover:border-[#487fff]/40 hover:bg-[#487fff]/10"
-        >
-            {readOnly
-              ? "Season archive"
-              : `Open public ${view.game === "PUBG" ? "PUBG" : "Dota"} Season ${view.number}`}
-        </Link>
-        {readOnly ? (
-          <Link
-            href={`${pathname}?season=${options.find((o) => o.isLive)?.id ?? view.id}`}
-            className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3.5 py-2 text-sm font-semibold text-amber-100 transition hover:bg-amber-500/20"
+    <div className="flex min-w-0 items-center gap-2">
+      <label className="sr-only" htmlFor="admin-season-picker">
+        Viewing season
+      </label>
+      <select
+        id="admin-season-picker"
+        className={cn(
+          adminControlClass,
+          "h-9 w-auto max-w-[11rem] py-1 text-sm sm:max-w-[18rem]",
+          readOnly && "border-amber-500/40",
+        )}
+        value={view.id}
+        onChange={(e) => {
+          const next = options.find((o) => o.id === e.target.value);
+          if (!next) return;
+          rememberSeason(next.id);
+          router.push(`${pathname}?season=${next.id}`);
+        }}
+      >
+        {options.map((o) => (
+          <option key={o.id} value={o.id}>
+            {seasonOptionLabel(o)}
+          </option>
+        ))}
+      </select>
+      {readOnly ? (
+        <>
+          <span
+            className="hidden shrink-0 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[0.7rem] font-semibold text-amber-200 md:inline"
+            title="Archive view — read-only. Live season writes stay on the active cup."
           >
-            Back to live
-          </Link>
-        ) : null}
-      </div>
+            Read-only
+          </span>
+          {liveId ? (
+            <Link
+              href={`${pathname}?season=${liveId}`}
+              className="shrink-0 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-xs font-semibold text-amber-100 transition hover:bg-amber-500/20"
+            >
+              Back to live
+            </Link>
+          ) : null}
+        </>
+      ) : (
+        <span className="hidden shrink-0 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[0.7rem] font-semibold text-emerald-200 md:inline">
+          Live
+        </span>
+      )}
     </div>
   );
 }

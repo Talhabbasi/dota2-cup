@@ -453,7 +453,8 @@ export async function adminUpdatePlayerProfile(input: {
   }
 
   const player = await requirePlayer(input.discordId, db);
-  const medal = medalInput ? parseMedal(medalInput) : undefined;
+  const medal =
+    medalInput && medalInput !== player.medal ? parseMedal(medalInput) : undefined;
   const roles = roleInput ? parseRegistrationRole(roleInput) : undefined;
   const playWindow = windowInput ? parsePlayWindow(windowInput) : undefined;
 
@@ -709,7 +710,8 @@ export function formatUnsignedPlayers(
     `**Unsigned players** (${players.length}) — not on a team, still in the auction pool`,
     "",
   ];
-  for (const medal of [...MEDALS, ...PUBG_MEDALS]) {
+  const knownMedals: readonly string[] = [...MEDALS, ...PUBG_MEDALS];
+  for (const medal of knownMedals) {
     const list = groups.get(medal);
     if (!list || list.length === 0) continue;
     lines.push(`**${labelForMedal(medal)}** (${list.length})`);
@@ -721,11 +723,11 @@ export function formatUnsignedPlayers(
     lines.push("");
   }
   const leftover = [...groups.keys()].filter(
-    (medal) => !(MEDALS as readonly string[]).includes(medal),
+    (medal) => !knownMedals.includes(medal),
   );
   for (const medal of leftover) {
     const list = groups.get(medal) ?? [];
-    lines.push(`**${medal}** (${list.length})`);
+    lines.push(`**${labelForMedal(medal)}** (${list.length})`);
     for (const player of list) {
       const mention = `<@${player.discordId.split(":")[0]}>`;
       const roles = formatRoles(parseRolesJson(player.rolesJson));

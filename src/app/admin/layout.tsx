@@ -1,6 +1,9 @@
 import { authSession } from "@/lib/auth";
 import { isSiteAdmin } from "@/lib/site-admin";
+import { cookies } from "next/headers";
 import { AdminShell } from "@/components/admin/admin-shell";
+import { listAdminSeasonOptions } from "@/lib/admin-season-view";
+import { ADMIN_SEASON_COOKIE } from "@/lib/season-view-cookie";
 
 export const dynamic = "force-dynamic";
 /** Scoreboard OCR (Gemini) needs headroom beyond the default serverless limit. */
@@ -26,5 +29,18 @@ export default async function AdminLayout({
     session?.user?.email?.trim() ||
     "Organizer";
 
-  return <AdminShell userLabel={userLabel}>{children}</AdminShell>;
+  const [seasonOptions, cookieStore] = await Promise.all([
+    listAdminSeasonOptions(),
+    cookies(),
+  ]);
+
+  return (
+    <AdminShell
+      userLabel={userLabel}
+      seasonOptions={seasonOptions}
+      savedSeasonId={cookieStore.get(ADMIN_SEASON_COOKIE)?.value ?? null}
+    >
+      {children}
+    </AdminShell>
+  );
 }

@@ -107,6 +107,11 @@ export default async function AdminPlayerDetailPage({
                   defaultValue={medal}
                   className={adminControlClass}
                 >
+                  {(medalsForGame(view.game) as readonly string[]).includes(
+                    medal,
+                  ) ? null : (
+                    <option value={medal}>{labelForMedal(medal)}</option>
+                  )}
                   {medalsForGame(view.game).map((m) => (
                     <option key={m} value={m}>
                       {labelForMedal(m)}

@@ -142,8 +142,8 @@ export function RegisterForm({
           </select>
           {pubg ? (
             <small>
-              Classic tier: Bronze through Conqueror. Divisions inside a tier
-              still count as that tier.
+              PUBG PC (Steam) ranked tier, Bronze through Survivor. Divisions
+              inside a tier still count as that tier.
             </small>
           ) : null}
         </label>

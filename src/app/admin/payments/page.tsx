@@ -1,5 +1,4 @@
 import { PageHeader } from "@/components/common";
-import { AdminSeasonViewer } from "@/components/admin/season-viewer";
 import { requireAdmin } from "@/lib/admin-auth";
 import { resolveAdminSeasonView } from "@/lib/admin-season-view";
 import {
@@ -26,7 +25,7 @@ export default async function AdminPaymentsPage({
 }) {
   await requireAdmin();
   const sp = await searchParams;
-  const { view, options, readOnly, publicSeasonParam } =
+  const { view, readOnly } =
     await resolveAdminSeasonView(sp.season);
   const [summary, players, teams] = await Promise.all([
     getPaymentCollection(view.id),
@@ -57,13 +56,6 @@ export default async function AdminPaymentsPage({
           },
           { value: summary.unpaidCount, label: "owe" },
         ]}
-      />
-      <AdminSeasonViewer
-        view={view}
-        options={options}
-        readOnly={readOnly}
-        publicSeasonParam={publicSeasonParam}
-        publicHref="/table"
       />
       <AdminPaymentsBoard
         summary={{

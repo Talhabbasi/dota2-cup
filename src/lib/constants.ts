@@ -20,21 +20,28 @@ export const MEDALS = [
 
 export type Medal = (typeof MEDALS)[number];
 
-/** PUBG Mobile classic tiers, highest first. Crown and below also have divisions V–I. */
+/** PUBG PC (Steam) ranked tiers, highest first. Bronze–Diamond also have divisions V–I. */
 export const PUBG_MEDALS = [
-  "conqueror",
-  "challenger",
+  "survivor",
   "master",
-  "ace",
-  "crown",
   "diamond",
+  "crystal",
   "platinum",
   "gold",
   "silver",
   "bronze",
+  "unranked",
 ] as const;
 
 export type PubgMedal = (typeof PUBG_MEDALS)[number];
+
+/** PUBG Mobile tiers saved before the cup moved to PC. Display and pricing only; not selectable. */
+const LEGACY_PUBG_MOBILE_MEDALS: Record<string, { label: string; price: number }> = {
+  conqueror: { label: "Conqueror (Mobile)", price: 4000 },
+  challenger: { label: "Challenger (Mobile)", price: 3500 },
+  ace: { label: "Ace (Mobile)", price: 2500 },
+  crown: { label: "Crown (Mobile)", price: 2000 },
+};
 
 export const BASE_PRICE: Record<Medal, number> = {
   immortal: 5000,
@@ -49,16 +56,15 @@ export const BASE_PRICE: Record<Medal, number> = {
 };
 
 export const PUBG_BASE_PRICE: Record<PubgMedal, number> = {
-  conqueror: 4000,
-  challenger: 3500,
-  master: 3000,
-  ace: 2500,
-  crown: 2000,
-  diamond: 1500,
-  platinum: 1200,
-  gold: 1000,
-  silver: 800,
-  bronze: 600,
+  survivor: 4000,
+  master: 3500,
+  diamond: 3000,
+  crystal: 2500,
+  platinum: 2000,
+  gold: 1500,
+  silver: 1000,
+  bronze: 800,
+  unranked: 800,
 };
 
 export const ROLES = [
@@ -122,16 +128,15 @@ export const MEDAL_LABELS: Record<Medal, string> = {
 };
 
 export const PUBG_MEDAL_LABELS: Record<PubgMedal, string> = {
-  conqueror: "Conqueror",
-  challenger: "Challenger",
+  survivor: "Survivor",
   master: "Master",
-  ace: "Ace",
-  crown: "Crown",
   diamond: "Diamond",
+  crystal: "Crystal",
   platinum: "Platinum",
   gold: "Gold",
   silver: "Silver",
   bronze: "Bronze",
+  unranked: "Unranked",
 };
 
 export function medalsForGame(game: string | null | undefined) {
@@ -142,6 +147,7 @@ export function labelForMedal(medal: string): string {
   return (
     MEDAL_LABELS[medal as Medal] ??
     PUBG_MEDAL_LABELS[medal as PubgMedal] ??
+    LEGACY_PUBG_MOBILE_MEDALS[medal]?.label ??
     medal
   );
 }
@@ -153,7 +159,7 @@ export function basePriceFor(medal: string): number {
   if ((PUBG_MEDALS as readonly string[]).includes(medal)) {
     return PUBG_BASE_PRICE[medal as PubgMedal];
   }
-  return 1000;
+  return LEGACY_PUBG_MOBILE_MEDALS[medal]?.price ?? 1000;
 }
 
 export function parseRoles(input: string): PlayerRole[] {

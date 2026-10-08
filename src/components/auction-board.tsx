@@ -249,8 +249,8 @@ export function AuctionBoard({
             🔨
           </span>
           <p className="muted" style={{ margin: 0 }}>
-            No lots have been confirmed yet. After an admin confirms a bid in
-            Discord, the player, team, and price will show here.
+            No auction records for this season yet. Sold players, their team, and
+            the winning bid will show here once the auction runs.
           </p>
         </div>
       ) : (

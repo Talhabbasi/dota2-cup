@@ -1,15 +1,12 @@
 import Link from "next/link";
 import { PageHeader } from "@/components/common";
-import { AdminSeasonViewer } from "@/components/admin/season-viewer";
 import { requireAdmin } from "@/lib/admin-auth";
 import { resolveAdminSeasonView } from "@/lib/admin-season-view";
-import { adminListSoldLots, adminListTeamsForPicker } from "@/lib/match-admin";
+import { adminListSoldLots } from "@/lib/match-admin";
 import { pageMeta } from "@/lib/seo";
 import { AdminAuctionBoard } from "@/components/admin/auction-board";
 import { AdminAuctionDesk } from "@/components/admin/auction-desk";
-import { CaptainCredentialsPanel } from "@/components/admin/captain-credentials-panel";
 import { AdminCard, AdminSection } from "@/components/admin/ui";
-import { listCaptainAccounts } from "@/lib/captain-accounts";
 import { getWebAuctionView } from "@/lib/web-auction";
 import { getLiveSeason } from "@/lib/seasons";
 import { prisma } from "@/lib/prisma";
@@ -19,7 +16,7 @@ import { AUCTION_PLAYER_STATUS } from "@/lib/web-auction";
 export const dynamic = "force-dynamic";
 export const metadata = pageMeta(
   "Admin Auction",
-  "Live auction desk, captain logins, and sold-lot fixes.",
+  "Live auction desk and sold-lot fixes.",
 );
 
 export default async function AdminAuctionPage({
@@ -30,12 +27,10 @@ export default async function AdminAuctionPage({
   await requireAdmin();
   const sp = await searchParams;
   const seasonView = await resolveAdminSeasonView(sp.season);
-  const [lots, view, season, teams, accounts] = await Promise.all([
+  const [lots, view, season] = await Promise.all([
     adminListSoldLots(seasonView.view.id),
     getWebAuctionView(),
     getLiveSeason(),
-    adminListTeamsForPicker(seasonView.view.id),
-    listCaptainAccounts(seasonView.view.id),
   ]);
 
   const poolRows = await prisma.seasonPlayer.findMany({
@@ -65,7 +60,7 @@ export default async function AdminAuctionPage({
       <PageHeader
         eyebrow="Admin"
         title="Auction"
-        subtitle="Live web desk for captains, credentials, and sold-lot corrections."
+        subtitle="Live web desk for captains and sold-lot corrections."
         pills={[
           { value: lots.length, label: "sold" },
           { value: pool.length, label: "unsigned" },
@@ -75,13 +70,6 @@ export default async function AdminAuctionPage({
             Public live board
           </Link>
         }
-      />
-      <AdminSeasonViewer
-        view={seasonView.view}
-        options={seasonView.options}
-        readOnly={seasonView.readOnly}
-        publicSeasonParam={seasonView.publicSeasonParam}
-        publicHref="/auction"
       />
 
       <AdminCard tone="accent" className="mb-6">
@@ -101,28 +89,6 @@ export default async function AdminAuctionPage({
         </AdminSection>
       </AdminCard>
 
-      <AdminCard className="mb-6">
-        <AdminSection title="Captain credentials">
-          <p className="m-0 mb-3 text-sm text-muted-foreground">
-            Generate single-purpose logins for the captain bid panel at{" "}
-            <code>/auction/captain</code>.
-          </p>
-          <CaptainCredentialsPanel
-            readOnly={seasonView.readOnly}
-            teams={teams.map((t) => ({
-              id: t.id,
-              name: t.name,
-              tag: t.tag ?? null,
-            }))}
-            accounts={accounts.map((a) => ({
-              id: a.id,
-              loginName: a.loginName,
-              teamId: a.teamId,
-              teamName: a.team.name,
-            }))}
-          />
-        </AdminSection>
-      </AdminCard>
 
       <AdminCard className="mb-6">
         <AdminSection title="Unsigned player pool">

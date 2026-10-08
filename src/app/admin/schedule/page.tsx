@@ -1,5 +1,4 @@
 import { PageHeader } from "@/components/common";
-import { AdminSeasonViewer } from "@/components/admin/season-viewer";
 import { requireAdmin } from "@/lib/admin-auth";
 import { resolveAdminSeasonView } from "@/lib/admin-season-view";
 import { adminListTeamsForPicker } from "@/lib/match-admin";
@@ -19,7 +18,7 @@ export default async function AdminSchedulePage({
 }) {
   await requireAdmin();
   const sp = await searchParams;
-  const { view, options, readOnly, publicSeasonParam } =
+  const { view, readOnly, publicSeasonParam } =
     await resolveAdminSeasonView(sp.season);
 
   const pubg = view.game === "PUBG";
@@ -59,13 +58,6 @@ export default async function AdminSchedulePage({
                 label: readOnly ? "fixtures" : "pending",
               },
         ]}
-      />
-      <AdminSeasonViewer
-        view={view}
-        options={options}
-        readOnly={readOnly}
-        publicSeasonParam={publicSeasonParam}
-        publicHref="/schedule"
       />
       <AdminScheduleBoard
         fixtures={shown.map((f) => ({

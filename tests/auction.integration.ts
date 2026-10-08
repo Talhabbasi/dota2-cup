@@ -14,7 +14,6 @@ async function main() {
   const auction = await import("../src/lib/web-auction");
   const { createSeasonTeam } = await import("../src/lib/season-roster");
   const { adminAddCaptain } = await import("../src/lib/captains");
-  const { createCaptainAccount, revokeCaptainAccount } = await import("../src/lib/captain-accounts");
   const { adminSetAuctionSoldPrice } = await import("../src/lib/match-admin");
   const { setActiveSeason } = await import("../src/lib/seasons");
   if (process.argv[2] === "--bid-worker") {
@@ -49,8 +48,7 @@ async function main() {
     const accounts = [];
     for (let i = 0; i < count; i++) {
       const team = i === 0 ? await adminAddCaptain({ discordId: players[i].discordId, teamName: `Team ${i}` }) : await createSeasonTeam({ name: `Team ${i}`, captainPlayerId: players[i].id, purse: 20000 });
-      const account = await createCaptainAccount({ teamId: team.id, loginName: `captain-${i}`, passcode: "synthetic-only" });
-      accounts.push({ teamId: team.id, accountId: account.accountId, accountToken: account.token });
+      accounts.push({ teamId: team.id, discordId: players[i].discordId });
     }
     await assert.rejects(createSeasonTeam({ name: "Excess", captainPlayerId: players[count].id, purse: 20000 }), new RegExp(`${count} teams`));
     const outsider = await prisma.player.create({ data: { discordId: "fixture-outsider", discordName: "Outsider", steam32: 999999, steamName: "AAA outsider", medal: "archon", rolesJson: "[]" } });
@@ -58,7 +56,7 @@ async function main() {
     assert.notEqual(view.currentPlayer?.id, outsider.id);
     assert.equal(view.teamBalances.length, count);
     assert.ok(view.teamBalances.every(t => t.rosterCount === 1));
-    return { accounts, view, season };
+    return { accounts: accounts.map(({ discordId }) => ({ discordId })), view, season };
   }
   try {
     for (const count of [8, 10, 12]) {
@@ -99,9 +97,8 @@ async function main() {
       await assert.rejects(auction.confirmWebSold(current.lotId), /clock/);
       await assert.rejects(setActiveSeason(season.id), /Finish the auction/);
       check("pause, stale admin controls, early sale and season change protected");
-      await revokeCaptainAccount(challengers[2].accountId!);
-      await assert.rejects(auction.placeWebBid({ ...challengers[2], requestId: randomUUID(), amount: 2100 }), /revoked/);
-      check("revocation blocks an already-authenticated captain");
+      await assert.rejects(auction.placeWebBid({ discordId: "fixture-person-" + (count * 5 + 1), lotId: current.lotId!, requestId: randomUUID(), amount: 2100 }), /captains/);
+      check("a Discord account that is not a captain cannot bid");
       await setDeadline(200);
       assert.equal((await auction.tickWebAuction()).view.awaitingDecision, false);
       await setDeadline(-1);

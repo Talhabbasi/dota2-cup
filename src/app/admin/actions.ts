@@ -1,6 +1,8 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
+import { after } from "next/server";
+import { PUBLIC_PAGE_TAG } from "@/lib/cache-tags";
 import type { Session } from "next-auth";
 import { requireAdmin } from "@/lib/admin-auth";
 import { logAdminActivity, playerDisplayName } from "@/lib/admin-log";
@@ -51,8 +53,6 @@ import {
 import {
   adminCreateManualTeam,
   adminUpdateTeamMeta,
-  createCaptainAccount,
-  revokeCaptainAccount,
   adminSetPlayerAuctionMeta,
 } from "@/lib/captain-accounts";
 import {
@@ -921,31 +921,6 @@ export async function actionUpdateTeamMeta(formData: FormData) {
   revalidatePath("/teams");
 }
 
-export async function actionCreateCaptainAccount(formData: FormData) {
-  const session = await requireAdmin();
-  const teamId = String(formData.get("teamId") ?? "").trim();
-  const loginName = String(formData.get("loginName") ?? "").trim() || undefined;
-  const passcode = String(formData.get("passcode") ?? "").trim() || undefined;
-  const created = await createCaptainAccount({ teamId, loginName, passcode });
-  await note(
-    session,
-    "captain.credential",
-    `Captain login ${created.loginName} for ${created.teamName}`,
-    { teamId, accountId: created.accountId },
-  );
-  revalidatePath("/admin/auction");
-  revalidatePath("/admin/teams");
-  return created;
-}
-
-export async function actionRevokeCaptainAccount(formData: FormData) {
-  const session = await requireAdmin();
-  const accountId = String(formData.get("accountId") ?? "").trim();
-  await revokeCaptainAccount(accountId);
-  await note(session, "captain.revoke", `Revoked captain login`, { accountId });
-  revalidatePath("/admin/auction");
-}
-
 export async function actionSetPlayerAuctionMeta(formData: FormData) {
   const session = await requireAdmin();
   const playerId = String(formData.get("playerId") ?? "").trim();
@@ -964,16 +939,14 @@ export async function actionSetPlayerAuctionMeta(formData: FormData) {
   revalidatePath("/admin/players");
 }
 
+// Auction controls return the new view for the desk instead of revalidating the admin
+// page, so each click costs one auction transaction and not a full page re-render.
 export async function actionWebAuctionStart(formData: FormData) {
   const session = await requireAdmin();
   const medal = String(formData.get("medal") ?? "divine").trim();
-  await startWebAuction(medal);
-  await note(session, "auction.web_start", `Started web auction (${medal})`, {
-    medal,
-  });
-  revalidatePath("/admin/auction");
-  revalidatePath("/auction");
-  revalidatePath("/auction/live");
+  const view = await startWebAuction(medal);
+  after(() => note(session, "auction.web_start", `Started web auction (${medal})`, { medal }));
+  return view;
 }
 
 function auctionControl(formData: FormData) {
@@ -985,57 +958,48 @@ function auctionControl(formData: FormData) {
 
 export async function actionWebAuctionPause(formData: FormData) {
   await requireAdmin();
-  await pauseWebAuction(auctionControl(formData));
-  revalidatePath("/admin/auction");
-  revalidatePath("/auction/live");
+  return pauseWebAuction(auctionControl(formData));
 }
 
 export async function actionWebAuctionResume(formData: FormData) {
   await requireAdmin();
-  await resumeWebAuction(auctionControl(formData));
-  revalidatePath("/admin/auction");
-  revalidatePath("/auction/live");
+  return resumeWebAuction(auctionControl(formData));
 }
 
 export async function actionWebAuctionTimer(formData: FormData) {
   await requireAdmin();
-  await startWebTimer(auctionControl(formData));
-  revalidatePath("/admin/auction");
-  revalidatePath("/auction/live");
+  return startWebTimer(auctionControl(formData));
 }
 
 export async function actionWebAuctionResetTimer(formData: FormData) {
   await requireAdmin();
-  await resetWebTimer(auctionControl(formData));
-  revalidatePath("/admin/auction");
-  revalidatePath("/auction/live");
+  return resetWebTimer(auctionControl(formData));
 }
 
 export async function actionWebAuctionSold(formData: FormData) {
   const session = await requireAdmin();
-  const view = await confirmWebSold(auctionControl(formData).lotId, auctionControl(formData).revision);
-  await note(session, "auction.web_sold", `Sold lot on web auction`, {
-    player: view.lastSale?.playerName ?? view.currentPlayer?.steamName,
-  });
-  revalidatePath("/admin/auction");
-  revalidatePath("/auction");
-  revalidatePath("/auction/live");
-  revalidatePublicPages();
+  const { lotId, revision } = auctionControl(formData);
+  const view = await confirmWebSold(lotId, revision);
+  revalidateTag(PUBLIC_PAGE_TAG, "max");
+  after(() =>
+    note(session, "auction.web_sold", `Sold lot on web auction`, {
+      player: view.lastSale?.playerName ?? view.currentPlayer?.steamName,
+    }),
+  );
+  return view;
 }
 
 export async function actionWebAuctionPass(formData: FormData) {
   const session = await requireAdmin();
-  await passWebUnsold(auctionControl(formData).lotId, auctionControl(formData).revision);
-  await note(session, "auction.web_pass", `Passed / unsold on web auction`);
-  revalidatePath("/admin/auction");
-  revalidatePath("/auction/live");
+  const { lotId, revision } = auctionControl(formData);
+  const view = await passWebUnsold(lotId, revision);
+  after(() => note(session, "auction.web_pass", `Passed / unsold on web auction`));
+  return view;
 }
 
 export async function actionWebAuctionNext(formData: FormData) {
   await requireAdmin();
-  await introduceNextWebPlayer(auctionControl(formData));
-  revalidatePath("/admin/auction");
-  revalidatePath("/auction/live");
+  return introduceNextWebPlayer(auctionControl(formData));
 }
 
 export async function actionSchedulePubgLobby(formData: FormData) {

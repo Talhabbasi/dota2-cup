@@ -1,5 +1,4 @@
 import { PageHeader } from "@/components/common";
-import { AdminSeasonViewer } from "@/components/admin/season-viewer";
 import { requireAdmin } from "@/lib/admin-auth";
 import { resolveAdminSeasonView } from "@/lib/admin-season-view";
 import { getAdminInsights } from "@/lib/admin-insights";
@@ -20,7 +19,7 @@ export default async function AdminInsightsPage({
 }) {
   await requireAdmin();
   const sp = await searchParams;
-  const { view, options, readOnly, publicSeasonParam } =
+  const { view } =
     await resolveAdminSeasonView(sp.season);
   const [data, highlights] = await Promise.all([
     getAdminInsights(view.id),
@@ -37,13 +36,6 @@ export default async function AdminInsightsPage({
           { value: data.matchesPlayed, label: "matches" },
           { value: data.registeredPlayers, label: "players" },
         ]}
-      />
-      <AdminSeasonViewer
-        view={view}
-        options={options}
-        readOnly={readOnly}
-        publicSeasonParam={publicSeasonParam}
-        publicHref="/player-insight"
       />
       <AdminInsightsBoard data={data} highlights={highlights} />
     </div>

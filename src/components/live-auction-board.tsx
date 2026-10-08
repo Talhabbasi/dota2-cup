@@ -2,9 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { WebAuctionView } from "@/lib/web-auction";
-import { BID_INCREMENT } from "@/lib/constants";
+import { BID_INCREMENT, labelForMedal } from "@/lib/constants";
 import { useAuctionView } from "./use-auction-view";
 import { cn } from "@/lib/utils";
+
+const BID_STEPS = [BID_INCREMENT, 500, 5000] as const;
 
 export function LiveAuctionBoard({
   initial,
@@ -15,18 +17,18 @@ export function LiveAuctionBoard({
   initial: WebAuctionView;
   canBid?: boolean;
   teamId?: string | null;
-  onView?: (view: WebAuctionView, connected: boolean) => void;
+  onView?: (view: WebAuctionView, connected: boolean, accept: (next: WebAuctionView) => void) => void;
 }) {
   const { view, accept, connected, secondsLeft, closed } = useAuctionView(initial);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [uncertain, setUncertain] = useState<{ lotId: string; amount: number; requestId: string } | null>(null);
   const submitting = useRef(false);
-  useEffect(() => { onView?.(view, connected); }, [view, connected, onView]);
+  useEffect(() => { onView?.(view, connected, accept); }, [view, connected, accept, onView]);
 
-  async function bid() {
-    if (submitting.current || !connected || (!uncertain && (closed || !view.lotId))) return;
-    const payload = uncertain ?? { lotId: view.lotId!, amount: view.highBidder ? view.currentBid + BID_INCREMENT : view.currentBid, requestId: crypto.randomUUID() };
+  async function bid(amount?: number) {
+    if (submitting.current || !connected || (!uncertain && (closed || !view.lotId || amount === undefined))) return;
+    const payload = uncertain ?? { lotId: view.lotId!, amount: amount!, requestId: crypto.randomUUID() };
     submitting.current = true;
     setPending(true);
     setError(null);
@@ -59,6 +61,7 @@ export function LiveAuctionBoard({
   const idle = view.status === "idle";
   const youAreHigh =
     canBid && teamId && view.highBidder?.id === teamId;
+  const myTeam = teamId ? view.teamBalances.find((t) => t.id === teamId) : undefined;
 
   return (
     <div className="grid gap-4">
@@ -114,23 +117,41 @@ export function LiveAuctionBoard({
         ) : null}
 
         {canBid ? (
-          <div className="mt-5 flex flex-wrap items-center gap-3">
-            <button
-              type="button"
-              disabled={pending || !connected || (!uncertain && (idle || view.status !== "running" || closed || Boolean(youAreHigh)))}
-              onClick={bid}
-              className={cn(
-                "rounded-md bg-amber-500 px-4 py-2 text-sm font-semibold text-black disabled:opacity-40",
-              )}
-            >
-              {uncertain
-                ? "Check previous bid"
-                : youAreHigh
-                ? "You are high bidder"
-                : pending
-                  ? "Bidding…"
-                  : `Bid ${view.highBidder ? view.currentBid + BID_INCREMENT : view.currentBid}`}
-            </button>
+          <div className="mt-5 flex flex-wrap items-center gap-2">
+            {uncertain ? (
+              <button
+                type="button"
+                disabled={pending || !connected}
+                onClick={() => bid()}
+                className="rounded-md bg-amber-500 px-4 py-2 text-sm font-semibold text-black disabled:opacity-40"
+              >
+                {pending ? "Checking…" : "Check previous bid"}
+              </button>
+            ) : youAreHigh ? (
+              <span className="rounded-md border border-amber-500/40 px-4 py-2 text-sm font-semibold text-amber-300">
+                You are high bidder
+              </span>
+            ) : (
+              BID_STEPS.map((step) => {
+                const opening = !view.highBidder && step === BID_INCREMENT;
+                const amount = opening ? view.currentBid : view.currentBid + step;
+                const tooMuch = myTeam ? amount > myTeam.purse : false;
+                return (
+                  <button
+                    key={step}
+                    type="button"
+                    disabled={pending || !connected || idle || view.status !== "running" || closed || tooMuch}
+                    onClick={() => bid(amount)}
+                    className={cn(
+                      "rounded-md px-4 py-2 text-sm font-semibold disabled:opacity-40",
+                      step === BID_INCREMENT ? "bg-amber-500 text-black" : "border border-amber-500/50 text-amber-200",
+                    )}
+                  >
+                    {pending ? "Bidding…" : opening ? `Bid ${amount}` : `+${step} → ${amount}`}
+                  </button>
+                );
+              })
+            )}
             {error ? (
               <p className="m-0 text-sm text-red-300" role="alert">
                 {error}
@@ -139,6 +160,59 @@ export function LiveAuctionBoard({
           </div>
         ) : null}
       </div>
+
+      {myTeam ? (
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4">
+          <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+            <h3 className="m-0 font-display text-lg tracking-wide uppercase">
+              Your team · {myTeam.name}
+            </h3>
+            <span className="font-mono text-sm">
+              {myTeam.purse} left · {myTeam.rosterCount} players
+            </span>
+          </div>
+          <ul className="m-0 grid list-none gap-1.5 p-0 text-sm">
+            {myTeam.players.map((p) => (
+              <li
+                key={p.id}
+                className="flex justify-between rounded-md border border-white/5 px-3 py-1.5"
+              >
+                <span>
+                  {p.name}
+                  {p.captain ? <span className="text-muted-foreground"> · captain</span> : null}
+                </span>
+                <span className="font-mono text-muted-foreground">
+                  {p.price != null ? p.price : p.captain ? "—" : "assigned"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {view.upcoming.length > 0 ? (
+        <div className="rounded-xl border border-white/10 p-4">
+          <h3 className="mt-0 mb-3 font-display text-lg tracking-wide uppercase">
+            Up next ({view.upcoming.length})
+          </h3>
+          <ol className="m-0 grid list-none gap-1.5 p-0 text-sm sm:grid-cols-2">
+            {view.upcoming.map((p, i) => (
+              <li
+                key={p.id}
+                className="flex justify-between gap-2 rounded-md border border-white/5 px-3 py-1.5"
+              >
+                <span>
+                  <span className="mr-2 font-mono text-muted-foreground">{i + 1}.</span>
+                  {p.name}
+                </span>
+                <span className="font-mono text-muted-foreground">
+                  {labelForMedal(p.medal)} · {p.basePrice}
+                </span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      ) : null}
 
       {view.teamBalances.length > 0 ? (
         <div className="rounded-xl border border-white/10 p-4">

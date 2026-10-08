@@ -1,5 +1,4 @@
 import { PageHeader } from "@/components/common";
-import { AdminSeasonViewer } from "@/components/admin/season-viewer";
 import { requireAdmin } from "@/lib/admin-auth";
 import { resolveAdminSeasonView } from "@/lib/admin-season-view";
 import { getPredictionLeaderboard } from "@/lib/predictions";
@@ -19,7 +18,7 @@ export default async function AdminPredictionsPage({
 }) {
   await requireAdmin();
   const sp = await searchParams;
-  const { view, options, readOnly, publicSeasonParam } =
+  const { view } =
     await resolveAdminSeasonView(sp.season);
   const board = await getPredictionLeaderboard(null, {
     forAdmin: true,
@@ -33,13 +32,6 @@ export default async function AdminPredictionsPage({
         title="Predictions"
         subtitle="Who predicted and their points (always visible to organizers)."
         pills={[{ value: board.rows.length, label: "predictors" }]}
-      />
-      <AdminSeasonViewer
-        view={view}
-        options={options}
-        readOnly={readOnly}
-        publicSeasonParam={publicSeasonParam}
-        publicHref="/predictions"
       />
       <AdminPredictionsBoard
         rows={board.rows.map((row) => ({

@@ -2,7 +2,6 @@ import { PageHeader } from "@/components/common";
 import { AdminCard, AdminField, AdminSection, adminControlClass } from "@/components/admin/ui";
 import { AdminActionForm, AdminSubmitButton } from "@/components/admin/form-controls";
 import { actionRecordPubgResult } from "@/app/admin/actions";
-import { AdminSeasonViewer } from "@/components/admin/season-viewer";
 import { requireAdmin } from "@/lib/admin-auth";
 import { resolveAdminSeasonView } from "@/lib/admin-season-view";
 import { PUBG_MAPS, pubgModeLabel, rosterRules } from "@/lib/games";
@@ -22,7 +21,7 @@ export default async function AdminPubgPage({
 }) {
   await requireAdmin();
   const sp = await searchParams;
-  const { view, options, readOnly, publicSeasonParam } =
+  const { view, readOnly } =
     await resolveAdminSeasonView(sp.season);
   const pubg = view.game === "PUBG";
   const season = pubg
@@ -46,13 +45,6 @@ export default async function AdminPubgPage({
             ? `${season?.name ?? view.name} · ${pubgModeLabel(season?.pubgMode)}. Points are placement plus 1 per kill.`
             : "This season is Dota 2. Switch the season picker to a PUBG cup to record lobbies."
         }
-      />
-      <AdminSeasonViewer
-        view={view}
-        options={options}
-        readOnly={readOnly}
-        publicSeasonParam={publicSeasonParam}
-        publicHref="/table"
       />
       {pubg && !readOnly ? (
         <AdminCard>

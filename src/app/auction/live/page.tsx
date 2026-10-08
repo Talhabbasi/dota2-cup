@@ -1,11 +1,6 @@
 import { PageHeader } from "@/components/common";
 import { LiveAuctionBoard } from "@/components/live-auction-board";
-import { RegisterSignIn } from "@/components/register-signin";
-import { authSession } from "@/lib/auth";
-import {
-  captainTeamIdForDiscord,
-  getWebAuctionViewOrEmpty,
-} from "@/lib/web-auction";
+import { getWebAuctionViewOrEmpty } from "@/lib/web-auction";
 import { livePageMeta } from "@/lib/seo";
 import Link from "next/link";
 
@@ -20,14 +15,7 @@ export function generateMetadata() {
 }
 
 export default async function LiveAuctionPage() {
-  const session = await authSession();
-  const [view, discordTeamId] = await Promise.all([
-    getWebAuctionViewOrEmpty(),
-    captainTeamIdForDiscord(session?.user?.discordId),
-  ]);
-  const teamId = session?.user?.isCaptainBidder
-    ? (session.user.captainTeamId ?? null)
-    : discordTeamId;
+  const view = await getWebAuctionViewOrEmpty();
 
   return (
     <div className="page">
@@ -36,8 +24,11 @@ export default async function LiveAuctionPage() {
         title="Live board"
         subtitle={
           <>
-            Everyone can watch. Captains signed in with Discord bid here.
-            Sold history stays on{" "}
+            Everyone can watch. Captains bid from the{" "}
+            <Link href="/auction/captain" className="text-link">
+              captain tab
+            </Link>{" "}
+            after signing in with Discord. Sold history stays on{" "}
             <Link href="/auction" className="text-link">
               /auction
             </Link>
@@ -45,21 +36,7 @@ export default async function LiveAuctionPage() {
           </>
         }
       />
-      {!session?.user ? (
-        <div className="mb-4">
-          <RegisterSignIn callbackUrl="/auction/live" />
-        </div>
-      ) : teamId ? (
-        <p className="mb-4 text-sm text-muted-foreground">
-          Bidding as a captain. The button raises the current bid.
-        </p>
-      ) : (
-        <p className="mb-4 text-sm text-muted-foreground">
-          You are signed in, but this Discord account is not a captain for the
-          live season, so this page stays watch-only.
-        </p>
-      )}
-      <LiveAuctionBoard initial={view} canBid={Boolean(teamId)} teamId={teamId} />
+      <LiveAuctionBoard initial={view} />
     </div>
   );
 }

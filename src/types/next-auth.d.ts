@@ -6,10 +6,6 @@ declare module "next-auth" {
     user: DefaultSession["user"] & {
       discordId?: string;
       isAdmin?: boolean;
-      isCaptainBidder?: boolean;
-      captainTeamId?: string;
-      captainAccountId?: string;
-      captainAccountToken?: string;
     };
   }
 }
@@ -19,9 +15,5 @@ declare module "next-auth/jwt" {
     authProvider?: "discord" | "credentials" | "captain";
     discordId?: string;
     isAdmin?: boolean;
-    isCaptainBidder?: boolean;
-    captainTeamId?: string;
-    captainAccountId?: string;
-      captainAccountToken?: string;
   }
 }

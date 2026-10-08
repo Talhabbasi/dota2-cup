@@ -1,19 +1,15 @@
 import Link from "next/link";
 import { PageHeader } from "@/components/common";
-import { AdminSeasonViewer } from "@/components/admin/season-viewer";
-import { CaptainCredentialsPanel } from "@/components/admin/captain-credentials-panel";
 import { AdminCard, AdminSection } from "@/components/admin/ui";
 import { requireAdmin } from "@/lib/admin-auth";
 import { resolveAdminSeasonView } from "@/lib/admin-season-view";
-import { listCaptainAccounts } from "@/lib/captain-accounts";
-import { adminListTeamsForPicker } from "@/lib/match-admin";
 import { prisma } from "@/lib/prisma";
 import { pageMeta } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
 export const metadata = pageMeta(
   "Admin Captains",
-  "Season captains and auction logins.",
+  "Season captains for the selected season.",
 );
 
 export default async function AdminCaptainsPage({
@@ -24,8 +20,7 @@ export default async function AdminCaptainsPage({
   await requireAdmin();
   const sp = await searchParams;
   const seasonView = await resolveAdminSeasonView(sp.season);
-  const [captains, teams, accounts] = await Promise.all([
-    prisma.seasonPlayer.findMany({
+  const captains = await prisma.seasonPlayer.findMany({
       where: { seasonId: seasonView.view.id, isCaptain: true },
       orderBy: { player: { steamName: "asc" } },
       select: {
@@ -39,10 +34,7 @@ export default async function AdminCaptainsPage({
         },
         team: { select: { id: true, name: true } },
       },
-    }),
-    adminListTeamsForPicker(seasonView.view.id),
-    listCaptainAccounts(seasonView.view.id),
-  ]);
+    });
   const pubg = seasonView.view.game === "PUBG";
 
   return (
@@ -50,20 +42,13 @@ export default async function AdminCaptainsPage({
       <PageHeader
         eyebrow="Admin"
         title="Captains"
-        subtitle="Captains for the selected season. Bidding requires Discord sign-in on the appointed account, or a passcode created here."
+        subtitle="Captains for the selected season. Captains bid by signing in with the appointed Discord account."
         pills={[{ value: captains.length, label: "captains" }]}
         actions={
           <Link href="/auction/captain" className="text-sm text-primary underline-offset-2 hover:underline">
             Captain desk
           </Link>
         }
-      />
-      <AdminSeasonViewer
-        view={seasonView.view}
-        options={seasonView.options}
-        readOnly={seasonView.readOnly}
-        publicSeasonParam={seasonView.publicSeasonParam}
-        publicHref="/auction/live"
       />
       <AdminCard className="mt-6">
         <AdminSection title="Appointed captains">
@@ -104,24 +89,6 @@ export default async function AdminCaptainsPage({
               })}
             </ul>
           )}
-        </AdminSection>
-      </AdminCard>
-      <AdminCard className="mt-6">
-        <AdminSection title="Passcode logins">
-          <CaptainCredentialsPanel
-            teams={teams.map((team) => ({
-              id: team.id,
-              name: team.name,
-              tag: team.tag ?? null,
-            }))}
-            accounts={accounts.map((account) => ({
-              id: account.id,
-              loginName: account.loginName,
-              teamId: account.teamId,
-              teamName: account.team.name,
-            }))}
-            readOnly={seasonView.readOnly}
-          />
         </AdminSection>
       </AdminCard>
     </div>

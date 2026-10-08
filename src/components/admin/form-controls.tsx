@@ -69,10 +69,13 @@ export function AdminSubmitButton({
 }
 
 type AdminActionFormProps = {
-  action: (formData: FormData) => void | Promise<void>;
+  action: (formData: FormData) => unknown;
   children: ReactNode;
   className?: string;
   successMessage?: string;
+  /** "await" holds the button until the page refreshes; "background" refreshes after; "none" skips it. */
+  refresh?: "await" | "background" | "none";
+  onResult?: (result: unknown) => void;
   /** When set, show themed confirm modal before running the action. */
   confirmMessage?: string;
   confirmTitle?: string;
@@ -89,6 +92,8 @@ export function AdminActionForm({
   children,
   className,
   successMessage = "Saved",
+  refresh = "await",
+  onResult,
   confirmMessage,
   confirmTitle = "Confirm action",
   confirmLabel = "Confirm",
@@ -128,8 +133,9 @@ export function AdminActionForm({
     setOpen(false);
     startTransition(async () => {
       try {
-        await action(formData);
-        router.refresh();
+        onResult?.(await action(formData));
+        if (refresh === "await") router.refresh();
+        else if (refresh === "background") setTimeout(() => router.refresh(), 0);
         toast.success(successMessage);
       } catch (error) {
         toast.error(

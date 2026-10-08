@@ -1,5 +1,4 @@
 import { PageHeader } from "@/components/common";
-import { AdminSeasonViewer } from "@/components/admin/season-viewer";
 import { requireAdmin } from "@/lib/admin-auth";
 import { resolveAdminSeasonView } from "@/lib/admin-season-view";
 import { ROLE_LABELS, labelForMedal, medalsForGame } from "@/lib/constants";
@@ -22,7 +21,7 @@ export default async function AdminPlayersPage({
 }) {
   await requireAdmin();
   const sp = await searchParams;
-  const { view, options, readOnly, publicSeasonParam } =
+  const { view, readOnly, publicSeasonParam } =
     await resolveAdminSeasonView(sp.season);
 
   const [players, linkable, teams] = await Promise.all([
@@ -65,13 +64,6 @@ export default async function AdminPlayersPage({
             ? []
             : [{ value: linkable.length, label: "not linked yet" }]),
         ]}
-      />
-      <AdminSeasonViewer
-        view={view}
-        options={options}
-        readOnly={readOnly}
-        publicSeasonParam={publicSeasonParam}
-        publicHref="/players"
       />
       <AdminPlayersBoard
         players={players.map((p) => ({

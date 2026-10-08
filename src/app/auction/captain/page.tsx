@@ -27,7 +27,7 @@ export default async function CaptainAuctionPage() {
       <PageHeader
         eyebrow="Captains"
         title="Bid desk"
-        subtitle="Sign in with the Discord account appointed as captain. Bidding checks purse and roster size. A passcode from Admin still works."
+        subtitle="Sign in with the Discord account appointed as captain to bid and see your team. Bidding checks purse and roster size."
       />
       <CaptainAuctionClient initialView={view} discordTeamId={discordTeamId} />
     </div>

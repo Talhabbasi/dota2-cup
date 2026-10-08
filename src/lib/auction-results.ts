@@ -40,10 +40,14 @@ function medalLabel(medal: string) {
   return labelForMedal(medal);
 }
 
+/** Sold lots for the live season only; archived seasons have their own pages. */
 export async function getAuctionResultsBySeason(): Promise<SeasonAuctionBlock[]> {
-  const [lots, memberships, teams, current] = await Promise.all([
+  const current = await getCurrentSeasonSafe();
+  if (!current) return [];
+  const seasonId = current.id;
+  const [lots, memberships, teams] = await Promise.all([
     prisma.auctionLot.findMany({
-      where: publicAuctionLotWhere,
+      where: { AND: [publicAuctionLotWhere, { seasonId }] },
       include: {
         player: {
           select: {
@@ -58,7 +62,7 @@ export async function getAuctionResultsBySeason(): Promise<SeasonAuctionBlock[]>
       },
     }),
     prisma.seasonPlayer.findMany({
-      where: { teamId: { not: null } },
+      where: { seasonId, teamId: { not: null } },
       select: {
         seasonId: true,
         playerId: true,
@@ -68,10 +72,9 @@ export async function getAuctionResultsBySeason(): Promise<SeasonAuctionBlock[]>
       },
     }),
     prisma.team.findMany({
-      where: publicTeamWhere,
+      where: { ...publicTeamWhere, seasonId },
       select: { id: true, captainId: true, seasonId: true },
     }),
-    getCurrentSeasonSafe(),
   ]);
 
   const membershipByKey = new Map(

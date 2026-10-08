@@ -23,7 +23,9 @@ export function useAuctionView(initial: WebAuctionView) {
     let timer: ReturnType<typeof setTimeout>;
     let controller: AbortController | null = null;
     let failures = 0;
+    let inFlight = false;
     async function poll() {
+      inFlight = true;
       controller = new AbortController();
       const timeout = setTimeout(() => controller?.abort(), 8000);
       try {
@@ -37,6 +39,7 @@ export function useAuctionView(initial: WebAuctionView) {
         if (!stopped) { setOnline(false); failures++; }
       } finally {
         clearTimeout(timeout);
+        inFlight = false;
         if (!stopped) {
           const idle = latest.current.status === "idle";
           timer = setTimeout(poll, failures ? Math.min(1000 * 2 ** failures, 15000) : document.hidden || idle ? 10000 : 1500);
@@ -46,11 +49,15 @@ export function useAuctionView(initial: WebAuctionView) {
     void poll();
     const clock = setInterval(() => setNow(Date.now()), 250);
     const offline = () => setOnline(false);
+    const visible = () => { if (!document.hidden && !inFlight) { clearTimeout(timer); void poll(); } };
     window.addEventListener("offline", offline);
-    return () => { stopped = true; clearTimeout(timer); clearInterval(clock); controller?.abort(); window.removeEventListener("offline", offline); };
+    document.addEventListener("visibilitychange", visible);
+    return () => { stopped = true; clearTimeout(timer); clearInterval(clock); controller?.abort(); window.removeEventListener("offline", offline); document.removeEventListener("visibilitychange", visible); };
   }, [accept]);
 
-  const connected = online && receivedAt > 0 && now - receivedAt < 6000;
+  // Idle and hidden-tab polls run every 10s, so allow a longer gap before calling it stale.
+  const staleAfter = view.status === "idle" ? 15000 : 6000;
+  const connected = online && receivedAt > 0 && now - receivedAt < staleAfter;
   const serverNow = view.serverTime + Math.max(0, now - receivedAt);
   const secondsLeft = view.status === "paused" ? view.secondsLeft : view.endsAt ? Math.max(0, Math.ceil((new Date(view.endsAt).getTime() - serverNow) / 1000)) : 0;
   const closed = view.awaitingDecision || (view.status === "running" && !!view.endsAt && secondsLeft === 0);

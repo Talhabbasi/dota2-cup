@@ -11,7 +11,6 @@ import {
   Wallet,
 } from "lucide-react";
 import { PageHeader } from "@/components/common";
-import { AdminSeasonViewer } from "@/components/admin/season-viewer";
 import { resolveAdminSeasonView } from "@/lib/admin-season-view";
 import { AdminSignIn } from "@/components/admin-sign-in";
 import { currentPlayer } from "@/lib/auth";
@@ -241,13 +240,6 @@ export default async function AdminPage({
 
   return (
     <div className="page">
-      <AdminSeasonViewer
-        view={seasonView.view}
-        options={seasonView.options}
-        readOnly={seasonView.readOnly}
-        publicSeasonParam={seasonView.publicSeasonParam}
-        publicHref="/"
-      />
       <section className="admin-metric-grid mb-6">
         {metrics.map((m) => (
           <Link

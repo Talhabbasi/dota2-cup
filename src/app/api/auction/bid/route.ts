@@ -12,12 +12,7 @@ export async function POST(request: Request) {
     if (origin && origin !== new URL(request.url).origin) throw new AuctionError("Invalid request origin.", 403);
     const session = await authSession();
     const discordId = session?.user?.discordId;
-    const passcodeCaptain = Boolean(
-      session?.user?.isCaptainBidder && session.user.captainTeamId,
-    );
-    if (!passcodeCaptain && !discordId) {
-      throw new AuctionError("Sign in with Discord as a captain to bid.", 401);
-    }
+    if (!discordId) throw new AuctionError("Sign in with Discord as a captain to bid.", 401);
     if (!request.headers.get("content-type")?.startsWith("application/json")) throw new AuctionError("JSON required.", 400);
     let body;
     try { body = await request.json(); }
@@ -26,10 +21,7 @@ export async function POST(request: Request) {
       throw new AuctionError("A player, request identifier, and exact bid amount are required.", 400);
     }
     const view = await placeWebBid({
-      teamId: passcodeCaptain ? session?.user?.captainTeamId : undefined,
-      accountId: passcodeCaptain ? session?.user?.captainAccountId : undefined,
-      accountToken: passcodeCaptain ? session?.user?.captainAccountToken : undefined,
-      discordId: passcodeCaptain ? undefined : discordId,
+      discordId,
       lotId: body.lotId,
       requestId: body.requestId,
       amount: body.amount,
