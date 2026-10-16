@@ -8,6 +8,7 @@ import {
 import { adminRoleName } from "./constants";
 import { prisma } from "./prisma";
 import { paymentsChannelName } from "./registration-status";
+import { getLiveSeason } from "./seasons";
 import { CUP_NAME } from "@/lib/brand";
 
 const DUMMY_PREFIX = "test-dummy-";
@@ -93,17 +94,24 @@ function findLockedChannels(guild: Guild) {
   });
 }
 
+/** Discord snowflakes enrolled in the live season only (not archive cups). */
 async function registeredSnowflakes() {
-  const players = await prisma.player.findMany({
+  const live = await getLiveSeason();
+  if (!live) return [];
+
+  const rows = await prisma.seasonPlayer.findMany({
     where: {
-      AND: [
-        { discordId: { not: { startsWith: DUMMY_PREFIX } } },
-        { discordId: { not: { startsWith: DUMMY_TEAM_PREFIX } } },
-      ],
+      seasonId: live.id,
+      player: {
+        AND: [
+          { discordId: { not: { startsWith: DUMMY_PREFIX } } },
+          { discordId: { not: { startsWith: DUMMY_TEAM_PREFIX } } },
+        ],
+      },
     },
-    select: { discordId: true },
+    select: { player: { select: { discordId: true } } },
   });
-  return [...new Set(players.map((p) => snowflake(p.discordId)))];
+  return [...new Set(rows.map((row) => snowflake(row.player.discordId)))];
 }
 
 export async function ensureRegisteredRole(guild: Guild): Promise<Role> {
@@ -192,8 +200,37 @@ async function syncRegisteredRoleMembers(
   role: Role,
   channels: { channel: TextChannel; kind: AccessKind }[],
 ) {
-  const ids = await registeredSnowflakes();
-  for (const id of ids) {
+  const liveIds = new Set(await registeredSnowflakes());
+
+  // Strip Registered from anyone who is not in the live season (S1 leftovers, etc.).
+  const allPlayers = await prisma.player.findMany({
+    where: {
+      AND: [
+        { discordId: { not: { startsWith: DUMMY_PREFIX } } },
+        { discordId: { not: { startsWith: DUMMY_TEAM_PREFIX } } },
+      ],
+    },
+    select: { discordId: true },
+  });
+  for (const player of allPlayers) {
+    const id = snowflake(player.discordId);
+    if (liveIds.has(id)) continue;
+    const member = await guild.members.fetch(id).catch(() => null);
+    if (!member || !member.roles.cache.has(role.id)) continue;
+    try {
+      await member.roles.remove(
+        role,
+        "Not registered for the live season",
+      );
+    } catch (error) {
+      console.warn(
+        `Could not remove ${registeredRoleName()} from ${id}:`,
+        error instanceof Error ? error.message : error,
+      );
+    }
+  }
+
+  for (const id of liveIds) {
     const member = await guild.members.fetch(id).catch(() => null);
     if (!member) continue;
     if (member.roles.cache.has(role.id)) continue;

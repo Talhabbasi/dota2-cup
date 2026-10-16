@@ -208,8 +208,8 @@ import {
 } from "../src/lib/post-channel-guides";
 import {
   describeChannelAccess,
-  syncCaptainRolesFromDb,
   syncCupChannelAccess,
+  syncLiveSeasonDiscordRoles,
   tryGrantCupPlayerAccess,
   tryProvisionTeamDiscord,
   tryRenameTeamDiscordLabels,
@@ -4131,9 +4131,9 @@ client.once(Events.ClientReady, async () => {
     }
     try {
       await syncCupChannelAccess(guild);
-      await syncCaptainRolesFromDb(guild);
+      await syncLiveSeasonDiscordRoles(guild);
       console.log(
-        `Locked #captains and registered-only channels in ${guild.name}`,
+        `Locked #captains and synced live-season Discord roles in ${guild.name}`,
       );
     } catch (error) {
       console.error(`channel access (${guild.name})`, error);
