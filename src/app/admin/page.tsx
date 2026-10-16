@@ -3,6 +3,7 @@ import {
   CalendarDays,
   ChartColumn,
   Gavel,
+  GitBranch,
   ScrollText,
   Swords,
   Target,
@@ -72,6 +73,13 @@ const SECTIONS = [
     note: "Book and edit fixtures",
     icon: CalendarDays,
     tone: "amber",
+  },
+  {
+    href: "/admin/playoffs",
+    label: "Playoffs",
+    note: "Groups, schedule, bracket + Discord",
+    icon: GitBranch,
+    tone: "violet",
   },
   {
     href: "/admin/seasons",

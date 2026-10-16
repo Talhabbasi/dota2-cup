@@ -52,22 +52,6 @@ export function groupStageScheduleEmbeds(result: {
       ),
     dayEmbed(`Day 1 — Saturday ${result.saturday} — Group A`, groupA),
     dayEmbed(`Day 2 — Sunday ${result.sunday} — Group B`, groupB),
-    new EmbedBuilder()
-      .setColor(GOLD)
-      .setTitle("10:00 PM–12:00 AM requests")
-      .setDescription(
-        [
-          "**Prodandy** → Team Chessman (Group A)",
-          "**INVOKER** → Team Ash (Group B)",
-          "**Dendi The Main Culprit !** → Team Saif (Group B)",
-          "",
-          "Each of them plays 3 group games, and a night only has 3 slots from 10 PM–12 AM. Putting all 3 games in that window would force back-to-back matches.",
-          "",
-          "Closest fit: **2 of 3** games in 10 PM–12 AM, with 2 hours rest before the third.",
-          "Chessman / Ash: 10:00 PM, 12:00 AM, then 2:00 AM.",
-          "Saif: 11:00 PM, 12:00 AM (vs Ash), then 3:00 AM.",
-        ].join("\n"),
-      ),
   ];
 }
 

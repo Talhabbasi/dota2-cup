@@ -1,3 +1,4 @@
+/** Baseline purse before a captain’s medal handicap is applied. */
 export const STARTING_PURSE = 20_000;
 export const MAX_CAPTAINS = 15;
 export const BID_INCREMENT = 100;
@@ -34,6 +35,48 @@ export const PUBG_MEDALS = [
 ] as const;
 
 export type PubgMedal = (typeof PUBG_MEDALS)[number];
+
+/**
+ * Starting auction purse by captain medal. Higher rank → less purse so
+ * lower-ranked captains can still compete in the draft.
+ * Teams default to STARTING_PURSE; assigning a captain sets this table.
+ */
+export const CAPTAIN_PURSE_BY_MEDAL: Record<Medal, number> = {
+  immortal: 20_000,
+  divine: 21_000,
+  ancient: 22_500,
+  legend: 24_000,
+  archon: 25_000,
+  crusader: 25_000,
+  guardian: 26_000,
+  herald: 27_000,
+  uncalibrated: 25_000,
+};
+
+export const PUBG_CAPTAIN_PURSE_BY_MEDAL: Record<PubgMedal, number> = {
+  survivor: 20_000,
+  master: 21_000,
+  diamond: 22_500,
+  crystal: 24_000,
+  platinum: 25_000,
+  gold: 25_000,
+  silver: 26_000,
+  bronze: 27_000,
+  unranked: 25_000,
+};
+
+/** Purse granted when a player is assigned as captain (by their registered medal). */
+export function purseForCaptainMedal(medal: string | null | undefined): number {
+  if (!medal) return STARTING_PURSE;
+  const key = medal.toLowerCase().trim();
+  if ((MEDALS as readonly string[]).includes(key)) {
+    return CAPTAIN_PURSE_BY_MEDAL[key as Medal];
+  }
+  if ((PUBG_MEDALS as readonly string[]).includes(key)) {
+    return PUBG_CAPTAIN_PURSE_BY_MEDAL[key as PubgMedal];
+  }
+  return STARTING_PURSE;
+}
 
 /** PUBG Mobile tiers saved before the cup moved to PC. Display and pricing only; not selectable. */
 const LEGACY_PUBG_MOBILE_MEDALS: Record<string, { label: string; price: number }> = {

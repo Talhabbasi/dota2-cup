@@ -64,7 +64,19 @@ import {
   confirmWebSold,
   passWebUnsold,
   introduceNextWebPlayer,
+  endWebAuction,
 } from "@/lib/web-auction";
+import {
+  assignPlayoffGroup,
+  clearPlayoffFixtures,
+  openPlayoffsFromGroups,
+  seedPlayoffGroups,
+} from "@/lib/playoff";
+import { bookGroupStageRoundRobin, bookedGroupStageFromDb } from "@/lib/group-stage-schedule";
+import {
+  postGroupStageToMatchesRest,
+  postPlayoffToMatchesRest,
+} from "@/lib/discord-matches-rest";
 
 function revalidateAdmin() {
   revalidatePublicPages();
@@ -74,6 +86,7 @@ function revalidateAdmin() {
   revalidatePath("/admin/players");
   revalidatePath("/admin/teams");
   revalidatePath("/admin/schedule");
+  revalidatePath("/admin/playoffs");
   revalidatePath("/admin/auction");
   revalidatePath("/admin/predictions");
   revalidatePath("/admin/payments");
@@ -82,6 +95,8 @@ function revalidateAdmin() {
   revalidatePath("/admin/seasons");
   revalidatePath("/player-insight");
   revalidatePath("/predictions");
+  revalidatePath("/playoffs");
+  revalidatePath("/schedule");
 }
 
 async function note(
@@ -906,11 +921,13 @@ export async function actionCreateManualTeam(formData: FormData) {
     logoUrl: String(formData.get("logoUrl") ?? "") || null,
     captainDiscordId: String(formData.get("captainDiscordId") ?? "") || null,
     captainPlayerId: String(formData.get("captainPlayerId") ?? "") || null,
-    purse: Number(formData.get("purse") || 0),
   });
-  await note(session, "team.create_manual", `Created ${team.name}`, {
-    teamId: team.id,
-  });
+  await note(
+    session,
+    "team.create_manual",
+    `Created ${team.name} (${team.purse.toLocaleString()} purse from captain rank)`,
+    { teamId: team.id, purse: team.purse },
+  );
   revalidateAdmin();
   revalidatePath("/admin/teams");
   revalidatePath("/teams");
@@ -955,7 +972,15 @@ export async function actionWebAuctionStart(formData: FormData) {
   const session = await requireAdmin();
   const medal = String(formData.get("medal") ?? "divine").trim();
   const view = await startWebAuction(medal);
-  after(() => note(session, "auction.web_start", `Started web auction (${medal})`, { medal }));
+  const label =
+    medal === "all" || medal === "random"
+      ? "all ranks · random"
+      : medal;
+  after(() =>
+    note(session, "auction.web_start", `Started web auction (${label})`, {
+      medal,
+    }),
+  );
   return view;
 }
 
@@ -1010,6 +1035,14 @@ export async function actionWebAuctionPass(formData: FormData) {
 export async function actionWebAuctionNext(formData: FormData) {
   await requireAdmin();
   return introduceNextWebPlayer(auctionControl(formData));
+}
+
+export async function actionWebAuctionEnd(formData: FormData) {
+  void formData;
+  const session = await requireAdmin();
+  const view = await endWebAuction();
+  after(() => note(session, "auction.web_end", "Ended web auction (forced idle)"));
+  return view;
 }
 
 export async function actionSchedulePubgLobby(formData: FormData) {
@@ -1074,4 +1107,121 @@ export async function actionRecordPubgResult(formData: FormData) {
   revalidatePath("/admin/pubg");
   revalidatePath("/table");
   revalidatePath("/player-insight");
+}
+
+export async function actionSeedPlayoffGroups() {
+  const session = await requireAdmin();
+  const view = await seedPlayoffGroups();
+  await note(
+    session,
+    "playoff.groups",
+    `Randomized groups (${view.groupA.length}+${view.groupB.length} teams)`,
+    {
+      groupA: view.groupA.map((t) => t.name),
+      groupB: view.groupB.map((t) => t.name),
+    },
+  );
+  revalidateAdmin();
+}
+
+export async function actionAssignPlayoffGroup(formData: FormData) {
+  const session = await requireAdmin();
+  const teamName = String(formData.get("teamName") ?? "");
+  const group = String(formData.get("group") ?? "").toUpperCase();
+  if (group !== "A" && group !== "B") throw new Error("Pick Group A or B.");
+  const result = await assignPlayoffGroup({
+    teamName,
+    group: group as "A" | "B",
+  });
+  await note(
+    session,
+    "playoff.assign",
+    `Assigned ${result.teamName} → Group ${result.group}`,
+    { teamName: result.teamName, group: result.group },
+  );
+  revalidateAdmin();
+}
+
+export async function actionBookGroupStage(formData: FormData) {
+  const session = await requireAdmin();
+  const result = await bookGroupStageRoundRobin({
+    saturday: String(formData.get("saturday") ?? "") || undefined,
+    sunday: String(formData.get("sunday") ?? "") || undefined,
+    force: formData.get("force") === "1",
+  });
+  const discord = await postGroupStageToMatchesRest(result);
+  const discordNote = discord.ok ? discord.detail : `Discord: ${discord.reason}`;
+  await note(
+    session,
+    "schedule.groups",
+    `Booked group stage (${result.fixtures.length} matches) · ${discordNote}`,
+    {
+      saturday: result.saturday,
+      sunday: result.sunday,
+      matchCount: result.fixtures.length,
+      discord: discord.ok ? discord.detail : discord.reason,
+    },
+  );
+  revalidateAdmin();
+  if (!discord.ok) {
+    throw new Error(
+      `Group stage booked (${result.fixtures.length} matches), but Discord sync failed: ${discord.reason}. Use Re-post schedule to Discord.`,
+    );
+  }
+}
+
+export async function actionPostGroupStageDiscord() {
+  const session = await requireAdmin();
+  const booked = await bookedGroupStageFromDb();
+  if (!booked) throw new Error("No group fixtures booked yet.");
+  const discord = await postGroupStageToMatchesRest(booked);
+  if (!discord.ok) throw new Error(discord.reason);
+  await note(session, "schedule.groups_discord", discord.detail);
+  revalidateAdmin();
+}
+
+export async function actionOpenPlayoffs() {
+  const session = await requireAdmin();
+  const result = await openPlayoffsFromGroups();
+  const discord = await postPlayoffToMatchesRest();
+  const discordNote = discord.ok ? discord.detail : `Discord: ${discord.reason}`;
+  await note(
+    session,
+    "playoff.open",
+    result.created.length
+      ? `Opened playoffs · booked ${result.created.join(", ")} · ${discordNote}`
+      : `Playoffs already open · ${discordNote}`,
+    { created: result.created, discord: discord.ok ? discord.detail : discord.reason },
+  );
+  revalidateAdmin();
+  if (!discord.ok && result.created.length > 0) {
+    throw new Error(
+      `Playoffs opened, but Discord sync failed: ${discord.reason}. Use Post / refresh Discord.`,
+    );
+  }
+  if (!discord.ok && result.created.length === 0) {
+    throw new Error(discord.reason);
+  }
+}
+
+export async function actionPostPlayoffsDiscord() {
+  const session = await requireAdmin();
+  const discord = await postPlayoffToMatchesRest();
+  if (!discord.ok) throw new Error(discord.reason);
+  await note(session, "playoff.post", discord.detail);
+  revalidateAdmin();
+}
+
+export async function actionClearPlayoffFixtures() {
+  const session = await requireAdmin();
+  const n = await clearPlayoffFixtures();
+  await note(
+    session,
+    "playoff.clear",
+    n === 0
+      ? "No pending playoff fixtures to clear"
+      : `Cleared ${n} pending playoff fixtures`,
+    { cleared: n },
+  );
+  revalidateAdmin();
 }

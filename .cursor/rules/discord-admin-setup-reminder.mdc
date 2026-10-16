@@ -1,0 +1,13 @@
+---
+description: Remind about sync Discord from DB + /admin setup
+alwaysApply: true
+---
+
+# Discord sync reminder
+
+When the user discusses Discord vs DB (players, teams, rooms, roles, cup channels), briefly remind them of both:
+
+1. **Tell the agent:** `sync Discord from the DB` (add detail if something specific is wrong) — agent updates code/helpers from DB as source of truth.
+2. **Then in Discord (local bot):** run **`/admin setup`** — rebuilds channels, team chats/voice, locks, #auction-test, #admin help, #updates from DB.
+
+Do not invent players/teams. One broken player → `/player resync`. Rules pins → `/rules channels`.

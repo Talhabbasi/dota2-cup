@@ -42,10 +42,9 @@ const AuthButtons = dynamic(
   },
 );
 
-const LINKS = [
+const BASE_LINKS = [
   ["/", "Home"],
   ["/teams", "Teams"],
-  ["/auction/live", "Auction"],
   ["/schedule", "Schedule"],
   ["/playoffs", "Playoffs"],
   ["/matches", "Matches"],
@@ -62,12 +61,18 @@ export function Nav({
   seasonLabel,
   showRegister = true,
   game = "DOTA",
+  auctionHref = "/auction",
 }: {
   showSeasons?: boolean;
   seasonLabel: string;
   /** Keep Register until this Discord account has a player row. */
   showRegister?: boolean;
   game?: string;
+  /**
+   * Captains: `/auction/captain`. Registered players: `/auction`.
+   * `null` hides Auction (not signed in / not registered).
+   */
+  auctionHref?: string | null;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -83,21 +88,27 @@ export function Nav({
     setMenuOpen(false);
   }
   const pubg = game === "PUBG";
-  const links = LINKS.filter(([href]) => {
-    if (!showSeasons && href === "/seasons") return false;
-    if (!showRegister && href === "/register") return false;
-    if (pubg && (href === "/heroes" || href === "/playoffs")) return false;
-    return true;
-  });
+  const links: [string, string][] = [];
+  for (const [href, label] of BASE_LINKS) {
+    if (!showSeasons && href === "/seasons") continue;
+    if (!showRegister && href === "/register") continue;
+    if (pubg && (href === "/heroes" || href === "/playoffs")) continue;
+    links.push([href, label]);
+    if (href === "/teams" && auctionHref) {
+      links.push([
+        auctionHref,
+        auctionHref === "/auction/captain" ? "Auction" : "Auction",
+      ]);
+    }
+  }
 
   useEffect(() => {
-    for (const [href] of LINKS) {
-      if (!showSeasons && href === "/seasons") continue;
-      if (!showRegister && href === "/register") continue;
-      if (pubg && (href === "/heroes" || href === "/playoffs")) continue;
+    for (const [href] of links) {
       router.prefetch(href);
     }
-  }, [router, showSeasons, showRegister, pubg]);
+    // Prefetch when visibility / auction destination changes — not on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- links rebuilt from these flags
+  }, [router, showSeasons, showRegister, pubg, auctionHref]);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -150,10 +161,7 @@ export function Nav({
               key={href}
               href={href}
               label={label}
-              active={
-                ready &&
-                (href === "/" ? pathname === "/" : pathname.startsWith(href))
-              }
+              active={ready && isNavActive(pathname, href)}
             />
           ))}
         </nav>
@@ -208,16 +216,18 @@ export function Nav({
             key={href}
             href={href}
             label={label}
-            active={
-              ready &&
-              (href === "/" ? pathname === "/" : pathname.startsWith(href))
-            }
+            active={ready && isNavActive(pathname, href)}
             mobile
           />
         ))}
       </nav>
     </header>
   );
+}
+
+function isNavActive(pathname: string, href: string) {
+  if (href === "/") return pathname === "/";
+  return pathname === href || pathname.startsWith(`${href}/`);
 }
 
 function NavLink({

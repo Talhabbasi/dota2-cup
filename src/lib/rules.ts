@@ -87,7 +87,7 @@ export const CUP_RULES = {
         "Admins fix rank or role with `/player edit` (mention or Discord ID).",
         "Admins remove players (`/player remove`) or delete registrations (`/player delete`).",
         `Each team needs **${MIN_ROSTER}–${MAX_ROSTER}** players after the auction.`,
-        `Captains receive **${STARTING_PURSE.toLocaleString()}** auction points in Discord only.`,
+        `Captains receive auction points from their **rank** (Immortal **${STARTING_PURSE.toLocaleString()}**, up to Herald **27,000**).`,
       ],
     },
     {
@@ -218,7 +218,7 @@ export function getChannelGuides(): { channelName: ChannelGuideName; embed: Embe
         "Private channel for captains and admins. **Slash commands only** — no casual chat.",
         [
           "Admin: `/captain add user:@player team:Wolves`",
-          `Captain receives **${STARTING_PURSE.toLocaleString()}** auction points.`,
+          "Captain receives auction points from their **rank** (lower rank → more purse).",
           "Captain checks roster: `/roster` and `/purse`",
           "Schedule: `/schedule list` · fixtures also on the website.",
           `Roster must reach **${MIN_ROSTER}–${MAX_ROSTER}** players after the auction.`,

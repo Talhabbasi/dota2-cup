@@ -18,6 +18,18 @@ const nextConfig: NextConfig = {
   // Discord OAuth: keep NEXTAUTH_URL on the same host you open in the browser
   // (http://localhost:3000). Mixing localhost and 127.0.0.1 drops the state cookie.
   allowedDevOrigins: ["127.0.0.1", "localhost"],
+  // Admin actions touch discord.js for #matches posts. Keep the gateway stack
+  // out of the Turbopack graph (optional native deps like zlib-sync).
+  serverExternalPackages: [
+    "discord.js",
+    "@discordjs/ws",
+    "@discordjs/rest",
+    "@discordjs/builders",
+    "@discordjs/collection",
+    "@discordjs/formatters",
+    "@discordjs/util",
+    "zlib-sync",
+  ],
   experimental: {
     staleTimes: {
       dynamic: 30,
@@ -39,6 +51,16 @@ const nextConfig: NextConfig = {
     // Serve originals from /public and the Steam CDN instead.
     unoptimized: true,
     remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "cdn.discordapp.com",
+        pathname: "/**",
+      },
+      {
+        protocol: "https",
+        hostname: "media.discordapp.net",
+        pathname: "/**",
+      },
       {
         protocol: "https",
         hostname: "cdn.cloudflare.steamstatic.com",

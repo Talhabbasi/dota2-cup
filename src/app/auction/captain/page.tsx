@@ -6,6 +6,7 @@ import {
   getWebAuctionViewOrEmpty,
 } from "@/lib/web-auction";
 import { livePageMeta } from "@/lib/seo";
+import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
@@ -22,14 +23,26 @@ export default async function CaptainAuctionPage() {
     getWebAuctionViewOrEmpty(),
     captainTeamIdForDiscord(session?.user?.discordId),
   ]);
+
   return (
-    <div className="page">
+    <div className="page auction-wide">
       <PageHeader
         eyebrow="Captains"
         title="Bid desk"
-        subtitle="Sign in with the Discord account appointed as captain to bid and see your team. Bidding checks purse and roster size."
+        subtitle={
+          <>
+            Sign in with the Discord account appointed as captain to bid and see
+            your team. Bidding checks purse and roster size.{" "}
+            <Link href="/auction" className="text-link">
+              Live board
+            </Link>
+          </>
+        }
       />
-      <CaptainAuctionClient initialView={view} discordTeamId={discordTeamId} />
+      <CaptainAuctionClient
+        initialView={view}
+        discordTeamId={discordTeamId}
+      />
     </div>
   );
 }

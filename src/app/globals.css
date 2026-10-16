@@ -256,6 +256,20 @@ main {
   padding: 2rem 0 4.5rem;
 }
 
+/* Live auction / captain desk — use the full viewport width */
+.page.auction-wide {
+  width: min(1680px, calc(100% - 1.5rem));
+  max-width: none;
+  padding-left: max(0.75rem, env(safe-area-inset-left));
+  padding-right: max(0.75rem, env(safe-area-inset-right));
+}
+
+@media (min-width: 1400px) {
+  .page.auction-wide {
+    width: min(1760px, calc(100% - 2rem));
+  }
+}
+
 .page-intro,
 .page-head {
   margin-bottom: 1.6rem;
@@ -6187,4 +6201,53 @@ html.dark[data-game="pubg"] {
   --muted-foreground: #b7ae96;
   --sidebar: #14160f;
   --sidebar-primary: #f2a900;
+}
+
+/* ── Live auction stage (AuctionBazi-inspired, MM theme) ── */
+@keyframes auction-sold-stamp-in {
+  0% {
+    opacity: 0;
+    transform: rotate(-12deg) scale(1.55);
+  }
+  55% {
+    opacity: 1;
+    transform: rotate(-12deg) scale(0.94);
+  }
+  100% {
+    opacity: 1;
+    transform: rotate(-12deg) scale(1);
+  }
+}
+
+@keyframes auction-player-enter {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes auction-timer-urgent-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.35);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(239, 68, 68, 0);
+  }
+}
+
+.auction-sold-stamp {
+  animation: auction-sold-stamp-in 0.55s cubic-bezier(0.2, 0.9, 0.2, 1) both;
+}
+
+.auction-player-enter {
+  animation: auction-player-enter 0.45s ease-out both;
+}
+
+.auction-timer-urgent {
+  animation: auction-timer-urgent-pulse 0.9s ease-in-out infinite;
 }

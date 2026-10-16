@@ -1,7 +1,8 @@
 import { BID_CLOCK_SECONDS, BID_INCREMENT,
-  basePriceFor, labelForMedal, parseMedalForGame } from "./constants";
+  labelForMedal, parseMedalForGame } from "./constants";
 import { prisma } from "./prisma";
 import { isDummyDiscordId } from "./dummy";
+import { resolveDiscordAvatarUrl } from "./discord-avatar";
 import { AuctionError, withAuctionLock, requireAuctionSeason, type AuctionDb } from "./auction-lock";
 import { rosterRules } from "./games";
 import { liveRoster } from "./live-roster";
@@ -19,9 +20,17 @@ type WebPlayer = {
   medal: string;
   rolesJson: string;
   basePrice: number;
+  imageUrl?: string | null;
 };
 
-export type WebTeamPlayer = { id: string; name: string; price: number | null; captain: boolean };
+export type WebTeamPlayer = {
+  id: string;
+  name: string;
+  price: number | null;
+  captain: boolean;
+  rolesJson: string;
+  imageUrl?: string | null;
+};
 
 type WebTeam = {
   id: string;
@@ -31,7 +40,14 @@ type WebTeam = {
   players?: WebTeamPlayer[];
 };
 
-export type WebUpcomingPlayer = { id: string; name: string; medal: string; basePrice: number };
+export type WebUpcomingPlayer = {
+  id: string;
+  name: string;
+  medal: string;
+  basePrice: number;
+  rolesJson: string;
+  imageUrl?: string | null;
+};
 
 export type WebSale = {
   playerName: string;
@@ -135,7 +151,16 @@ function displayName(session: WebAuctionSession, player: WebPlayer) {
 function upcoming(session: WebAuctionSession): WebUpcomingPlayer[] {
   return session.queue.flatMap((id) => {
     const player = session.players[id];
-    return player ? [{ id, name: displayName(session, player), medal: player.medal, basePrice: player.basePrice }] : [];
+    return player
+      ? [{
+          id,
+          name: displayName(session, player),
+          medal: player.medal,
+          basePrice: player.basePrice,
+          rolesJson: player.rolesJson,
+          imageUrl: player.imageUrl ?? null,
+        }]
+      : [];
   });
 }
 
@@ -147,7 +172,11 @@ function viewFrom(session: WebAuctionSession | null): WebAuctionView {
     serverTime: now,
     status: session?.status ?? "idle",
     medal: session?.medal ?? null,
-    medalLabel: session?.medal ? labelForMedal(session.medal) : null,
+    medalLabel: session?.medal
+      ? labelForMedal(session.medal)
+      : session && session.status !== "idle"
+        ? "All ranks · random"
+        : null,
     secondsLeft: session?.status === "paused"
       ? Math.ceil((session.pausedRemainingMs ?? 0) / 1000)
       : Math.max(0, Math.ceil(((session?.endsAtMs ?? now) - now) / 1000)),
@@ -229,7 +258,23 @@ async function loadTeams(db: AuctionDb, seasonId: string, game?: string | null) 
     where: { seasonId },
     select: {
       id: true, name: true, purse: true, captainId: true,
-      seasonPlayers: { select: { playerId: true, isCaptain: true, teamJoinedAt: true, player: { select: { steamName: true, pubgName: true } } } },
+      seasonPlayers: {
+        select: {
+          playerId: true,
+          isCaptain: true,
+          teamJoinedAt: true,
+          rolesJson: true,
+          player: {
+            select: {
+              steamName: true,
+              pubgName: true,
+              rolesJson: true,
+              discordId: true,
+              discordAvatarUrl: true,
+            },
+          },
+        },
+      },
       lotsWon: { where: { seasonId, status: "sold" }, select: { playerId: true, soldPrice: true } },
     },
   });
@@ -246,6 +291,8 @@ async function loadTeams(db: AuctionDb, seasonId: string, game?: string | null) 
         name: game === "PUBG" ? m.player.pubgName || m.player.steamName : m.player.steamName,
         price: prices.get(m.playerId) ?? null,
         captain: m.isCaptain,
+        rolesJson: game === "PUBG" ? "[]" : (m.rolesJson ?? m.player.rolesJson ?? "[]"),
+        imageUrl: resolveDiscordAvatarUrl(m.player.discordId, m.player.discordAvatarUrl),
       }));
     return [t.id, { id:t.id, name:t.name, purse:t.purse, rosterCount:t.seasonPlayers.length, players }];
   }));
@@ -264,7 +311,8 @@ async function openLot(db: AuctionDb, session: WebAuctionSession, playerId: stri
   const lot = await db.auctionLot.create({ data: { seasonId:session.seasonId, playerId, role:player.medal, status:"open" } });
   session.lotId = lot.id;
   session.currentPlayerId = playerId;
-  session.currentBid = player.basePrice;
+  // Every rank opens at 0 so any captain can enter — first raise uses BID_INCREMENT.
+  session.currentBid = 0;
   session.currentBidderTeamId = null;
   session.endsAtMs = null;
   session.pausedRemainingMs = null;
@@ -309,9 +357,28 @@ export async function captainTeamIdForDiscord(discordId: string | null | undefin
   return row?.teamId ?? null;
 }
 
+/** Fisher–Yates shuffle for the all-ranks random pool. */
+function shuffleIds(ids: string[]) {
+  const out = [...ids];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const tmp = out[i]!;
+    out[i] = out[j]!;
+    out[j] = tmp;
+  }
+  return out;
+}
+
+/**
+ * Start a web auction pool.
+ * Pass a medal (e.g. `divine`) for a single-rank pool, or `all` / `random`
+ * for every unsigned player in a shuffled order.
+ */
 export async function startWebAuction(rankInput: string) {
   const { season, settings } = await liveConfig();
-  const medal = parseMedalForGame(rankInput, season.game);
+  const mode = rankInput.trim().toLowerCase();
+  const allRanks = mode === "all" || mode === "random";
+  const medal = allRanks ? null : parseMedalForGame(rankInput, season.game);
   const roster = rosterRules(season);
   if (roster.max <= 1) throw new AuctionError("Solo cups do not auction teammates. Each player is their own entry.");
   if (settings?.auctionEnabled === false || season.tournamentFormat !== "AUCTION_BASED") throw new AuctionError("Auction is turned off for this season.");
@@ -322,19 +389,39 @@ export async function startWebAuction(rankInput: string) {
   ]);
   const teamList = Object.values(teams);
   const pool = members.filter(m => !isDummyDiscordId(m.player.discordId));
-  const priceOf = (m: (typeof members)[number]) => m.player.basePrice ?? basePriceFor(m.medal ?? m.player.medal);
-  const eligible = pool.filter(m => (m.medal ?? m.player.medal).toLowerCase() === medal);
-  if (!eligible.length) throw new AuctionError(`No unsigned ${labelForMedal(medal)} players registered in this season.`);
+  // Opening bids are always 0; keep a zero floor so purse reserve does not block participation by rank.
+  const priceOf = () => 0;
+  const eligible = allRanks
+    ? [...pool]
+    : pool.filter(m => (m.medal ?? m.player.medal).toLowerCase() === medal);
+  if (!eligible.length) {
+    throw new AuctionError(
+      allRanks
+        ? "No unsigned players registered in this season."
+        : `No unsigned ${labelForMedal(medal!)} players registered in this season.`,
+    );
+  }
   if (teamList.length !== season.teamCount) throw new AuctionError(`Create all ${season.teamCount} teams before starting.`);
   if (!captainsOk || teamList.some(t=>t.rosterCount<1 || t.rosterCount>roster.max || t.purse<0)) throw new AuctionError("Check each team's captain, roster, and purse before starting.");
+  const queue = allRanks
+    ? shuffleIds(eligible.map(m => m.playerId))
+    : eligible.map(m => m.playerId);
   return withAuctionLock(async db => {
     const existing = await readSession(db);
     if (existing && existing.status !== "idle") throw new AuctionError("Finish the current pool first.");
     const session: WebAuctionSession = {
       version:2, revision:existing?.revision ?? 0, lotId:null, pausedRemainingMs:null,
-      seasonId:season.id, game:season.game, status:"running", medal, queue:eligible.map(m=>m.playerId), currentPlayerId:null,
+      seasonId:season.id, game:season.game, status:"running", medal, queue, currentPlayerId:null,
       currentBid:0, currentBidderTeamId:null, endsAtMs:null, awaitingDecision:false, event:"lot",
-      players:Object.fromEntries(eligible.map(m=>[m.playerId,{id:m.playerId, steamName:m.player.steamName, pubgName:m.player.pubgName, medal:m.medal ?? m.player.medal, rolesJson:season.game === "PUBG" ? "[]" : (m.rolesJson ?? m.player.rolesJson), basePrice:priceOf(m)}])),
+      players:Object.fromEntries(eligible.map(m=>[m.playerId,{
+        id:m.playerId,
+        steamName:m.player.steamName,
+        pubgName:m.player.pubgName,
+        medal:m.medal ?? m.player.medal,
+        rolesJson:season.game === "PUBG" ? "[]" : (m.rolesJson ?? m.player.rolesJson),
+        basePrice:priceOf(m),
+        imageUrl:resolveDiscordAvatarUrl(m.player.discordId, m.player.discordAvatarUrl),
+      }])),
       floors:Object.fromEntries(pool.map(m=>[m.playerId,priceOf(m)])),
       teams, lastSale:null, channelId:null, messageId:null,
     };
@@ -438,8 +525,10 @@ function bidAmount(session:WebAuctionSession,teamId:string,input:BidInput) {
   requireLot(session,input.lotId);
   if(session.status !== "running") throw new AuctionError("Auction is paused.");
   if(session.awaitingDecision || expired(session)) throw new AuctionError("Bidding closed. Waiting for Sold or Pass.");
-  const amount=input.amount ?? (session.currentBidderTeamId ? session.currentBid+input.bump! : session.currentBid);
-  const minimum=session.currentBidderTeamId ? session.currentBid+BID_INCREMENT : session.currentBid;
+  // Opening lot is 0 with no high bidder — first legal raise is BID_INCREMENT.
+  const openingFloor = session.currentBid > 0 ? session.currentBid : BID_INCREMENT;
+  const amount=input.amount ?? (session.currentBidderTeamId ? session.currentBid+input.bump! : openingFloor);
+  const minimum=session.currentBidderTeamId ? session.currentBid+BID_INCREMENT : openingFloor;
   if(!validInteger(amount) || amount<minimum) throw new AuctionError(`Bid changed. Minimum bid is ${minimum}.`);
   if(session.currentBidderTeamId===teamId) throw new AuctionError("You are already the high bidder.");
   return amount;
@@ -459,7 +548,7 @@ async function floorsFor(db:AuctionDb,session:WebAuctionSession):Promise<number[
   const unsigned=await unsignedPool(db,session.seasonId);
   return unsigned
     .filter(m=>m.playerId !== session.currentPlayerId && !isDummyDiscordId(m.player.discordId))
-    .map(m=>m.player.basePrice ?? basePriceFor(m.medal ?? m.player.medal));
+    .map(() => 0);
 }
 
 function assertBudget(session:WebAuctionSession,team:WebTeam,amount:number,roster:{min:number;max:number},otherFloors:number[]) {
@@ -501,7 +590,7 @@ async function settle(kind:"sold"|"unsold",lotId?:string|null,revision?:number) 
       await db.player.update({where:{id:playerId},data:{...assignment,auctionStatus:AUCTION_PLAYER_STATUS.SOLD}});
       team.purse-=session.currentBid;
       team.rosterCount++;
-      team.players=[...(team.players ?? []),{id:playerId,name:displayName(session,player),price:session.currentBid,captain:false}];
+      team.players=[...(team.players ?? []),{id:playerId,name:displayName(session,player),price:session.currentBid,captain:false,rolesJson:player.rolesJson,imageUrl:player.imageUrl ?? null}];
       if(session.floors) delete session.floors[playerId];
     } else {
       await db.player.update({where:{id:playerId},data:{auctionStatus:AUCTION_PLAYER_STATUS.UNSOLD}});
@@ -529,6 +618,44 @@ async function settle(kind:"sold"|"unsold",lotId?:string|null,revision?:number) 
 export function confirmWebSold(lotId?:string|null,revision?:number) { return settle("sold",lotId,revision); }
 export function passWebUnsold(lotId?:string|null,revision?:number) { return settle("unsold",lotId,revision); }
 export function introduceNextWebPlayer(control?:AuctionControl) { return passWebUnsold(control?.lotId,control?.revision); }
+
+/** Force-stop the live web auction (admin). Open lot → unsold; session → idle. */
+export async function endWebAuction() {
+  return withAuctionLock(async db => {
+    const session = await readSession(db);
+    if (!session || session.status === "idle") {
+      return viewFrom(session);
+    }
+    if (session.currentPlayerId) {
+      await db.player.updateMany({
+        where: {
+          id: session.currentPlayerId,
+          auctionStatus: AUCTION_PLAYER_STATUS.ON_AUCTION,
+        },
+        data: { auctionStatus: AUCTION_PLAYER_STATUS.UNSOLD },
+      });
+    }
+    if (session.lotId) {
+      await db.auctionLot.updateMany({
+        where: { id: session.lotId, status: "open" },
+        data: { status: "unsold", teamId: null, soldPrice: null },
+      });
+    }
+    session.status = "idle";
+    session.lotId = null;
+    session.currentPlayerId = null;
+    session.currentBid = 0;
+    session.currentBidderTeamId = null;
+    session.endsAtMs = null;
+    session.pausedRemainingMs = null;
+    session.awaitingDecision = false;
+    session.queue = [];
+    session.medal = null;
+    session.event = "idle";
+    await writeSession(db, session);
+    return viewFrom(session);
+  });
+}
 
 /** Reads derive deadline state; spectators never mutate the auction. */
 export async function tickWebAuction() {

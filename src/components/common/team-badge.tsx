@@ -10,6 +10,10 @@ export type TeamBadgeProps = {
   side?: TeamBadgeSide;
   /** Show the team name next to the shield. Default true. */
   showName?: boolean;
+  /**
+   * Allow the name to wrap (auction cards). Default truncates for dense lists.
+   */
+  wrapName?: boolean;
   size?: "sm" | "md" | "lg";
   className?: string;
 };
@@ -36,6 +40,7 @@ export function TeamBadge({
   logoUrl,
   side,
   showName = true,
+  wrapName = false,
   size = "md",
   className,
 }: TeamBadgeProps) {
@@ -50,12 +55,16 @@ export function TeamBadge({
   return (
     <span
       data-slot="team-badge"
-      className={cn("inline-flex min-w-0 items-center gap-2.5", className)}
+      className={cn(
+        "inline-flex min-w-0 items-center gap-2.5",
+        wrapName && "items-start",
+        className,
+      )}
     >
       <Avatar
         className={cn(
           dims.avatar,
-          "bg-[#0a0d14] ring-1 after:border-white/10",
+          "shrink-0 bg-[#0a0d14] ring-1 after:border-white/10",
           ring,
         )}
       >
@@ -70,7 +79,15 @@ export function TeamBadge({
         </AvatarFallback>
       </Avatar>
       {showName ? (
-        <span className={cn("truncate font-medium text-foreground", dims.text)}>
+        <span
+          className={cn(
+            "font-medium text-foreground",
+            dims.text,
+            wrapName
+              ? "min-w-0 flex-1 break-words whitespace-normal leading-snug"
+              : "truncate",
+          )}
+        >
           {name}
         </span>
       ) : (

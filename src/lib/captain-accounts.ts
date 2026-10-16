@@ -7,9 +7,16 @@ export async function adminCreateManualTeam(input: {
   logoUrl?: string | null;
   captainDiscordId?: string | null;
   captainPlayerId?: string | null;
+  /** Ignored — purse is set from the captain’s medal. */
   purse?: number;
 }) {
-  return createSeasonTeam({ ...input, purse: input.purse ?? 0 });
+  return createSeasonTeam({
+    name: input.name,
+    tag: input.tag,
+    logoUrl: input.logoUrl,
+    captainDiscordId: input.captainDiscordId,
+    captainPlayerId: input.captainPlayerId,
+  });
 }
 
 export async function adminUpdateTeamMeta(input: {

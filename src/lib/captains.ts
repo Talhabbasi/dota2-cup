@@ -2,7 +2,7 @@ import { withAuctionLock, requireAuctionInactive, type AuctionDb } from "./aucti
 import { createSeasonTeam, syncPlayerRosterToSeason } from "./season-roster";
 import {
   MAX_ROSTER,
-  STARTING_PURSE,
+  purseForCaptainMedal,
 } from "./constants";
 import { formatRoles } from "./data";
 import { PLAY_WINDOW_SHORT, playWindowOrBoth } from "./play-window";
@@ -29,7 +29,7 @@ export async function adminAddCaptain(input: {
   discordId: string;
   teamName: string;
 }) {
-  return createSeasonTeam({ name: input.teamName, captainDiscordId: input.discordId, purse: STARTING_PURSE });
+  return createSeasonTeam({ name: input.teamName, captainDiscordId: input.discordId });
 }
 
 export async function adminRemoveCaptain(discordId: string) {
@@ -109,8 +109,8 @@ export async function listTeamNames() {
 }
 
 /**
- * Swap who captains a franchise. Roster, purse, group, and scheduled
- * matches stay on the same team id — only captainId / isCaptain change.
+ * Swap who captains a franchise. Roster, group, and scheduled matches stay
+ * on the same team id. Purse is reset from the new captain’s medal (pre-auction).
  * The previous captain stays on the roster as a regular player.
  */
 export async function adminChangeCaptain(input: {
@@ -149,6 +149,8 @@ export async function adminChangeCaptain(input: {
     team.players.find((player) => player.isCaptain) ??
     null;
 
+  const purse = purseForCaptainMedal(next.medal);
+
   await (async (tx: AuctionDb) => {
     await tx.player.updateMany({
       where: { teamId: team.id, isCaptain: true },
@@ -164,7 +166,7 @@ export async function adminChangeCaptain(input: {
     });
     await tx.team.update({
       where: { id: team.id },
-      data: { captainId: next.id },
+      data: { captainId: next.id, purse },
     });
   })(db);
   await db.captainAccount.updateMany({ where: { teamId: team.id, revokedAt: null }, data: { revokedAt: new Date(), token: null } });

@@ -7,7 +7,6 @@ import {
   ROLE_LABELS,
   STARTING_PURSE,
   STARTING_ROLES,
-  basePriceFor,
   labelForMedal,
   parseMedalForGame,
   type Medal,
@@ -145,7 +144,8 @@ function openLotInMemory(auction: LiveAuction, playerId: string) {
   if (!player) throw new Error("Player not found in this auction.");
   auction.status = "running";
   auction.currentPlayerId = playerId;
-  auction.currentBid = basePriceFor(player.medal);
+  // Every rank opens at 0 so any captain can enter the bidding.
+  auction.currentBid = 0;
   auction.currentBidderTeamId = null;
   auction.endsAtMs = nowEndsAt();
   auction.awaitingDecision = false;
@@ -923,22 +923,25 @@ export async function placeBid(input: {
     );
   }
 
+  const openingFloor =
+    auction.currentBid > 0 ? auction.currentBid : BID_INCREMENT;
+
   let next: number;
   if (input.bump) {
     next = auction.currentBidderTeamId
       ? auction.currentBid + input.bump
-      : auction.currentBid;
+      : openingFloor;
   } else if (input.amount != null) {
     next = input.amount;
   } else {
     next = auction.currentBidderTeamId
       ? auction.currentBid + BID_INCREMENT
-      : auction.currentBid;
+      : openingFloor;
   }
 
   if (!auction.currentBidderTeamId) {
-    if (next < auction.currentBid) {
-      throw new Error(`Opening bid must be at least ${auction.currentBid}.`);
+    if (next < openingFloor) {
+      throw new Error(`Opening bid must be at least ${openingFloor}.`);
     }
   } else if (next < auction.currentBid + BID_INCREMENT) {
     throw new Error(`Bid must be at least ${auction.currentBid + BID_INCREMENT}.`);
@@ -1032,7 +1035,7 @@ export function patchLivePlayer(
     live.currentPlayerId === playerId &&
     !live.currentBidderTeamId
   ) {
-    live.currentBid = basePriceFor(player.medal);
+    live.currentBid = 0;
     bidReset = true;
   }
   return { patched: true, bidReset };

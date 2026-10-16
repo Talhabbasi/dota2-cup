@@ -8,12 +8,12 @@ import {
   adminCardClass,
   adminControlClass,
 } from "@/components/admin/ui";
-import { actionAddCaptain, actionCreateManualTeam } from "@/app/admin/actions";
+import { actionCreateManualTeam } from "@/app/admin/actions";
 import {
   AdminActionForm,
   AdminSubmitButton,
 } from "@/components/admin/form-controls";
-import { formatPoints } from "@/lib/constants";
+import { STARTING_PURSE, formatPoints } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
 export type AdminTeamRow = {
@@ -64,42 +64,19 @@ export function AdminTeamsBoard({
               New franchise
             </span>
             <span className="text-sm text-muted-foreground">
-              Name a team and assign an unsigned captain.
+              Assign a captain — purse is set from their rank (Immortal 20k → Herald 27k).
             </span>
           </span>
           <span className="text-primary">{showCreate ? "−" : "+"}</span>
         </button>
         {showCreate ? (
-          <div className="mt-4 grid gap-6 border-t border-white/10 pt-4">
-            <AdminActionForm
-              action={actionAddCaptain}
-              successMessage="Team created"
-              className="grid gap-3 sm:grid-cols-3"
-            >
-              <AdminField label="Team name (auction)">
-                <input name="teamName" required className={adminControlClass} />
-              </AdminField>
-              <AdminField label="Captain">
-                <select name="discordId" required className={adminControlClass}>
-                  <option value="">Unsigned player…</option>
-                  {unsigned.map((p) => (
-                    <option key={p.discordId} value={p.discordId}>
-                      {p.steamName}
-                    </option>
-                  ))}
-                </select>
-              </AdminField>
-              <AdminSubmitButton className="self-end">
-                Create (auction purse)
-              </AdminSubmitButton>
-            </AdminActionForm>
-
+          <div className="mt-4 border-t border-white/10 pt-4">
             <AdminActionForm
               action={actionCreateManualTeam}
-              successMessage="Team-based franchise created"
-              className="grid gap-3 border-t border-white/10 pt-4 sm:grid-cols-2 lg:grid-cols-3"
+              successMessage="Franchise created — purse set from captain rank"
+              className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"
             >
-              <AdminField label="Team name (team-based)">
+              <AdminField label="Team name">
                 <input name="name" required className={adminControlClass} />
               </AdminField>
               <AdminField label="Tag">
@@ -110,7 +87,7 @@ export function AdminTeamsBoard({
               </AdminField>
               <AdminField label="Captain">
                 <select name="captainDiscordId" required className={adminControlClass}>
-                  <option value="">Player…</option>
+                  <option value="">Unsigned player…</option>
                   {unsigned.map((p) => (
                     <option key={p.discordId} value={p.discordId}>
                       {p.steamName}
@@ -118,16 +95,12 @@ export function AdminTeamsBoard({
                   ))}
                 </select>
               </AdminField>
-              <AdminField label="Starting purse">
-                <input
-                  name="purse"
-                  type="number"
-                  defaultValue={0}
-                  className={adminControlClass}
-                />
-              </AdminField>
+              <p className="self-end text-xs text-muted-foreground sm:col-span-2 lg:col-span-1">
+                Purse auto-fills from the captain’s registered medal. Baseline is{" "}
+                {formatPoints(STARTING_PURSE)}; lower ranks get more.
+              </p>
               <AdminSubmitButton className="self-end">
-                Create (manual roster)
+                Create franchise
               </AdminSubmitButton>
             </AdminActionForm>
           </div>

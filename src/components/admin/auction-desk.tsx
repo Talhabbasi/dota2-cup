@@ -1,24 +1,23 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import {
-  actionWebAuctionNext,
-  actionWebAuctionPass,
-  actionWebAuctionPause,
-  actionWebAuctionResetTimer,
-  actionWebAuctionResume,
-  actionWebAuctionSold,
-  actionWebAuctionStart,
-  actionWebAuctionTimer,
-} from "@/app/admin/actions";
+  AuctionControls,
+  AuctionPlayerQueue,
+  AuctionStatistics,
+  BidHistory,
+  CurrentPlayerCard,
+  TeamBudgetList,
+} from "@/components/auction";
+import { useBidHistory } from "@/components/auction/use-bid-history";
+import { useAuctionView } from "@/components/use-auction-view";
 import {
-  AdminActionForm,
-  AdminSubmitButton,
-} from "@/components/admin/form-controls";
-import { AdminField, adminControlClass } from "@/components/admin/ui";
-import { LiveAuctionBoard } from "@/components/live-auction-board";
+  deriveAuctionUiStatus,
+  playerDisplayName,
+  playerRolesLabel,
+} from "@/lib/auction-ui";
+import { STARTING_PURSE } from "@/lib/constants";
 import type { WebAuctionView } from "@/lib/web-auction";
-import { labelForMedal } from "@/lib/constants";
 
 export function AdminAuctionDesk({
   view,
@@ -29,23 +28,42 @@ export function AdminAuctionDesk({
   format: string;
   medals: readonly string[];
 }) {
-  const [current, setCurrent] = useState(view);
-  const [connected, setConnected] = useState(false);
-  const acceptRef = useRef<((next: WebAuctionView) => void) | null>(null);
-  const onView = useCallback(
-    (next: WebAuctionView, ready: boolean, accept: (next: WebAuctionView) => void) => {
-      setCurrent(next);
-      setConnected(ready);
-      acceptRef.current = accept;
-    },
-    [],
-  );
+  const { view: live, accept, connected, secondsLeft, closed } =
+    useAuctionView(view);
+  const acceptRef = useRef(accept);
+  useEffect(() => {
+    acceptRef.current = accept;
+  }, [accept]);
+
   const onResult = useCallback((result: unknown) => {
     if (result && typeof result === "object" && "revision" in result) {
       acceptRef.current?.(result as WebAuctionView);
     }
   }, []);
-  const fields = <><input type="hidden" name="lotId" value={current.lotId ?? ""} /><input type="hidden" name="revision" value={current.revision} /></>;
+
+  const bids = useBidHistory(live);
+  const status = deriveAuctionUiStatus(live, closed);
+
+  const stats = useMemo(() => {
+    const soldFromTeams = live.teamBalances.reduce(
+      (sum, t) =>
+        sum + t.players.filter((p) => !p.captain && p.price != null).length,
+      0,
+    );
+    const spent = live.teamBalances.reduce(
+      (sum, t) => sum + Math.max(0, STARTING_PURSE - t.purse),
+      0,
+    );
+    const remaining = live.remainingInPool + (live.currentPlayer ? 1 : 0);
+    return {
+      totalPlayers: soldFromTeams + remaining,
+      soldPlayers: soldFromTeams,
+      unsoldPlayers: live.event === "unsold" ? 1 : 0,
+      remainingPlayers: remaining,
+      totalSpending: spent,
+    };
+  }, [live]);
+
   if (format === "TEAM_BASED") {
     return (
       <p className="m-0 text-sm text-muted-foreground">
@@ -55,87 +73,71 @@ export function AdminAuctionDesk({
     );
   }
 
-  return (
-    <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-      <LiveAuctionBoard initial={view} onView={onView} />
-      <fieldset disabled={!connected} className="grid gap-3 self-start rounded-xl border border-white/10 p-4">
-        <h3 className="mt-0 mb-1 font-display text-lg tracking-wide uppercase">
-          Master control
-        </h3>
-        <AdminActionForm
-          action={actionWebAuctionStart}
-          successMessage="Auction started"
-          refresh="background"
-          onResult={onResult}
-          className="grid gap-2"
-        >
-          <AdminField label="Medal pool">
-            <select name="medal" defaultValue={medals[0]} className={adminControlClass}>
-              {medals.map((m) => (
-                <option key={m} value={m}>
-                  {labelForMedal(m)}
-                </option>
-              ))}
-            </select>
-          </AdminField>
-          <AdminSubmitButton>Introduce / start pool</AdminSubmitButton>
-        </AdminActionForm>
+  const upcomingQueue = live.upcoming.map((p) => ({
+    id: p.id,
+    name: p.name,
+    medal: p.medal,
+    basePrice: p.basePrice,
+    status: "upcoming" as const,
+  }));
 
-        <div className="grid grid-cols-2 gap-2">
-          <AdminActionForm action={actionWebAuctionTimer} successMessage="Timer started" refresh="none" onResult={onResult}>
-            {fields}
-            <AdminSubmitButton variant="secondary" className="w-full text-xs">
-              Start timer
-            </AdminSubmitButton>
-          </AdminActionForm>
-          <AdminActionForm action={actionWebAuctionResetTimer} successMessage="Timer reset" refresh="none" onResult={onResult}>
-            {fields}
-            <AdminSubmitButton variant="secondary" className="w-full text-xs">
-              Reset timer
-            </AdminSubmitButton>
-          </AdminActionForm>
-          <AdminActionForm action={actionWebAuctionPause} successMessage="Paused" refresh="none" onResult={onResult}>
-            {fields}
-            <AdminSubmitButton variant="secondary" className="w-full text-xs">
-              Pause
-            </AdminSubmitButton>
-          </AdminActionForm>
-          <AdminActionForm action={actionWebAuctionResume} successMessage="Resumed" refresh="none" onResult={onResult}>
-            {fields}
-            <AdminSubmitButton variant="secondary" className="w-full text-xs">
-              Resume
-            </AdminSubmitButton>
-          </AdminActionForm>
-          <AdminActionForm
-            action={actionWebAuctionSold}
-            successMessage="Sold"
-            confirmMessage="Confirm sale to high bidder?"
-            refresh="background"
-            onResult={onResult}
-          >
-            {fields}
-            <AdminSubmitButton className="w-full text-xs">Sold</AdminSubmitButton>
-          </AdminActionForm>
-          <AdminActionForm
-            action={actionWebAuctionPass}
-            successMessage="Unsold"
-            confirmMessage="Pass this player as unsold?"
-            refresh="background"
-            onResult={onResult}
-          >
-            {fields}
-            <AdminSubmitButton variant="secondary" className="w-full text-xs">
-              Pass / unsold
-            </AdminSubmitButton>
-          </AdminActionForm>
-        </div>
-        <AdminActionForm action={actionWebAuctionNext} successMessage="Next player" refresh="background" onResult={onResult}>
-          {fields}
-            <AdminSubmitButton variant="secondary" className="w-full text-xs">
-            Pass and introduce next
-          </AdminSubmitButton>
-        </AdminActionForm>
-      </fieldset>
+  const currentQueue = live.currentPlayer
+    ? {
+        id: live.currentPlayer.id,
+        name: playerDisplayName(live.currentPlayer, live.game),
+        medal: live.currentPlayer.medal,
+        basePrice: live.currentPlayer.basePrice,
+        rolesLabel: playerRolesLabel(live.currentPlayer.rolesJson),
+        status,
+      }
+    : null;
+
+  return (
+    <div className="grid gap-6">
+      <p
+        role="status"
+        className={
+          connected
+            ? "m-0 text-sm text-emerald-300"
+            : "m-0 text-sm text-amber-300"
+        }
+      >
+        {connected
+          ? "Live updates connected — controls enabled."
+          : "Reconnecting — auction controls stay locked until updates resume."}
+      </p>
+
+      <div className="grid gap-4 xl:grid-cols-[1.2fr_0.9fr]">
+        <CurrentPlayerCard
+          player={live.currentPlayer}
+          game={live.game}
+          medalLabel={live.medalLabel}
+          status={status}
+          currentBid={live.currentBid}
+          highBidderName={live.highBidder?.name}
+          highBidderId={live.highBidder?.id}
+          secondsLeft={secondsLeft}
+          timerRunning={live.status === "running" && !!live.endsAt}
+          timerPaused={live.status === "paused"}
+        />
+        <AuctionControls
+          view={live}
+          medals={medals}
+          connected={connected}
+          onResult={onResult}
+        />
+      </div>
+
+      <AuctionStatistics {...stats} />
+
+      <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+        <AuctionPlayerQueue current={currentQueue} upcoming={upcomingQueue} />
+        <BidHistory bids={bids} />
+        <TeamBudgetList
+          teams={live.teamBalances}
+          leadingTeamId={live.highBidder?.id}
+        />
+      </div>
     </div>
   );
 }

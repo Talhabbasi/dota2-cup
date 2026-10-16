@@ -9,28 +9,12 @@ import {
   createScheduledMatch,
   upcomingWeekendDates,
 } from "./schedule-crud";
-import { getLivePlayoffFormat } from "./playoff-format";
+import { getLivePlayoffFormat, roundRobinPairs } from "./playoff-format";
 
-const GROUP_A_HOURS = ["22", "23", "0", "2", "3", "4"] as const;
-const GROUP_B_HOURS = ["22", "23", "0", "1", "2", "3"] as const;
-
-const GROUP_A_MATCHES = [
-  ["Team Chessman", "Team Lala"],
-  ["Team XTC", "Team Yona"],
-  ["Team Chessman", "Team XTC"],
-  ["Team Chessman", "Team Yona"],
-  ["Team Lala", "Team XTC"],
-  ["Team Lala", "Team Yona"],
-] as const;
-
-const GROUP_B_MATCHES = [
-  ["Team Ash", "Team Grand_Master"],
-  ["Team Saif", "Team Stoic"],
-  ["Team Ash", "Team Saif"],
-  ["Team Grand_Master", "Team Stoic"],
-  ["Team Ash", "Team Stoic"],
-  ["Team Grand_Master", "Team Saif"],
-] as const;
+/** Kickoff hours PKT starting 22:00, one match per hour (wraps past midnight). */
+function hoursForMatchCount(count: number): string[] {
+  return Array.from({ length: count }, (_, i) => String((22 + i) % 24));
+}
 
 function matchNightYmd(date: Date | string) {
   const offsetH = scheduleUtcOffsetHours();
@@ -82,30 +66,52 @@ export async function bookGroupStageRoundRobin(input?: {
   const dates = defaultGroupDates();
   const saturday = input?.saturday?.trim() || dates.saturday;
   const sunday = input?.sunday?.trim() || dates.sunday;
+  const [format, season] = await Promise.all([
+    getLivePlayoffFormat(),
+    currentSeasonFilter(),
+  ]);
+
+  const teams = await prisma.team.findMany({
+    where: { ...publicTeamWhere, ...season },
+    select: { name: true, groupKey: true },
+    orderBy: { name: "asc" },
+  });
+  const groupA = teams.filter((t) => t.groupKey === "A").map((t) => t.name);
+  const groupB = teams.filter((t) => t.groupKey === "B").map((t) => t.name);
+  if (groupA.length !== format.groupSize || groupB.length !== format.groupSize) {
+    throw new Error(
+      `Assign all ${format.teamCount} teams first (Group A ${groupA.length}/${format.groupSize}, Group B ${groupB.length}/${format.groupSize}). Use Admin → Playoffs or \`/playoff groups\`.`,
+    );
+  }
+
+  const pairsA = roundRobinPairs(groupA);
+  const pairsB = roundRobinPairs(groupB);
+  const hoursA = hoursForMatchCount(pairsA.length);
+  const hoursB = hoursForMatchCount(pairsB.length);
 
   const pending = await prisma.scheduledFixture.count({
-    where: { status: "scheduled", kind: "group" },
+    where: { status: "scheduled", kind: "group", ...season },
   });
   if (pending > 0 && !input?.force) {
     throw new Error(
-      `${pending} group matches are already booked. Pass force:true to replace them, or \`/schedule edit\` to change one.`,
+      `${pending} group matches are already booked. Pass force to replace them, or edit a single fixture.`,
     );
   }
   if (input?.force) {
     await prisma.scheduledFixture.deleteMany({
-      where: { status: "scheduled", kind: "group" },
+      where: { status: "scheduled", kind: "group", ...season },
     });
   }
 
   const booked: BookedGroupMatch[] = [];
 
-  for (let i = 0; i < GROUP_A_MATCHES.length; i++) {
-    const [teamA, teamB] = GROUP_A_MATCHES[i];
+  for (let i = 0; i < pairsA.length; i++) {
+    const [teamA, teamB] = pairsA[i];
     const fixture = await createScheduledMatch({
       teamA,
       teamB,
       date: saturday,
-      time: GROUP_A_HOURS[i],
+      time: hoursA[i],
       kind: "group",
     });
     booked.push({
@@ -117,13 +123,13 @@ export async function bookGroupStageRoundRobin(input?: {
     });
   }
 
-  for (let i = 0; i < GROUP_B_MATCHES.length; i++) {
-    const [teamA, teamB] = GROUP_B_MATCHES[i];
+  for (let i = 0; i < pairsB.length; i++) {
+    const [teamA, teamB] = pairsB[i];
     const fixture = await createScheduledMatch({
       teamA,
       teamB,
       date: sunday,
-      time: GROUP_B_HOURS[i],
+      time: hoursB[i],
       kind: "group",
     });
     booked.push({
@@ -233,8 +239,6 @@ export function formatGroupStageDiscord(result: {
     formatDayBlock(`**DAY 2 — SUNDAY ${result.sunday} — GROUP B**`, groupB),
     "",
     `Also on the website: **${site}/schedule**`,
-    "",
-    "**10pm–12am window:** Prodandy (Chessman), INVOKER (Ash), and Dendi The Main Culprit (Saif) each get **2 of 3** group games in that window. Their third game is 2:00 AM or 3:00 AM so nobody plays back-to-back and both groups still finish the same night.",
   ].join("\n");
 }
 

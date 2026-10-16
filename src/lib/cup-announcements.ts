@@ -26,8 +26,12 @@ import {
   paymentBankName,
   paymentIban,
   paymentsChannelName,
+  adminChannelName,
+  matchesChannelName,
 } from "./registration-status";
 import { BOT_NAME, COMMUNITY_NAME, CUP_COMMUNITY_LINE, CUP_NAME } from "@/lib/brand";
+
+export { adminChannelName, matchesChannelName };
 
 const GOLD = 0xb07d1f;
 
@@ -52,14 +56,6 @@ export const BOT_INVITE_PERMISSIONS = String(
 
 export function botInviteUrl(clientId: string) {
   return `https://discord.com/oauth2/authorize?client_id=${clientId}&permissions=${BOT_INVITE_PERMISSIONS}&scope=bot%20applications.commands`;
-}
-
-export function adminChannelName() {
-  return process.env.ADMIN_CHANNEL_NAME?.trim() || "admin";
-}
-
-export function matchesChannelName() {
-  return process.env.MATCHES_CHANNEL_NAME?.trim() || "matches";
 }
 
 function findTextChannel(guild: Guild, name: string): TextChannel | null {

@@ -49,7 +49,7 @@ import {
   labelForMedal,
   ROLE_LABELS,
   STARTING_ROLES,
-  STARTING_PURSE,
+  purseForCaptainMedal,
   basePriceFor,
   type Medal,
 } from "../src/lib/constants";
@@ -1908,6 +1908,10 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
   const discordId = interaction.user.id;
   const discordName =
     interaction.user.globalName || interaction.user.username;
+  const discordAvatarUrl = interaction.user.displayAvatarURL({
+    size: 256,
+    extension: "png",
+  });
 
   try {
     if (name === "register") {
@@ -1946,6 +1950,7 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
           pubgName,
           medal,
           playWindow,
+          discordAvatarUrl,
         });
         void notifySiteRefresh();
         await trySetPlayWindowRoles(
@@ -1979,6 +1984,7 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
         medal,
         roles: role,
         playWindow,
+        discordAvatarUrl,
       });
       void notifySiteRefresh();
       await trySetPlayWindowRoles(
@@ -2520,7 +2526,7 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
         void notifySiteRefresh();
         await interaction.editReply(
           [
-            `${user} is now captain of **${team.name}** (${STARTING_PURSE} points).`,
+            `${user} is now captain of **${team.name}** (${team.purse.toLocaleString()} points from their rank).`,
             roleNote ??
               "They got the team role, registered-player access, **#captains**, and their private team chat.",
           ].join("\n"),
@@ -2567,7 +2573,7 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
           : "";
         await interaction.editReply(
           [
-            `${user} is now captain of **${changed.team.name}**. Roster, purse, group, and scheduled matches are unchanged.${prev}${joined}`,
+            `${user} is now captain of **${changed.team.name}** (${changed.team.purse.toLocaleString()} points from their rank). Roster, group, and schedule unchanged.${prev}${joined}`,
             ...notes,
           ].join("\n"),
         );
@@ -2689,6 +2695,7 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
           role: interaction.options.getString("role") ?? "flex",
           playWindow: interaction.options.getString("when", true),
           bypassCapacity: true,
+          discordAvatarUrl: user.displayAvatarURL({ size: 256, extension: "png" }),
         });
         void notifySiteRefresh();
         await trySetPlayWindowRoles(
@@ -2926,9 +2933,10 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
         });
         return;
       }
-      const { team } = await getTeamByCaptainDiscord(discordId);
+      const { team, player } = await getTeamByCaptainDiscord(discordId);
+      const starting = purseForCaptainMedal(player.medal);
       await interaction.reply({
-        content: `**${team.name}** has **${team.purse}** / ${STARTING_PURSE} points.`,
+        content: `**${team.name}** has **${team.purse.toLocaleString()}** / ${starting.toLocaleString()} points (from captain rank).`,
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -3417,8 +3425,8 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
         const view = await seedPlayoffGroups();
         await interaction.editReply({
           content: [
-            "Randomly split **8** teams into Group A and Group B.",
-            "Next: `/playoff generate` to book the 4 group matches.",
+            `Randomly split **${view.teamCount}** teams into Group A and Group B (${view.groupSize} each).`,
+            "Next: `/schedule groups` or **Admin → Playoffs** to book the round-robin.",
             "",
             formatPlayoffStatus(view),
           ].join("\n"),
@@ -3939,6 +3947,10 @@ client.on("interactionCreate", async (interaction: Interaction) => {
         medal: pending.medal,
         roles,
         playWindow: pending.playWindow,
+        discordAvatarUrl: interaction.user.displayAvatarURL({
+          size: 256,
+          extension: "png",
+        }),
       });
       void notifySiteRefresh();
       await trySetPlayWindowRoles(

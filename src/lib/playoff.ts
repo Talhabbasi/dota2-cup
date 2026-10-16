@@ -192,7 +192,7 @@ export async function seedPlayoffGroups() {
     ),
   );
 
-  return getPlayoffView();
+  return getPlayoffViewFresh();
 }
 
 export async function assignPlayoffGroup(input: {
@@ -713,77 +713,84 @@ function matchViewFromSlot(
   };
 }
 
-export const getPlayoffView = unstable_cache(
-  async (): Promise<PlayoffView> => {
-    const [teams, seeded, season] = await Promise.all([
-      liveTeams(),
-      loadPlayoffSeeds(),
-      currentSeasonFilter(),
-    ]);
-    const { groupA: standingsA, groupB: standingsB, complete, seeds, format } =
-      seeded;
-    const now = new Date();
-    const fixtures = await prisma.scheduledFixture.findMany({
-      where: {
-        AND: [
-          publicFixtureWhere,
-          season,
-          {
-            OR: [
-              { kind: { in: [...PLAYOFF_KINDS] } },
-              { slotKey: { in: [...PLAYOFF_SLOTS, ...BRACKET_SLOTS] } },
-            ],
-          },
-        ],
-      },
-      include: {
-        radiantTeam: { select: { id: true, name: true } },
-        direTeam: { select: { id: true, name: true } },
-      },
-    });
-    const bySlot = new Map(
-      fixtures.filter((row) => row.slotKey).map((row) => [row.slotKey as string, row]),
-    );
-    const results: Partial<
-      Record<BracketSlot, { winner: { id: string; name: string }; loser: { id: string; name: string } }>
-    > = {};
-    for (const slot of BRACKET_SLOTS) {
-      const fixture = bySlot.get(slot);
-      if (!fixture || fixture.status !== "completed") continue;
-      const outcome = seriesWinnerLoser(fixture);
-      if (outcome) results[slot] = outcome;
-    }
-    const pairings = unlockedPairings(seeds, results);
-    const visibleSlots = format.hasLowerPlayIn
-      ? BRACKET_SLOTS
-      : BRACKET_SLOTS.filter((slot) => slot !== "lb0a" && slot !== "lb0b");
-    const matches = visibleSlots.map((slotKey) =>
-      matchViewFromSlot(slotKey, bySlot.get(slotKey), pairings[slotKey], now),
-    );
+async function buildPlayoffView(): Promise<PlayoffView> {
+  const [teams, seeded, season] = await Promise.all([
+    liveTeams(),
+    loadPlayoffSeeds(),
+    currentSeasonFilter(),
+  ]);
+  const { groupA: standingsA, groupB: standingsB, complete, seeds, format } =
+    seeded;
+  const now = new Date();
+  const fixtures = await prisma.scheduledFixture.findMany({
+    where: {
+      AND: [
+        publicFixtureWhere,
+        season,
+        {
+          OR: [
+            { kind: { in: [...PLAYOFF_KINDS] } },
+            { slotKey: { in: [...PLAYOFF_SLOTS, ...BRACKET_SLOTS] } },
+          ],
+        },
+      ],
+    },
+    include: {
+      radiantTeam: { select: { id: true, name: true } },
+      direTeam: { select: { id: true, name: true } },
+    },
+  });
+  const bySlot = new Map(
+    fixtures.filter((row) => row.slotKey).map((row) => [row.slotKey as string, row]),
+  );
+  const results: Partial<
+    Record<BracketSlot, { winner: { id: string; name: string }; loser: { id: string; name: string } }>
+  > = {};
+  for (const slot of BRACKET_SLOTS) {
+    const fixture = bySlot.get(slot);
+    if (!fixture || fixture.status !== "completed") continue;
+    const outcome = seriesWinnerLoser(fixture);
+    if (outcome) results[slot] = outcome;
+  }
+  const pairings = unlockedPairings(seeds, results);
+  const visibleSlots = format.hasLowerPlayIn
+    ? BRACKET_SLOTS
+    : BRACKET_SLOTS.filter((slot) => slot !== "lb0a" && slot !== "lb0b");
+  const matches = visibleSlots.map((slotKey) =>
+    matchViewFromSlot(slotKey, bySlot.get(slotKey), pairings[slotKey], now),
+  );
 
-    return {
-      groupA: teams
-        .filter((team) => team.groupKey === "A")
-        .map((team) => ({ id: team.id, name: team.name })),
-      groupB: teams
-        .filter((team) => team.groupKey === "B")
-        .map((team) => ({ id: team.id, name: team.name })),
-      unassigned: teams
-        .filter((team) => team.groupKey !== "A" && team.groupKey !== "B")
-        .map((team) => ({ id: team.id, name: team.name })),
-      matches,
-      groupRoundRobin: fixtures.filter((row) => row.kind === "group").length,
-      groupStageComplete: complete,
-      standingsA,
-      standingsB,
-      eliminated: complete && seeds ? eliminatedFromSeeds(seeds) : [],
-      teamCount: format.teamCount,
-      groupSize: format.groupSize,
-      gamesPerTeam: format.gamesPerTeam,
-      hasLowerPlayIn: format.hasLowerPlayIn,
-      eliminatePlace: format.eliminatePlace,
-    };
-  },
+  return {
+    groupA: teams
+      .filter((team) => team.groupKey === "A")
+      .map((team) => ({ id: team.id, name: team.name })),
+    groupB: teams
+      .filter((team) => team.groupKey === "B")
+      .map((team) => ({ id: team.id, name: team.name })),
+    unassigned: teams
+      .filter((team) => team.groupKey !== "A" && team.groupKey !== "B")
+      .map((team) => ({ id: team.id, name: team.name })),
+    matches,
+    groupRoundRobin: fixtures.filter((row) => row.kind === "group").length,
+    groupStageComplete: complete,
+    standingsA,
+    standingsB,
+    eliminated: complete && seeds ? eliminatedFromSeeds(seeds) : [],
+    teamCount: format.teamCount,
+    groupSize: format.groupSize,
+    gamesPerTeam: format.gamesPerTeam,
+    hasLowerPlayIn: format.hasLowerPlayIn,
+    eliminatePlace: format.eliminatePlace,
+  };
+}
+
+/** Uncached — use from admin actions / Discord REST sync. */
+export async function getPlayoffViewFresh() {
+  return buildPlayoffView();
+}
+
+export const getPlayoffView = unstable_cache(
+  buildPlayoffView,
   ["playoff-view"],
   { tags: [PUBLIC_PAGE_TAG], revalidate: PUBLIC_REVALIDATE_SECONDS },
 );

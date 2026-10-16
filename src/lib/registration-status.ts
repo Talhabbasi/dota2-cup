@@ -122,6 +122,14 @@ export function paymentsChannelName() {
   return process.env.PAYMENTS_CHANNEL_NAME?.trim() || "payments";
 }
 
+export function adminChannelName() {
+  return process.env.ADMIN_CHANNEL_NAME?.trim() || "admin";
+}
+
+export function matchesChannelName() {
+  return process.env.MATCHES_CHANNEL_NAME?.trim() || "matches";
+}
+
 export function isPaymentsChannelName(name: string | null | undefined) {
   if (!name) return false;
   const n = name.toLowerCase();

@@ -1,26 +1,21 @@
 import { PageHeader } from "@/components/common";
-import {
-  AuctionBoard,
-  type AuctionCaptainCard,
-} from "@/components/auction-board";
-import { getAuctionResultsBySeason } from "@/lib/auction-results";
-import { STARTING_PURSE, formatPoints } from "@/lib/constants";
+import { LiveAuctionBoard } from "@/components/live-auction-board";
 import { getCupFeatureSettings } from "@/lib/cup-features";
-import { getTeams } from "@/lib/data";
-import { isRosterSub } from "@/lib/roles";
+import { getWebAuctionViewOrEmpty } from "@/lib/web-auction";
 import { livePageMeta } from "@/lib/seo";
+import Link from "next/link";
 
-export const revalidate = 30;
+export const dynamic = "force-dynamic";
 
 export function generateMetadata() {
   return livePageMeta(
     "Player Auction",
     (brand) =>
-      `See which ${brand.name} players sold to which team and for how many points in the season auction.`,
+      `Watch the live ${brand.name} player auction — current lot, bids, and purses.`,
   );
 }
 
-export default async function AuctionPage() {
+export default async function AuctionLivePage() {
   const { auctionEnabled } = await getCupFeatureSettings();
   if (!auctionEnabled) {
     return (
@@ -40,81 +35,31 @@ export default async function AuctionPage() {
     );
   }
 
-  const [seasons, teams] = await Promise.all([
-    getAuctionResultsBySeason(),
-    getTeams(),
-  ]);
-
-  const soldCount = seasons.reduce((sum, season) => sum + season.soldCount, 0);
-  const spent = seasons.reduce((sum, season) => sum + season.spent, 0);
-
-  const liveSeason = seasons.find((s) => s.live);
-  const highBid =
-    liveSeason && liveSeason.sales.length > 0
-      ? [...liveSeason.sales].sort((a, b) => b.soldPrice - a.soldPrice)[0] ??
-        null
-      : null;
-
-  const spentByTeam = new Map<string, number>();
-  if (liveSeason) {
-    for (const sale of liveSeason.sales) {
-      spentByTeam.set(
-        sale.teamId,
-        (spentByTeam.get(sale.teamId) ?? 0) + sale.soldPrice,
-      );
-    }
-  }
-
-  const captains: AuctionCaptainCard[] = teams.map((team) => {
-    const captain = team.players.find((p) => p.isCaptain);
-    const starterCount = team.players.filter(
-      (p) => !isRosterSub(p.rosterRole),
-    ).length;
-    const fromSales = spentByTeam.get(team.id);
-    const spentFromPurse = Math.max(0, STARTING_PURSE - team.purse);
-    return {
-      id: team.id,
-      name: team.name,
-      captainName: captain?.steamName ?? null,
-      purse: team.purse,
-      starterCount,
-      spent: fromSales ?? spentFromPurse,
-    };
-  });
+  const view = await getWebAuctionViewOrEmpty();
 
   return (
-    <div className="page auction-page">
+    <div className="page auction-wide auction-live-page">
       <PageHeader
         eyebrow="Transfer market"
-        title="Auction"
+        title="Live auction"
         subtitle={
           <>
-            Who sold, which franchise won the lot, and the winning bid this
-            season.{" "}
-            <a href="/auction/live" className="text-link">
-              Live board
-            </a>{" "}
-            ·{" "}
-            <a href="/auction/captain" className="text-link">
+            IPL-style player auction for the cup.{" "}
+            <Link href="/auction/captain" className="text-link">
               Captain desk
-            </a>
+            </Link>{" "}
+            ·{" "}
+            <Link href="/auction/results" className="text-link">
+              Results
+            </Link>{" "}
+            ·{" "}
+            <Link href="/auction/queue" className="text-link">
+              Queue
+            </Link>
           </>
         }
-        pills={
-          soldCount > 0
-            ? [
-                { value: soldCount, label: "sold" },
-                { value: formatPoints(spent), label: "points spent" },
-              ]
-            : undefined
-        }
       />
-
-      <AuctionBoard
-        seasons={seasons}
-        captains={captains}
-        highBid={highBid}
-      />
+      <LiveAuctionBoard initial={view} />
     </div>
   );
 }

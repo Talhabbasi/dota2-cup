@@ -9,7 +9,7 @@ export async function HomeAuction() {
     <section className="mt-8">
       <div className="section-head row">
         <h2>Live auction</h2>
-        <Link href="/auction/live" className="text-link">
+        <Link href="/auction" className="text-link">
           Full board
         </Link>
       </div>

@@ -6,6 +6,7 @@ import {
   adminLoginForHost,
   verifyAdminPassword,
 } from "./admin-password";
+import { syncPlayerDiscordAvatar } from "./discord-avatar";
 import { prisma } from "./prisma";
 import { isAdminDiscordId } from "./constants";
 import { isSiteAdmin } from "./site-admin";
@@ -50,6 +51,13 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
   callbacks: {
+    async signIn({ user, account }) {
+      // Keep auction / roster avatars in sync whenever someone Discord-logs in.
+      if (account?.provider === "discord" && user.id) {
+        await syncPlayerDiscordAvatar(user.id, user.image).catch(() => undefined);
+      }
+      return true;
+    },
     async jwt({ token, user, account }) {
       if (account?.provider === "admin-credentials" && user) {
         token.authProvider = "credentials";
@@ -62,7 +70,7 @@ export const authOptions: NextAuthOptions = {
 
       if (token.authProvider === "credentials") {
         token.isAdmin = true;
-      } else if (token.authProvider !== "captain" && (token.discordId || token.sub)) {
+      } else if (token.discordId || token.sub) {
         const discordId =
           (token.discordId as string | undefined) ?? token.sub ?? "";
         // Allowlist is sync + reliable; guild Admin role check is the fallback.
@@ -70,7 +78,6 @@ export const authOptions: NextAuthOptions = {
           Boolean(discordId) &&
           (isAdminDiscordId(discordId) || (await isSiteAdmin(discordId)));
       } else {
-        // Tokens from the removed captain passcode login carry no Discord identity.
         token.isAdmin = false;
         token.discordId = undefined;
       }
@@ -81,13 +88,11 @@ export const authOptions: NextAuthOptions = {
         if (token.authProvider === "credentials") {
           session.user.discordId = undefined;
           session.user.isAdmin = true;
-        } else if (token.authProvider !== "captain") {
-          session.user.discordId =
-            (token.discordId as string | undefined) ?? token.sub ?? undefined;
-          session.user.isAdmin = Boolean(token.isAdmin);
         } else {
-          session.user.discordId = undefined;
-          session.user.isAdmin = false;
+          session.user.discordId =
+            (token.discordId as string | undefined) ??
+            (token.authProvider === "discord" ? token.sub ?? undefined : undefined);
+          session.user.isAdmin = Boolean(token.isAdmin);
         }
       }
       return session;

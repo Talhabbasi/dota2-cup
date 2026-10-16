@@ -36,6 +36,8 @@ export async function registerPlayer(input: {
   role?: string | string[] | null;
   roles?: string | string[] | null;
   playWindow?: string | null;
+  /** Discord CDN avatar URL from the registering user. */
+  discordAvatarUrl?: string | null;
   /** Admin late adds may enroll past the public team×roster cap. */
   bypassCapacity?: boolean;
 }) {
@@ -43,6 +45,7 @@ export async function registerPlayer(input: {
   const pubg = isPubgSeason(liveSeason);
   const playWindow = parsePlayWindow(input.playWindow || "both");
   const capacity = { bypassCapacity: input.bypassCapacity };
+  const discordAvatarUrl = input.discordAvatarUrl?.trim() || undefined;
 
   if (pubg) {
     const pubgName = cleanPubgName(input.pubgName);
@@ -110,6 +113,7 @@ export async function registerPlayer(input: {
           medal: locked ? current.medal : medal,
           basePrice: locked ? current.basePrice : null,
           playWindow,
+          ...(discordAvatarUrl ? { discordAvatarUrl } : {}),
         },
       });
       await syncSeasonPlayer(player.id);
@@ -132,6 +136,7 @@ export async function registerPlayer(input: {
         medal,
         rolesJson: "[]",
         playWindow,
+        ...(discordAvatarUrl ? { discordAvatarUrl } : {}),
       },
     });
     await syncSeasonPlayer(player.id);
@@ -208,6 +213,7 @@ export async function registerPlayer(input: {
         medal: locked ? current.medal : medal,
         rolesJson: locked ? current.rolesJson : stringifyRoles(roles),
         playWindow,
+        ...(discordAvatarUrl ? { discordAvatarUrl } : {}),
       },
     });
     await syncSeasonPlayer(player.id);
@@ -229,6 +235,7 @@ export async function registerPlayer(input: {
       medal,
       rolesJson: stringifyRoles(roles),
       playWindow,
+      ...(discordAvatarUrl ? { discordAvatarUrl } : {}),
     },
   });
   await syncSeasonPlayer(player.id);

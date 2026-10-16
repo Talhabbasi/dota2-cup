@@ -34,7 +34,7 @@ function AuctionEntry() {
     <section className="mt-8">
       <div className="section-head row">
         <h2>Auction</h2>
-        <Link href="/auction/live" className="text-link">
+        <Link href="/auction" className="text-link">
           Open the board
         </Link>
       </div>
@@ -42,7 +42,7 @@ function AuctionEntry() {
         Bidding stays on the auction board. Captains sign in there. Everyone else can watch.
       </p>
       <div className="flex flex-wrap gap-3">
-        <Link href="/auction/live" className="btn">
+        <Link href="/auction" className="btn">
           Watch live
         </Link>
         <Link href="/auction/captain" className="btn btn-gold">

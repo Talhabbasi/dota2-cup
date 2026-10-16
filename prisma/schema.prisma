@@ -100,6 +100,8 @@ model Player {
   id          String   @id @default(cuid())
   discordId   String   @unique
   discordName String
+  /// Discord CDN avatar from OAuth /register. Used on auction cards.
+  discordAvatarUrl String?
   /// Null when a PUBG player has not linked Steam.
   steam32     Int?     @unique
   steamName   String

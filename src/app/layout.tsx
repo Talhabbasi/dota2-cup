@@ -101,6 +101,13 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
             game={game}
             showRegister={!player}
             showSeasons={completedCount > 0}
+            auctionHref={
+              player?.isCaptain
+                ? "/auction/captain"
+                : player
+                  ? "/auction"
+                  : null
+            }
             banner={<ClosedBanner />}
           >
             {children}

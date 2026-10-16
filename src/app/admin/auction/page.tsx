@@ -66,9 +66,17 @@ export default async function AdminAuctionPage({
           { value: pool.length, label: "unsigned" },
         ]}
         actions={
-          <Link href="/auction/live" className="text-sm text-primary underline-offset-2 hover:underline">
-            Public live board
-          </Link>
+          <div className="flex flex-wrap gap-3 text-sm">
+            <Link href="/auction" className="text-primary underline-offset-2 hover:underline">
+              Public live board
+            </Link>
+            <Link href="/auction/queue" className="text-primary underline-offset-2 hover:underline">
+              Queue
+            </Link>
+            <Link href="/auction/results" className="text-primary underline-offset-2 hover:underline">
+              Results
+            </Link>
+          </div>
         }
       />
 

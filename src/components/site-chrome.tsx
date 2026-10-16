@@ -13,6 +13,7 @@ export function SiteChrome({
   showRegister,
   showSeasons = false,
   game = "DOTA",
+  auctionHref = "/auction",
   banner,
   children,
 }: {
@@ -20,6 +21,8 @@ export function SiteChrome({
   showRegister: boolean;
   showSeasons?: boolean;
   game?: string;
+  /** Captains → /auction/captain; registered players → /auction; null hides Auction. */
+  auctionHref?: string | null;
   banner?: ReactNode;
   children: ReactNode;
 }) {
@@ -35,6 +38,7 @@ export function SiteChrome({
           showRegister={showRegister}
           showSeasons={showSeasons}
           game={game}
+          auctionHref={auctionHref}
         />
       ) : null}
       <main className="flex-1">{children}</main>

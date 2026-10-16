@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { authSession } from "@/lib/auth";
 import { placeWebBid } from "@/lib/web-auction";
 import { AuctionError } from "@/lib/auction-lock";
+import { isAllowedRequestOrigin } from "@/lib/request-origin";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -9,7 +10,9 @@ export const maxDuration = 30;
 export async function POST(request: Request) {
   try {
     const origin = request.headers.get("origin");
-    if (origin && origin !== new URL(request.url).origin) throw new AuctionError("Invalid request origin.", 403);
+    if (!isAllowedRequestOrigin(request, origin)) {
+      throw new AuctionError("Invalid request origin.", 403);
+    }
     const session = await authSession();
     const discordId = session?.user?.discordId;
     if (!discordId) throw new AuctionError("Sign in with Discord as a captain to bid.", 401);
