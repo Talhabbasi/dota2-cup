@@ -8,6 +8,7 @@ import {
 import { adminRoleName } from "./constants";
 import { ensureMatchesChannel, ensurePaymentsChannel } from "./cup-announcements";
 import {
+  ensureRegisteredRole,
   lockRegisteredPlayerChannels,
   trySetMemberRegisteredRole,
 } from "./payments-channel-access";
@@ -98,7 +99,10 @@ async function allowStaff(
   });
 }
 
-export async function syncCupChannelAccess(guild: Guild) {
+export async function syncCupChannelAccess(
+  guild: Guild,
+  options?: { syncRegisteredMembers?: boolean },
+) {
   await guild.channels.fetch();
   await guild.roles.fetch();
 
@@ -155,7 +159,9 @@ export async function syncCupChannelAccess(guild: Guild) {
   }
 
   try {
-    await lockRegisteredPlayerChannels(guild);
+    await lockRegisteredPlayerChannels(guild, {
+      syncMembers: options?.syncRegisteredMembers ?? true,
+    });
   } catch (error) {
     console.warn(
       "Could not lock cup channels to registered players:",
@@ -317,73 +323,93 @@ export async function trySetMemberCaptainRole(
   }
 }
 
-export async function syncCaptainRolesFromDb(guild: Guild) {
-  let role: Role;
-  try {
-    role = await ensureCaptainRole(guild);
-  } catch (error) {
-    console.warn(
-      "Could not sync Captain Discord roles:",
-      error instanceof Error ? error.message : error,
-    );
-    return;
-  }
-
-  const live = await getLiveSeason();
-  const liveCaptains = live
-    ? await prisma.seasonPlayer.findMany({
-        where: {
-          seasonId: live.id,
-          isCaptain: true,
-          player: publicPlayerWhere,
-        },
-        select: { player: { select: { discordId: true } } },
-      })
-    : [];
-  const captainIds = new Set(
-    liveCaptains.map((row) => row.player.discordId.split(":")[0]),
+async function mapPool<T>(
+  items: T[],
+  concurrency: number,
+  fn: (item: T) => Promise<void>,
+) {
+  if (items.length === 0) return;
+  let next = 0;
+  const workers = Array.from(
+    { length: Math.min(concurrency, items.length) },
+    async () => {
+      while (next < items.length) {
+        const index = next;
+        next += 1;
+        await fn(items[index]!);
+      }
+    },
   );
+  await Promise.all(workers);
+}
 
-  const allPlayers = await prisma.player.findMany({
-    where: publicPlayerWhere,
-    select: { discordId: true },
-  });
-  for (const player of allPlayers) {
-    const discordId = player.discordId.split(":")[0];
-    const member = await guild.members.fetch(discordId).catch(() => null);
-    if (!member) continue;
-    const shouldHave = captainIds.has(discordId);
-    if (shouldHave && !member.roles.cache.has(role.id)) {
-      await member.roles.add(role, "Sync live-season captain role");
-    }
-    if (!shouldHave && member.roles.cache.has(role.id)) {
-      await member.roles
-        .remove(role, "Not a captain in the live season")
-        .catch(() => undefined);
+async function fetchMembersByIds(guild: Guild, ids: string[]) {
+  const unique = [
+    ...new Set(ids.filter((id) => /^\d{17,20}$/.test(id))),
+  ];
+  const byId = new Map<string, GuildMember>();
+  for (let i = 0; i < unique.length; i += 100) {
+    const chunk = unique.slice(i, i + 100);
+    try {
+      const fetched = await guild.members.fetch({ user: chunk });
+      for (const [id, member] of fetched) byId.set(id, member);
+    } catch {
+      await mapPool(chunk, 10, async (id) => {
+        const member = await guild.members.fetch(id).catch(() => null);
+        if (member) byId.set(id, member);
+      });
     }
   }
+  return byId;
+}
+
+export async function syncCaptainRolesFromDb(guild: Guild) {
+  // Captain tags are synced inside syncLiveSeasonDiscordRoles (single pass).
+  await syncLiveSeasonDiscordRoles(guild);
 }
 
 /**
- * Discord cup tags follow the live season only:
+ * Discord cup tags follow the live season only (fast batched pass):
  * - Season 2 members keep Registered (+ weekend window)
- * - Everyone else loses Registered / weekend / team / Captain leftovers from Season 1
+ * - Everyone else loses Registered / weekend / team / Captain leftovers
  */
 export async function syncLiveSeasonDiscordRoles(guild: Guild) {
+  await guild.roles.fetch();
+
+  const registeredRole = await ensureRegisteredRole(guild).catch(() => null);
+  let captainRole: Role | null = findRole(guild, captainRoleName());
+  try {
+    captainRole = await ensureCaptainRole(guild);
+  } catch {
+    captainRole = findRole(guild, captainRoleName());
+  }
+
+  const eveningRole = await ensurePlayWindowRole(guild, "evening").catch(
+    () => findRole(guild, PLAY_WINDOW_ROLE_NAMES.evening),
+  );
+  const lateRole = await ensurePlayWindowRole(guild, "late").catch(() =>
+    findRole(guild, PLAY_WINDOW_ROLE_NAMES.late),
+  );
+
   const live = await getLiveSeason();
   const liveRows = live
     ? await prisma.seasonPlayer.findMany({
         where: { seasonId: live.id, player: publicPlayerWhere },
         select: {
+          isCaptain: true,
           playWindow: true,
           player: { select: { discordId: true, playWindow: true } },
         },
       })
     : [];
+
   const liveByDiscord = new Map(
     liveRows.map((row) => [
       row.player.discordId.split(":")[0],
-      row.playWindow ?? row.player.playWindow,
+      {
+        window: playWindowOrBoth(row.playWindow ?? row.player.playWindow),
+        isCaptain: row.isCaptain,
+      },
     ]),
   );
 
@@ -391,25 +417,82 @@ export async function syncLiveSeasonDiscordRoles(guild: Guild) {
     where: publicPlayerWhere,
     select: { discordId: true },
   });
+  const allIds = allPlayers.map((p) => p.discordId.split(":")[0]);
+  const members = await fetchMembersByIds(guild, allIds);
 
   let revoked = 0;
   let granted = 0;
-  for (const player of allPlayers) {
-    const id = player.discordId.split(":")[0];
-    if (liveByDiscord.has(id)) continue;
-    await tryRevokeCupPlayerAccess(guild, player.discordId);
-    revoked += 1;
-  }
-  for (const [id, window] of liveByDiscord) {
-    await tryGrantCupPlayerAccess(guild, id, window);
-    granted += 1;
-  }
 
-  await lockRegisteredPlayerChannels(guild);
-  await syncCaptainRolesFromDb(guild);
+  await mapPool(allIds, 12, async (id) => {
+    const member = members.get(id);
+    if (!member) return;
+    const live = liveByDiscord.get(id);
+
+    if (!live) {
+      const junk = member.roles.cache.filter(
+        (role) =>
+          role.id === registeredRole?.id ||
+          role.id === captainRole?.id ||
+          role.id === eveningRole?.id ||
+          role.id === lateRole?.id ||
+          role.name.toLowerCase().startsWith("team · "),
+      );
+      if (junk.size === 0) return;
+      await member.roles
+        .remove(junk, "Not registered for the live season")
+        .catch(() => undefined);
+      revoked += 1;
+      return;
+    }
+
+    const wantEvening = live.window === "evening" || live.window === "both";
+    const wantLate = live.window === "late" || live.window === "both";
+    const toAdd: Role[] = [];
+    const toRemove: Role[] = [];
+
+    if (registeredRole && !member.roles.cache.has(registeredRole.id)) {
+      toAdd.push(registeredRole);
+    }
+    if (live.isCaptain && captainRole && !member.roles.cache.has(captainRole.id)) {
+      toAdd.push(captainRole);
+    }
+    if (!live.isCaptain && captainRole && member.roles.cache.has(captainRole.id)) {
+      toRemove.push(captainRole);
+    }
+    if (eveningRole) {
+      if (wantEvening && !member.roles.cache.has(eveningRole.id)) {
+        toAdd.push(eveningRole);
+      }
+      if (!wantEvening && member.roles.cache.has(eveningRole.id)) {
+        toRemove.push(eveningRole);
+      }
+    }
+    if (lateRole) {
+      if (wantLate && !member.roles.cache.has(lateRole.id)) {
+        toAdd.push(lateRole);
+      }
+      if (!wantLate && member.roles.cache.has(lateRole.id)) {
+        toRemove.push(lateRole);
+      }
+    }
+
+    if (toRemove.length > 0) {
+      await member.roles
+        .remove(toRemove, "Sync live-season cup roles")
+        .catch(() => undefined);
+    }
+    if (toAdd.length > 0) {
+      await member.roles
+        .add(toAdd, "Sync live-season cup roles")
+        .catch(() => undefined);
+    }
+    granted += 1;
+  });
+
+  await lockRegisteredPlayerChannels(guild, { syncMembers: false });
 
   console.log(
-    `Live-season Discord roles: kept/granted ${granted}, revoked cup tags from ${revoked} non-live player(s)`,
+    `Live-season Discord roles: synced ${granted} live, cleared tags on ${revoked} non-live (batched)`,
   );
 }
 

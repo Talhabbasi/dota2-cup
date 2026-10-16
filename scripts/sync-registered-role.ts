@@ -5,7 +5,7 @@ import { syncLiveSeasonDiscordRoles } from "../src/lib/discord-access";
 import { prisma } from "../src/lib/prisma";
 import { getLiveSeason } from "../src/lib/seasons";
 
-/** Align Discord Registered / weekend / team / Captain tags to the live season only. */
+/** Fast: align Discord cup tags to the live season only. */
 async function main() {
   const token = process.env.DISCORD_TOKEN;
   const guildId = process.env.DISCORD_GUILD_ID;
@@ -14,22 +14,18 @@ async function main() {
   const live = await getLiveSeason();
   if (!live) throw new Error("No live season");
 
-  const members = await prisma.seasonPlayer.findMany({
+  const count = await prisma.seasonPlayer.count({
     where: { seasonId: live.id },
-    include: { player: { select: { steamName: true, discordName: true } } },
-    orderBy: { player: { steamName: "asc" } },
   });
-  console.log(`Live Season ${live.number} members (${members.length}):`);
-  for (const m of members) {
-    console.log(`  - ${m.player.steamName} (${m.player.discordName})`);
-  }
+  console.log(`Live Season ${live.number}: ${count} registered player(s)`);
 
   const client = new Client({ intents: [GatewayIntentBits.Guilds] });
   await client.login(token);
   const guild = await client.guilds.fetch(guildId);
+  const started = Date.now();
   await syncLiveSeasonDiscordRoles(guild);
+  console.log(`Done in ${Date.now() - started}ms`);
   await client.destroy();
-  console.log("Done — only live-season players keep Registered / cup tags.");
 }
 
 main()

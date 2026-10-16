@@ -4130,7 +4130,7 @@ client.once(Events.ClientReady, async () => {
       );
     }
     try {
-      await syncCupChannelAccess(guild);
+      await syncCupChannelAccess(guild, { syncRegisteredMembers: false });
       await syncLiveSeasonDiscordRoles(guild);
       console.log(
         `Locked #captains and synced live-season Discord roles in ${guild.name}`,

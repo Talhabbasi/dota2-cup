@@ -200,54 +200,28 @@ async function syncRegisteredRoleMembers(
   role: Role,
   channels: { channel: TextChannel; kind: AccessKind }[],
 ) {
-  const liveIds = new Set(await registeredSnowflakes());
-
-  // Strip Registered from anyone who is not in the live season (S1 leftovers, etc.).
-  const allPlayers = await prisma.player.findMany({
-    where: {
-      AND: [
-        { discordId: { not: { startsWith: DUMMY_PREFIX } } },
-        { discordId: { not: { startsWith: DUMMY_TEAM_PREFIX } } },
-      ],
-    },
-    select: { discordId: true },
-  });
-  for (const player of allPlayers) {
-    const id = snowflake(player.discordId);
-    if (liveIds.has(id)) continue;
-    const member = await guild.members.fetch(id).catch(() => null);
-    if (!member || !member.roles.cache.has(role.id)) continue;
-    try {
-      await member.roles.remove(
-        role,
-        "Not registered for the live season",
-      );
-    } catch (error) {
-      console.warn(
-        `Could not remove ${registeredRoleName()} from ${id}:`,
-        error instanceof Error ? error.message : error,
-      );
-    }
-  }
-
-  for (const id of liveIds) {
-    const member = await guild.members.fetch(id).catch(() => null);
-    if (!member) continue;
-    if (member.roles.cache.has(role.id)) continue;
-    try {
-      await member.roles.add(role, "Cup registered — private cup channels");
-    } catch (error) {
-      console.warn(
-        `Could not give ${registeredRoleName()} to ${id}; granting channel access instead:`,
-        error instanceof Error ? error.message : error,
-      );
-      for (const entry of channels) {
-        await grantViaMemberOverwrite(entry.channel, id, entry.kind).catch(
-          () => undefined,
+  const liveIds = [...(await registeredSnowflakes())];
+  // Prefer syncLiveSeasonDiscordRoles for bulk cleanup — this path only ensures
+  // live members have the role (used by /admin setup).
+  await Promise.all(
+    liveIds.map(async (id) => {
+      const member = await guild.members.fetch(id).catch(() => null);
+      if (!member || member.roles.cache.has(role.id)) return;
+      try {
+        await member.roles.add(role, "Cup registered — private cup channels");
+      } catch (error) {
+        console.warn(
+          `Could not give ${registeredRoleName()} to ${id}; granting channel access instead:`,
+          error instanceof Error ? error.message : error,
         );
+        for (const entry of channels) {
+          await grantViaMemberOverwrite(entry.channel, id, entry.kind).catch(
+            () => undefined,
+          );
+        }
       }
-    }
-  }
+    }),
+  );
 }
 
 async function applyRegisteredAccess(
@@ -287,7 +261,10 @@ export async function lockPaymentsChannel(
 }
 
 /** Hide #payments, #teams, #matches, #results, and #auction from anyone who is not registered. */
-export async function lockRegisteredPlayerChannels(guild: Guild) {
+export async function lockRegisteredPlayerChannels(
+  guild: Guild,
+  options?: { syncMembers?: boolean },
+) {
   await guild.channels.fetch();
   await guild.roles.fetch();
   const channels = findLockedChannels(guild);
@@ -303,18 +280,20 @@ export async function lockRegisteredPlayerChannels(guild: Guild) {
     );
   }
 
-  for (const entry of channels) {
-    try {
-      await applyRegisteredAccess(entry.channel, guild, entry.kind, role);
-    } catch (error) {
-      console.warn(
-        `Could not lock #${entry.channel.name} to registered players:`,
-        error instanceof Error ? error.message : error,
-      );
-    }
-  }
+  await Promise.all(
+    channels.map(async (entry) => {
+      try {
+        await applyRegisteredAccess(entry.channel, guild, entry.kind, role);
+      } catch (error) {
+        console.warn(
+          `Could not lock #${entry.channel.name} to registered players:`,
+          error instanceof Error ? error.message : error,
+        );
+      }
+    }),
+  );
 
-  if (role) {
+  if (role && options?.syncMembers !== false) {
     await syncRegisteredRoleMembers(guild, role, channels);
   }
 }
