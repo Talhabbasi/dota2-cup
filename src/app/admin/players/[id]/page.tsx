@@ -29,6 +29,7 @@ import {
 import {
   actionAddAlias,
   actionAddToTeam,
+  actionDeletePlayer,
   actionRemoveFromTeam,
   actionSetRosterSlot,
   actionUpdatePlayer,
@@ -279,6 +280,46 @@ export default async function AdminPlayerDetailPage({
           </AdminSection>
         </AdminCard>
       </div>
+
+      {!readOnly ? (
+        <AdminCard className="mt-6 border-rose-500/25">
+          <AdminSection title="Danger zone">
+            {membership.isCaptain || player.isCaptain ? (
+              <p className="m-0 text-sm text-muted-foreground">
+                This player is a captain. Change or remove the captain first,
+                then you can delete the registration.
+              </p>
+            ) : (
+              <div className="grid gap-3">
+                <p className="m-0 text-sm text-muted-foreground">
+                  Permanently deletes this registration (same as Discord{" "}
+                  <code className="text-xs">/player delete</code>). Auction must
+                  be idle. They can register again later.
+                </p>
+                <AdminConfirmForm
+                  action={actionDeletePlayer}
+                  title="Delete player"
+                  confirmLabel="Delete permanently"
+                  successMessage="Player deleted"
+                  message={`Delete ${player.steamName} permanently? This removes their registration${
+                    team ? ` and takes them off ${team.name}` : ""
+                  }. This cannot be undone.`}
+                >
+                  <input type="hidden" name="discordId" value={player.discordId} />
+                  <input type="hidden" name="seasonId" value={view.id} />
+                  <AdminSubmitButton
+                    variant="danger"
+                    className="w-full sm:w-auto"
+                    pendingLabel="Deleting…"
+                  >
+                    Delete player
+                  </AdminSubmitButton>
+                </AdminConfirmForm>
+              </div>
+            )}
+          </AdminSection>
+        </AdminCard>
+      ) : null}
     </div>
   );
 }

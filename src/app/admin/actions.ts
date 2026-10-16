@@ -2,6 +2,7 @@
 
 import { revalidatePath, revalidateTag } from "next/cache";
 import { after } from "next/server";
+import { redirect } from "next/navigation";
 import { PUBLIC_PAGE_TAG } from "@/lib/cache-tags";
 import type { Session } from "next-auth";
 import { requireAdmin } from "@/lib/admin-auth";
@@ -14,6 +15,7 @@ import {
 } from "@/lib/captains";
 import {
   adminAddPlayerToTeam,
+  adminDeletePlayer,
   adminEnrollPlayerInLiveSeason,
   adminRemovePlayerFromTeam,
   adminSetRosterSlot,
@@ -270,6 +272,28 @@ export async function actionRemoveFromTeam(formData: FormData) {
     discordId,
   });
   revalidateAdmin();
+}
+
+/** Permanently delete a player registration (same as Discord `/player delete`). */
+export async function actionDeletePlayer(formData: FormData) {
+  const session = await requireAdmin();
+  const discordId = String(formData.get("discordId") ?? "").trim();
+  const seasonId = String(formData.get("seasonId") ?? "").trim();
+  if (!discordId) throw new Error("Missing Discord id.");
+  const removed = await adminDeletePlayer(discordId);
+  await note(
+    session,
+    "player.delete",
+    `Deleted registration for ${removed.name}${
+      removed.teamName ? ` (was on ${removed.teamName})` : ""
+    }`,
+    { discordId, teamName: removed.teamName },
+  );
+  revalidateAdmin();
+  revalidatePath("/players");
+  revalidatePath("/teams");
+  const qs = seasonId ? `?season=${encodeURIComponent(seasonId)}` : "";
+  redirect(`/admin/players${qs}`);
 }
 
 export async function actionUpdatePlayer(formData: FormData) {

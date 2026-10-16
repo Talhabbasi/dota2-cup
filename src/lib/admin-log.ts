@@ -20,6 +20,7 @@ export const ADMIN_ACTION_LABELS: Record<string, string> = {
   "match.attach_screenshot": "Attached screenshot",
   "player.register": "Registered player",
   "player.update": "Updated player",
+  "player.delete": "Deleted player",
   "player.roster_slot": "Changed roster slot",
   "player.alias": "Added alias",
   "team.add_player": "Added to team",
