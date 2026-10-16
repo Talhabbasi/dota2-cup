@@ -2,7 +2,6 @@
 
 import { revalidatePath, revalidateTag } from "next/cache";
 import { after } from "next/server";
-import { redirect } from "next/navigation";
 import { PUBLIC_PAGE_TAG } from "@/lib/cache-tags";
 import type { Session } from "next-auth";
 import { requireAdmin } from "@/lib/admin-auth";
@@ -278,7 +277,6 @@ export async function actionRemoveFromTeam(formData: FormData) {
 export async function actionDeletePlayer(formData: FormData) {
   const session = await requireAdmin();
   const discordId = String(formData.get("discordId") ?? "").trim();
-  const seasonId = String(formData.get("seasonId") ?? "").trim();
   if (!discordId) throw new Error("Missing Discord id.");
   const removed = await adminDeletePlayer(discordId);
   await note(
@@ -291,9 +289,17 @@ export async function actionDeletePlayer(formData: FormData) {
   );
   revalidateAdmin();
   revalidatePath("/players");
+  revalidatePath("/players", "layout");
   revalidatePath("/teams");
-  const qs = seasonId ? `?season=${encodeURIComponent(seasonId)}` : "";
-  redirect(`/admin/players${qs}`);
+  revalidatePath("/admin/players");
+  revalidatePath("/admin/players", "layout");
+  // Bust public ISR + Discord-driven caches on production.
+  after(() =>
+    import("@/lib/notify-site").then(({ notifySiteRefresh }) =>
+      notifySiteRefresh(),
+    ),
+  );
+  return { ok: true as const, name: removed.name };
 }
 
 export async function actionUpdatePlayer(formData: FormData) {

@@ -2,6 +2,7 @@
 
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
+import { isRedirectError } from "next/dist/client/components/redirect-error";
 import {
   createContext,
   useContext,
@@ -144,6 +145,11 @@ export function AdminActionForm({
         else if (refresh === "background") setTimeout(() => router.refresh(), 0);
         toast.success(successMessage);
       } catch (error) {
+        // Server `redirect()` throws NEXT_REDIRECT — must not treat as a failed save.
+        if (isRedirectError(error)) {
+          setOpen(false);
+          throw error;
+        }
         const message =
           error instanceof Error && error.message
             ? error.message
@@ -256,15 +262,19 @@ export function AdminConfirmForm({
   confirmLabel = "Confirm",
   cancelLabel = "Cancel",
   successMessage = "Saved",
+  refresh = "await",
+  onResult,
   children,
   className,
 }: {
-  action: (formData: FormData) => void | Promise<void>;
+  action: (formData: FormData) => unknown | Promise<unknown>;
   message: string;
   title?: string;
   confirmLabel?: string;
   cancelLabel?: string;
   successMessage?: string;
+  refresh?: "await" | "background" | "none";
+  onResult?: (result: unknown) => void;
   children: ReactNode;
   className?: string;
 }) {
@@ -273,6 +283,8 @@ export function AdminConfirmForm({
       action={action}
       className={className}
       successMessage={successMessage}
+      refresh={refresh}
+      onResult={onResult}
       confirmMessage={message}
       confirmTitle={title}
       confirmLabel={confirmLabel}

@@ -29,11 +29,11 @@ import {
 import {
   actionAddAlias,
   actionAddToTeam,
-  actionDeletePlayer,
   actionRemoveFromTeam,
   actionSetRosterSlot,
   actionUpdatePlayer,
 } from "@/app/admin/actions";
+import { DeletePlayerForm } from "@/components/admin/delete-player-form";
 
 export const dynamic = "force-dynamic";
 export const metadata = pageMeta("Admin Player", "Edit player profile.");
@@ -296,25 +296,12 @@ export default async function AdminPlayerDetailPage({
                   <code className="text-xs">/player delete</code>). Auction must
                   be idle. They can register again later.
                 </p>
-                <AdminConfirmForm
-                  action={actionDeletePlayer}
-                  title="Delete player"
-                  confirmLabel="Delete permanently"
-                  successMessage="Player deleted"
-                  message={`Delete ${player.steamName} permanently? This removes their registration${
-                    team ? ` and takes them off ${team.name}` : ""
-                  }. This cannot be undone.`}
-                >
-                  <input type="hidden" name="discordId" value={player.discordId} />
-                  <input type="hidden" name="seasonId" value={view.id} />
-                  <AdminSubmitButton
-                    variant="danger"
-                    className="w-full sm:w-auto"
-                    pendingLabel="Deleting…"
-                  >
-                    Delete player
-                  </AdminSubmitButton>
-                </AdminConfirmForm>
+                <DeletePlayerForm
+                  discordId={player.discordId}
+                  seasonId={view.id}
+                  playerName={player.steamName}
+                  teamName={team?.name}
+                />
               </div>
             )}
           </AdminSection>

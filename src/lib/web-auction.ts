@@ -419,13 +419,14 @@ export async function startWebAuction(rankInput: string) {
         pubgName:m.player.pubgName,
         medal:m.medal ?? m.player.medal,
         rolesJson:season.game === "PUBG" ? "[]" : (m.rolesJson ?? m.player.rolesJson),
-        basePrice:priceOf(m),
+        basePrice:priceOf(),
         imageUrl:resolveDiscordAvatarUrl(m.player.discordId, m.player.discordAvatarUrl),
       }])),
-      floors:Object.fromEntries(pool.map(m=>[m.playerId,priceOf(m)])),
+      floors:Object.fromEntries(pool.map(m=>[m.playerId,priceOf()])),
       teams, lastSale:null, channelId:null, messageId:null,
     };
-    if (Object.values(session.floors!).some(p=>!Number.isSafeInteger(p) || p < 1)) throw new AuctionError("All player base prices must be positive whole numbers.");
+    // Floors may be 0 (open-at-zero auction) so every captain can participate.
+    if (Object.values(session.floors!).some(p=>!Number.isSafeInteger(p) || p < 0)) throw new AuctionError("All player floor prices must be whole numbers.");
     await openLot(db,session,session.queue.shift()!);
     await db.season.update({where:{id:season.id},data:{phase:"AUCTION_ACTIVE"}});
     await writeSession(db,session);
