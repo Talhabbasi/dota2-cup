@@ -38,11 +38,14 @@ const nextConfig: NextConfig = {
     serverActions: {
       // Admin scoreboard uploads (OCR ingest).
       bodySizeLimit: "12mb",
-      // Host only (no protocol). Mismatch aborts every admin form silently.
+      // Host only (no protocol). Extra Vercel aliases so admin Server Actions
+      // work from preview / team URLs, not only the production custom host.
       allowedOrigins: [
         "localhost:3000",
         "127.0.0.1:3000",
         "dota2-cup.vercel.app",
+        "dota2-cup-talhabbasis-projects.vercel.app",
+        "dota2-cup-git-main-talhabbasis-projects.vercel.app",
       ],
     },
   },

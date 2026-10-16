@@ -945,22 +945,34 @@ export async function actionActivateSeason(formData: FormData) {
 
 export async function actionCreateManualTeam(formData: FormData) {
   const session = await requireAdmin();
-  const team = await adminCreateManualTeam({
-    name: String(formData.get("name") ?? ""),
-    tag: String(formData.get("tag") ?? "") || null,
-    logoUrl: String(formData.get("logoUrl") ?? "") || null,
-    captainDiscordId: String(formData.get("captainDiscordId") ?? "") || null,
-    captainPlayerId: String(formData.get("captainPlayerId") ?? "") || null,
-  });
-  await note(
-    session,
-    "team.create_manual",
-    `Created ${team.name} (${team.purse.toLocaleString()} purse from captain rank)`,
-    { teamId: team.id, purse: team.purse },
-  );
-  revalidateAdmin();
-  revalidatePath("/admin/teams");
-  revalidatePath("/teams");
+  try {
+    const team = await adminCreateManualTeam({
+      name: String(formData.get("name") ?? ""),
+      tag: String(formData.get("tag") ?? "") || null,
+      logoUrl: String(formData.get("logoUrl") ?? "") || null,
+      captainDiscordId: String(formData.get("captainDiscordId") ?? "") || null,
+      captainPlayerId: String(formData.get("captainPlayerId") ?? "") || null,
+    });
+    await note(
+      session,
+      "team.create_manual",
+      `Created ${team.name} (${team.purse.toLocaleString()} purse from captain rank)`,
+      { teamId: team.id, purse: team.purse },
+    );
+    revalidateAdmin();
+    revalidatePath("/admin/teams");
+    revalidatePath("/teams");
+    return { ok: true as const, teamId: team.id, name: team.name, purse: team.purse };
+  } catch (error) {
+    // Return a serializable error — production digests strip thrown messages.
+    return {
+      ok: false as const,
+      error:
+        error instanceof Error && error.message
+          ? error.message
+          : "Could not create franchise.",
+    };
+  }
 }
 
 export async function actionUpdateTeamMeta(formData: FormData) {

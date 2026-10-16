@@ -30,12 +30,27 @@ export async function createSeasonTeam(input: {
     if (await db.team.count({ where: { seasonId: season.id } }) >= season.teamCount) throw new AuctionError(`This season allows ${season.teamCount} teams.`);
     if (await db.team.findFirst({ where: { seasonId: season.id, name: { equals: name, mode: "insensitive" } } })) throw new AuctionError("This team name is already used.");
     if (!input.captainPlayerId && !input.captainDiscordId) throw new AuctionError("Pick a captain.", 400);
-    const captain = await db.seasonPlayer.findFirst({ where: {
-      seasonId: season.id,
-      ...(input.captainPlayerId ? { playerId: input.captainPlayerId } : { player: { OR: [{ discordId: input.captainDiscordId! }, { discordId: { startsWith: `${input.captainDiscordId}:` } }] } }),
-    } });
-    if (!captain || captain.teamId || captain.isCaptain) throw new AuctionError("Choose an unsigned player registered in this season.");
-    const purse = purseForCaptainMedal(captain.medal);
+    const snowflake = input.captainDiscordId?.split(":")[0]?.trim() || null;
+    const captain = await db.seasonPlayer.findFirst({
+      where: {
+        seasonId: season.id,
+        ...(input.captainPlayerId
+          ? { playerId: input.captainPlayerId }
+          : {
+              player: {
+                OR: [
+                  { discordId: snowflake! },
+                  { discordId: { startsWith: `${snowflake}:` } },
+                ],
+              },
+            }),
+      },
+      include: { player: { select: { medal: true } } },
+    });
+    if (!captain || captain.teamId || captain.isCaptain) {
+      throw new AuctionError("Choose an unsigned player registered in this season.");
+    }
+    const purse = purseForCaptainMedal(captain.medal || captain.player.medal);
     const team = await db.team.create({ data: { seasonId: season.id, name, captainId: captain.playerId, purse, tag: input.tag?.trim() || null, logoUrl: input.logoUrl?.trim() || null } });
     const assignment = { teamId: team.id, isCaptain: true, rosterRole: null, teamJoinedAt: new Date() };
     await db.seasonPlayer.update({ where: { id: captain.id }, data: assignment });

@@ -139,7 +139,22 @@ export function AdminActionForm({
     }
     startTransition(async () => {
       try {
-        onResult?.(await action(payload));
+        const result = await action(payload);
+        if (
+          result &&
+          typeof result === "object" &&
+          "ok" in result &&
+          (result as { ok: unknown }).ok === false
+        ) {
+          const err = (result as { error?: unknown }).error;
+          toast.error(
+            typeof err === "string" && err.trim()
+              ? err
+              : "Could not save. Try again.",
+          );
+          return;
+        }
+        onResult?.(result);
         setOpen(false);
         if (refresh === "await") router.refresh();
         else if (refresh === "background") setTimeout(() => router.refresh(), 0);
@@ -156,15 +171,16 @@ export function AdminActionForm({
             : typeof error === "string"
               ? error
               : "Could not save. Try again.";
-        // Next often wraps CSRF / Server Action aborts as opaque digests —
-        // surface something actionable when the message is empty/generic.
+        // Next wraps many Server Action failures as opaque digests in production.
         const lower = message.toLowerCase();
+        const opaque =
+          !message.trim() ||
+          lower.includes("unexpected") ||
+          lower.includes("digest") ||
+          message === "An error occurred in the Server Components render.";
         toast.error(
-          !error ||
-            lower.includes("unexpected") ||
-            lower.includes("digest") ||
-            message === "An error occurred in the Server Components render."
-            ? "Action blocked (dev host mismatch). Use http://127.0.0.1:3000 or restart after config update."
+          opaque
+            ? "Save failed. Refresh the page and try again (or use https://dota2-cup.vercel.app)."
             : message,
         );
       }

@@ -34,7 +34,7 @@ export function AdminTeamsBoard({
   rosterMax = 7,
 }: {
   teams: AdminTeamRow[];
-  unsigned: { discordId: string; steamName: string }[];
+  unsigned: { id: string; discordId: string; steamName: string; medal?: string | null }[];
   allPlayers: { discordId: string; steamName: string; teamName: string | null }[];
   readOnly?: boolean;
   publicSeasonParam?: string;
@@ -42,6 +42,7 @@ export function AdminTeamsBoard({
   rosterMax?: number;
 }) {
   const [showCreate, setShowCreate] = useState(false);
+  const [formKey, setFormKey] = useState(0);
 
   return (
     <div className="space-y-6">
@@ -71,38 +72,69 @@ export function AdminTeamsBoard({
         </button>
         {showCreate ? (
           <div className="mt-4 border-t border-white/10 pt-4">
-            <AdminActionForm
-              action={actionCreateManualTeam}
-              successMessage="Franchise created — purse set from captain rank"
-              className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"
-            >
-              <AdminField label="Team name">
-                <input name="name" required className={adminControlClass} />
-              </AdminField>
-              <AdminField label="Tag">
-                <input name="tag" placeholder="TOJI" className={adminControlClass} />
-              </AdminField>
-              <AdminField label="Logo URL">
-                <input name="logoUrl" placeholder="https://…" className={adminControlClass} />
-              </AdminField>
-              <AdminField label="Captain">
-                <select name="captainDiscordId" required className={adminControlClass}>
-                  <option value="">Unsigned player…</option>
-                  {unsigned.map((p) => (
-                    <option key={p.discordId} value={p.discordId}>
-                      {p.steamName}
-                    </option>
-                  ))}
-                </select>
-              </AdminField>
-              <p className="self-end text-xs text-muted-foreground sm:col-span-2 lg:col-span-1">
-                Purse auto-fills from the captain’s registered medal. Baseline is{" "}
-                {formatPoints(STARTING_PURSE)}; lower ranks get more.
+            {unsigned.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No unsigned players in this season. Register players first, then
+                pick one as captain.
               </p>
-              <AdminSubmitButton className="self-end">
-                Create franchise
-              </AdminSubmitButton>
-            </AdminActionForm>
+            ) : (
+              <AdminActionForm
+                key={formKey}
+                action={actionCreateManualTeam}
+                successMessage="Franchise created — purse set from captain rank"
+                className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"
+                onResult={() => setFormKey((k) => k + 1)}
+              >
+                <AdminField label="Team name">
+                  <input
+                    name="name"
+                    required
+                    autoComplete="off"
+                    placeholder="Franchise name"
+                    className={adminControlClass}
+                  />
+                </AdminField>
+                <AdminField label="Tag">
+                  <input
+                    name="tag"
+                    placeholder="e.g. TOJI"
+                    className={adminControlClass}
+                  />
+                </AdminField>
+                <AdminField label="Logo URL">
+                  <input
+                    name="logoUrl"
+                    placeholder="https://…"
+                    className={adminControlClass}
+                  />
+                </AdminField>
+                <AdminField label="Captain">
+                  <select
+                    name="captainPlayerId"
+                    required
+                    className={adminControlClass}
+                    defaultValue=""
+                  >
+                    <option value="" disabled>
+                      Unsigned player…
+                    </option>
+                    {unsigned.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.steamName}
+                        {p.medal ? ` · ${p.medal}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </AdminField>
+                <p className="self-end text-xs text-muted-foreground sm:col-span-2 lg:col-span-1">
+                  Purse auto-fills from the captain’s registered medal. Baseline
+                  is {formatPoints(STARTING_PURSE)}; lower ranks get more.
+                </p>
+                <AdminSubmitButton className="self-end" pendingLabel="Creating…">
+                  Create franchise
+                </AdminSubmitButton>
+              </AdminActionForm>
+            )}
           </div>
         ) : null}
       </div>

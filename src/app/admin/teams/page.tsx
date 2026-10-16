@@ -32,7 +32,12 @@ export default async function AdminTeamsPage({
   const rules = rosterRules(season);
   const unsigned = players
     .filter((p) => !p.teamId && !p.isCaptain)
-    .map((p) => ({ discordId: p.discordId, steamName: p.steamName }));
+    .map((p) => ({
+      id: p.id,
+      discordId: p.discordId,
+      steamName: p.steamName,
+      medal: p.medal,
+    }));
 
   return (
     <div className="page">
