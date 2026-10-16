@@ -63,10 +63,16 @@ export default async function PlayerPage({
 }) {
   const { id } = await params;
   const sp = await searchParams;
+  const explicitSeason = Boolean(sp.season?.trim());
   const { seasonId, view } = await getPublicSeasonContext(sp);
-  const player = await getPlayer(id, { seasonId });
+  // Only pin focus when ?season= is set; otherwise show whatever this Discord played
+  // (live membership if any, else newest season with roster/matches/lots).
+  const player = await getPlayer(id, {
+    seasonId: explicitSeason ? seasonId : undefined,
+  });
   if (!player) notFound();
-  const pubg = view?.game === "PUBG";
+  const pubg =
+    (player.currentSeason?.game ?? view?.game) === "PUBG";
 
   const catalog = pubg ? [] : await loadHeroCatalog();
   const byId = new Map(catalog.map((h) => [h.id, h]));
@@ -121,8 +127,10 @@ export default async function PlayerPage({
   }
   const topHeroes = [...heroCounts.values()].sort((a, b) => b.plays - a.plays);
 
-  const seasonQuery = (live: boolean) =>
-    live ? `/players/${player.id}` : "/seasons";
+  const seasonQuery = (row: { live: boolean; seasonId: string }) =>
+    row.live
+      ? `/players/${player.id}`
+      : `/players/${player.id}?season=${row.seasonId}`;
 
   return (
     <div className="page">
@@ -171,7 +179,7 @@ export default async function PlayerPage({
               return (
                 <Link
                   key={row.seasonId}
-                  href={seasonQuery(row.live)}
+                  href={seasonQuery(row)}
                   className={cn(
                     "rounded-md border px-3 py-1.5 text-sm transition",
                     active
@@ -254,7 +262,7 @@ export default async function PlayerPage({
             {player.seasonHistory.map((row) => {
               const active = player.focusSeasonId === row.seasonId;
               return (
-                <Link key={row.seasonId} href={seasonQuery(row.live)}>
+                <Link key={row.seasonId} href={seasonQuery(row)}>
                   <EsportsCard
                     className={cn(
                       "px-4 py-3 transition",

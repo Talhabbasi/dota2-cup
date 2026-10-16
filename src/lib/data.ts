@@ -169,6 +169,8 @@ export async function getPlayer(
   });
   if (!player || isDummyDiscordId(player.discordId)) return null;
 
+  // One Discord → one Player row. Pull every season that Discord played:
+  // SeasonPlayer membership, match seats, and sold auction lots.
   const [matchPlayers, seasonRows, soldLots, currentSeason] = await Promise.all([
     prisma.matchPlayer.findMany({
       where: {
@@ -181,7 +183,16 @@ export async function getPlayer(
       include: {
         match: {
           include: {
-            season: { select: { id: true, number: true, name: true } },
+            season: {
+              select: {
+                id: true,
+                number: true,
+                name: true,
+                status: true,
+                isActive: true,
+                game: true,
+              },
+            },
             radiantTeam: teamRefSelect,
             direTeam: teamRefSelect,
             winnerTeam: teamRefSelect,
@@ -194,7 +205,14 @@ export async function getPlayer(
       where: { playerId: player.id },
       include: {
         season: {
-          select: { id: true, number: true, name: true, status: true, isActive: true },
+          select: {
+            id: true,
+            number: true,
+            name: true,
+            status: true,
+            isActive: true,
+            game: true,
+          },
         },
         team: { select: { id: true, name: true } },
       },
@@ -234,13 +252,66 @@ export async function getPlayer(
     seatsBySeason.set(sid, list);
   }
 
-  // Prefer explicit ?season=; else live; else latest membership.
+  type SeasonMeta = {
+    id: string;
+    number: number;
+    name: string;
+    status: string;
+    isActive: boolean;
+    game: string;
+  };
+
+  const seasonById = new Map<string, SeasonMeta>();
+  for (const row of seasonRows) {
+    seasonById.set(row.season.id, row.season);
+  }
+  for (const seat of matchPlayers) {
+    const season = seat.match.season;
+    if (season?.id) seasonById.set(season.id, season);
+  }
+
+  const missingLotSeasonIds = [...soldPriceBySeason.keys()].filter(
+    (sid) => !seasonById.has(sid),
+  );
+  if (missingLotSeasonIds.length > 0) {
+    const extras = await prisma.season.findMany({
+      where: { id: { in: missingLotSeasonIds } },
+      select: {
+        id: true,
+        number: true,
+        name: true,
+        status: true,
+        isActive: true,
+        game: true,
+      },
+    });
+    for (const season of extras) seasonById.set(season.id, season);
+  }
+
+  const membershipBySeason = new Map(
+    seasonRows.map((row) => [row.seasonId, row] as const),
+  );
+
+  const playedSeasonIds = [...seasonById.keys()].sort((a, b) => {
+    const na = seasonById.get(a)?.number ?? 0;
+    const nb = seasonById.get(b)?.number ?? 0;
+    return nb - na;
+  });
+
+  const requested = options?.seasonId?.trim() || null;
+  const requestedPlayed =
+    requested && seasonById.has(requested) ? requested : null;
+
+  // Explicit ?season= when they played it; else live membership; else newest played.
   const focusSeasonId =
-    options?.seasonId ??
-    currentSeason?.id ??
-    seasonRows.find((row) => row.season.isActive)?.seasonId ??
-    seasonRows[0]?.seasonId ??
+    requestedPlayed ??
+    (currentSeason && seasonById.has(currentSeason.id)
+      ? currentSeason.id
+      : null) ??
+    playedSeasonIds.find((sid) => seasonById.get(sid)?.isActive) ??
+    playedSeasonIds[0] ??
     null;
+
   const scopedMatchPlayers = focusSeasonId
     ? matchPlayers.filter((row) => row.match.seasonId === focusSeasonId)
     : matchPlayers;
@@ -250,13 +321,15 @@ export async function getPlayer(
   );
 
   const focusMembership = focusSeasonId
-    ? seasonRows.find((row) => row.seasonId === focusSeasonId)
+    ? membershipBySeason.get(focusSeasonId)
     : undefined;
   const currentTeam = focusMembership?.team ?? null;
   const currentTeamId = focusMembership?.teamId ?? null;
   const currentCaptain = focusMembership?.isCaptain ?? false;
   const currentRosterRole = focusMembership?.rosterRole ?? null;
-  const focusSeasonRow = focusMembership?.season ?? null;
+  const focusSeasonRow = focusSeasonId
+    ? (seasonById.get(focusSeasonId) ?? null)
+    : null;
   const focusStats = aggregateSeatStats(scopedMatchPlayers);
   const focusSoldPrice = focusSeasonId
     ? (soldPriceBySeason.get(focusSeasonId) ?? null)
@@ -281,23 +354,26 @@ export async function getPlayer(
     focusStats,
     focusSoldPrice,
     career,
-    seasonHistory: seasonRows.map((row) => {
-      const stats = aggregateSeatStats(seatsBySeason.get(row.seasonId) ?? []);
+    seasonHistory: playedSeasonIds.map((seasonId) => {
+      const season = seasonById.get(seasonId)!;
+      const membership = membershipBySeason.get(seasonId);
+      const stats = aggregateSeatStats(seatsBySeason.get(seasonId) ?? []);
       return {
-        seasonId: row.season.id,
-        number: row.season.number,
-        name: row.season.name,
-        status: row.season.status,
-        teamId: row.team?.id ?? null,
-        teamName: row.team?.name ?? null,
-        isCaptain: row.isCaptain,
-        rosterRole: row.rosterRole,
-        soldPrice: soldPriceBySeason.get(row.seasonId) ?? null,
+        seasonId: season.id,
+        number: season.number,
+        name: season.name,
+        status: season.status,
+        game: season.game,
+        teamId: membership?.team?.id ?? null,
+        teamName: membership?.team?.name ?? null,
+        isCaptain: membership?.isCaptain ?? false,
+        rosterRole: membership?.rosterRole ?? null,
+        soldPrice: soldPriceBySeason.get(seasonId) ?? null,
         games: stats.games,
         wins: stats.wins,
         losses: stats.losses,
         kda: stats.kda,
-        live: currentSeason?.id === row.season.id,
+        live: currentSeason?.id === season.id,
       };
     }),
     currentSeason: focusSeasonRow
@@ -305,12 +381,14 @@ export async function getPlayer(
           id: focusSeasonRow.id,
           number: focusSeasonRow.number,
           name: focusSeasonRow.name,
+          game: focusSeasonRow.game,
         }
       : currentSeason
         ? {
             id: currentSeason.id,
             number: currentSeason.number,
             name: currentSeason.name,
+            game: currentSeason.game,
           }
         : null,
     roles: parseRolesJson(player.rolesJson),
