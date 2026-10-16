@@ -7,9 +7,11 @@ import {
   type TextChannel,
 } from "discord.js";
 import { adminRoleName } from "./constants";
+import { publicTeamWhere } from "./dummy";
 import { registeredRoleName } from "./payments-channel-access";
 import { PLAY_WINDOW_ROLE_NAMES } from "./play-window";
 import { prisma } from "./prisma";
+import { currentSeasonFilter } from "./seasons";
 import { CUP_NAME } from "@/lib/brand";
 
 const DUMMY_PREFIX = "test-dummy-";
@@ -454,7 +456,9 @@ export async function syncTeamChatChannels(
   await guild.channels.fetch();
   await guild.roles.fetch();
 
+  // Live season only — archive teams must not recreate rooms before captains exist.
   const teams = await prisma.team.findMany({
+    where: { ...(await currentSeasonFilter()), ...publicTeamWhere },
     orderBy: { name: "asc" },
     include: {
       players: {

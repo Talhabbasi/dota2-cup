@@ -6,10 +6,12 @@ import {
   type VoiceChannel,
 } from "discord.js";
 import { adminRoleName } from "./constants";
+import { publicTeamWhere } from "./dummy";
 import { liveRoster } from "./live-roster";
 import { registeredRoleName } from "./payments-channel-access";
 import { PLAY_WINDOW_ROLE_NAMES } from "./play-window";
 import { prisma } from "./prisma";
+import { currentSeasonFilter } from "./seasons";
 import { CUP_NAME } from "@/lib/brand";
 
 const DUMMY_PREFIX = "test-dummy-";
@@ -304,7 +306,9 @@ export async function syncTeamVoiceChannels(
   await guild.channels.fetch();
   await guild.roles.fetch();
 
+  // Live season only — no rooms until this cup has teams/captains.
   const teams = await prisma.team.findMany({
+    where: { ...(await currentSeasonFilter()), ...publicTeamWhere },
     orderBy: { name: "asc" },
     include: {
       players: {
