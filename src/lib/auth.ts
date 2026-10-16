@@ -7,6 +7,7 @@ import {
   verifyAdminPassword,
 } from "./admin-password";
 import { prisma } from "./prisma";
+import { isAdminDiscordId } from "./constants";
 import { isSiteAdmin } from "./site-admin";
 
 export const authOptions: NextAuthOptions = {
@@ -16,6 +17,8 @@ export const authOptions: NextAuthOptions = {
     DiscordProvider({
       clientId: process.env.DISCORD_CLIENT_ID ?? "",
       clientSecret: process.env.DISCORD_CLIENT_SECRET ?? "",
+      // Discord sends RFC 9207 `iss` on the callback; openid-client requires this.
+      issuer: "https://discord.com",
       client: {
         token_endpoint_auth_method: "client_secret_post",
       },
@@ -60,8 +63,12 @@ export const authOptions: NextAuthOptions = {
       if (token.authProvider === "credentials") {
         token.isAdmin = true;
       } else if (token.authProvider !== "captain" && (token.discordId || token.sub)) {
-        const discordId = (token.discordId as string | undefined) ?? token.sub;
-        token.isAdmin = await isSiteAdmin(discordId);
+        const discordId =
+          (token.discordId as string | undefined) ?? token.sub ?? "";
+        // Allowlist is sync + reliable; guild Admin role check is the fallback.
+        token.isAdmin =
+          Boolean(discordId) &&
+          (isAdminDiscordId(discordId) || (await isSiteAdmin(discordId)));
       } else {
         // Tokens from the removed captain passcode login carry no Discord identity.
         token.isAdmin = false;

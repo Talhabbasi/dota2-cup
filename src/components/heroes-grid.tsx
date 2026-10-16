@@ -53,13 +53,62 @@ function attrLabel(primaryAttr?: string) {
   }
 }
 
-function playLabel(plays: number) {
-  if (plays === 0) return "0 plays";
+function playLabel(plays: number, seasonHasPicks: boolean) {
+  if (plays === 0) return seasonHasPicks ? "Unplayed" : "Pool";
   if (plays === 1) return "1 play";
   return `${plays} plays`;
 }
 
-function HeroTile({ hero }: { hero: HeroTournamentStat }) {
+function HeroArt({
+  src,
+  alt,
+  className,
+  width,
+  height,
+  priority,
+}: {
+  src: string;
+  alt: string;
+  className?: string;
+  width: number;
+  height: number;
+  priority?: boolean;
+}) {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return (
+      <span
+        className={cn(
+          "flex size-full items-center justify-center bg-gradient-to-br from-[#1a2233] to-[#0a0d14] font-display text-lg tracking-wide text-white/35",
+          className,
+        )}
+        aria-hidden
+      >
+        {alt.slice(0, 2).toUpperCase()}
+      </span>
+    );
+  }
+  return (
+    <img
+      src={src}
+      alt={alt}
+      width={width}
+      height={height}
+      className={className}
+      decoding="async"
+      loading={priority ? "eager" : "lazy"}
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
+function HeroTile({
+  hero,
+  seasonHasPicks,
+}: {
+  hero: HeroTournamentStat;
+  seasonHasPicks: boolean;
+}) {
   const played = hero.plays > 0;
 
   return (
@@ -68,18 +117,16 @@ function HeroTile({ hero }: { hero: HeroTournamentStat }) {
       className={cn(
         "group overflow-hidden rounded-xl border border-white/10 bg-[#121824] transition-all duration-200",
         "hover:border-amber-500/30 hover:bg-[#161f30]",
-        !played && "opacity-70",
+        seasonHasPicks && !played && "opacity-70",
       )}
     >
       <div className="relative aspect-[16/9] overflow-hidden bg-[#0a0d14]">
-        <img
+        <HeroArt
           src={hero.portrait}
           alt={hero.name}
           width={180}
           height={101}
           className="size-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
-          decoding="async"
-          loading="lazy"
         />
         {played ? (
           <Badge className="absolute top-2 right-2 bg-amber-500 font-mono text-black hover:bg-amber-500">
@@ -92,7 +139,7 @@ function HeroTile({ hero }: { hero: HeroTournamentStat }) {
         <span className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
           <span>{attrLabel(hero.primaryAttr)}</span>
           <span className={played ? "text-amber-400" : undefined}>
-            {playLabel(hero.plays)}
+            {playLabel(hero.plays, seasonHasPicks)}
           </span>
         </span>
       </div>
@@ -101,14 +148,15 @@ function HeroTile({ hero }: { hero: HeroTournamentStat }) {
 }
 
 export function HeroesGrid({ heroes }: { heroes: HeroTournamentStat[] }) {
+  const playedCount = heroes.filter((h) => h.plays > 0).length;
+  const totalPicks = heroes.reduce((n, h) => n + h.plays, 0);
+  const seasonHasPicks = totalPicks > 0;
+
   const [query, setQuery] = useState("");
   const [playFilter, setPlayFilter] = useState<PlayFilter>("all");
   const [attrFilter, setAttrFilter] = useState<AttrFilter>("all");
-  const [sort, setSort] = useState<SortKey>("plays");
+  const [sort, setSort] = useState<SortKey>(seasonHasPicks ? "plays" : "name");
   const [view, setView] = useState<"grid" | "table">("grid");
-
-  const playedCount = heroes.filter((h) => h.plays > 0).length;
-  const totalPicks = heroes.reduce((n, h) => n + h.plays, 0);
 
   const topPicks = useMemo(
     () =>
@@ -165,14 +213,12 @@ export function HeroesGrid({ heroes }: { heroes: HeroTournamentStat[] }) {
                 <span className="font-mono text-[0.62rem] tracking-[0.14em] text-amber-400 uppercase">
                   #{i + 1}
                 </span>
-                <img
+                <HeroArt
                   src={hero.icon}
-                  alt=""
+                  alt={hero.name}
                   width={48}
                   height={48}
-                  className="rounded-md"
-                  decoding="async"
-                  loading="lazy"
+                  className="size-12 rounded-md object-cover"
                 />
                 <span className="line-clamp-2 text-xs font-medium text-foreground">
                   {hero.name}
@@ -212,37 +258,47 @@ export function HeroesGrid({ heroes }: { heroes: HeroTournamentStat[] }) {
           </Tabs>
 
           <div className="flex flex-wrap gap-2">
-            <div className="team-view-toggle" role="tablist" aria-label="Filter by plays">
-              {(
-                [
-                  ["all", `All ${heroes.length}`],
-                  ["played", `Played ${playedCount}`],
-                  ["unplayed", "Not played"],
-                ] as const
-              ).map(([key, label]) => (
-                <button
-                  key={key}
-                  type="button"
-                  role="tab"
-                  aria-selected={playFilter === key}
-                  className={playFilter === key ? "active" : ""}
-                  onClick={() => setPlayFilter(key)}
-                >
-                  {label}
+            {seasonHasPicks ? (
+              <div className="team-view-toggle" role="tablist" aria-label="Filter by plays">
+                {(
+                  [
+                    ["all", `All ${heroes.length}`],
+                    ["played", `Played ${playedCount}`],
+                    ["unplayed", "Not played"],
+                  ] as const
+                ).map(([key, label]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    role="tab"
+                    aria-selected={playFilter === key}
+                    className={playFilter === key ? "active" : ""}
+                    onClick={() => setPlayFilter(key)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="team-view-toggle" role="tablist" aria-label="Hero pool">
+                <button type="button" role="tab" aria-selected className="active">
+                  All {heroes.length}
                 </button>
-              ))}
-            </div>
+              </div>
+            )}
 
             <div className="team-view-toggle" role="tablist" aria-label="Sort heroes">
-              <button
-                type="button"
-                role="tab"
-                aria-selected={sort === "plays"}
-                className={sort === "plays" ? "active" : ""}
-                onClick={() => setSort("plays")}
-              >
-                Most picked
-              </button>
+              {seasonHasPicks ? (
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={sort === "plays"}
+                  className={sort === "plays" ? "active" : ""}
+                  onClick={() => setSort("plays")}
+                >
+                  Most picked
+                </button>
+              ) : null}
               <button
                 type="button"
                 role="tab"
@@ -281,13 +337,15 @@ export function HeroesGrid({ heroes }: { heroes: HeroTournamentStat[] }) {
           Showing <strong className="text-foreground">{slice.length}</strong> of{" "}
           {filtered.length} heroes
           {pageCount > 1 ? ` · page ${page} of ${pageCount}` : ""}
-          {totalPicks > 0 ? (
+          {seasonHasPicks ? (
             <>
               {" "}
               · <strong className="text-foreground">{totalPicks}</strong> total
               picks logged
             </>
-          ) : null}
+          ) : (
+            <> · waiting on first logged match</>
+          )}
         </p>
 
         {filtered.length === 0 ? (
@@ -312,14 +370,12 @@ export function HeroesGrid({ heroes }: { heroes: HeroTournamentStat[] }) {
                         href={`/heroes/${hero.slug}`}
                         className="flex items-center gap-3 text-foreground!"
                       >
-                        <img
+                        <HeroArt
                           src={hero.icon}
-                          alt=""
+                          alt={hero.name}
                           width={32}
                           height={32}
-                          className="rounded"
-                          decoding="async"
-                          loading="lazy"
+                          className="size-8 rounded object-cover"
                         />
                         <span className="font-medium">{hero.name}</span>
                       </Link>
@@ -328,7 +384,7 @@ export function HeroesGrid({ heroes }: { heroes: HeroTournamentStat[] }) {
                       {attrLabel(hero.primaryAttr)}
                     </EsportsTableCell>
                     <EsportsTableCell className="text-right! font-mono tabular-nums">
-                      {hero.plays}
+                      {seasonHasPicks ? hero.plays : "—"}
                     </EsportsTableCell>
                   </EsportsTableRow>
                 ))}
@@ -340,7 +396,11 @@ export function HeroesGrid({ heroes }: { heroes: HeroTournamentStat[] }) {
           <>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
               {slice.map((hero) => (
-                <HeroTile key={hero.id} hero={hero} />
+                <HeroTile
+                  key={hero.id}
+                  hero={hero}
+                  seasonHasPicks={seasonHasPicks}
+                />
               ))}
             </div>
             <Pagination page={page} pageCount={pageCount} onPage={setPage} />

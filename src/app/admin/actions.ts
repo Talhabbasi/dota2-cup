@@ -184,7 +184,10 @@ export async function actionRegisterPlayer(formData: FormData) {
   const steam = String(formData.get("steam") ?? "").trim();
   const pubgName = String(formData.get("pubgName") ?? "").trim();
   const medal = String(formData.get("medal") ?? "");
-  const role = String(formData.get("role") ?? "");
+  const roles = formData.getAll("roles").map(String).filter(Boolean);
+  const role = roles.length
+    ? roles
+    : String(formData.get("role") ?? "");
   const playWindow = String(formData.get("playWindow") ?? "both");
   if (discordId) {
     await registerPlayer({
@@ -193,7 +196,7 @@ export async function actionRegisterPlayer(formData: FormData) {
       steam,
       pubgName,
       medal,
-      role,
+      roles: role,
       playWindow,
     });
     await note(session, "player.register", `Registered player ${discordName || discordId}`, {
@@ -205,7 +208,7 @@ export async function actionRegisterPlayer(formData: FormData) {
       steam,
       pubgName,
       medal,
-      role,
+      role: Array.isArray(role) ? role.join(",") : role,
       playWindow,
       displayName: discordName || pubgName || undefined,
     });
@@ -256,11 +259,14 @@ export async function actionRemoveFromTeam(formData: FormData) {
 export async function actionUpdatePlayer(formData: FormData) {
   const session = await requireAdmin();
   const discordId = String(formData.get("discordId") ?? "");
+  const roles = formData.getAll("roles").map(String).filter(Boolean);
   await adminUpdatePlayerProfile({
     discordId,
     steamName: String(formData.get("steamName") ?? "") || null,
     medal: String(formData.get("medal") ?? "") || null,
-    role: String(formData.get("role") ?? "") || null,
+    role: roles.length
+      ? roles.join(",")
+      : String(formData.get("role") ?? "") || null,
     playWindow: String(formData.get("playWindow") ?? "") || null,
   });
   await note(session, "player.update", `Updated ${await who(discordId)}`, {
@@ -861,19 +867,9 @@ export async function actionActivateSeason(formData: FormData) {
   try {
     const previous = await getLiveSeason();
     const season = await activateSeason(seasonId);
-    // Switching cups (or re-activating) must wipe Season 1 team rooms —
-    // "Set active" used to skip Discord cleanup, which left Team Chat/Voice behind.
-    let clearedDetail = "Discord cleanup skipped (same season)";
-    if (!previous || previous.id !== season.id) {
-      const cleared = await clearTeamDiscordRoomsSafe("season.activate");
-      clearedDetail = cleared.detail;
-    }
-    await note(
-      session,
-      "season.set_active",
-      `Set active ${season.name} · ${clearedDetail}`,
-      { seasonId },
-    );
+    const switched = !previous || previous.id !== season.id;
+    // Activate + revalidate first so the Active badge flips immediately.
+    // Discord room/role wipe can take many seconds (rate limits) — do it after.
     revalidateAdmin();
     revalidatePath("/admin/seasons");
     revalidatePath("/");
@@ -883,6 +879,19 @@ export async function actionActivateSeason(formData: FormData) {
     revalidatePath("/player-insight");
     revalidatePath("/seasons");
     revalidatePublicPages();
+    after(async () => {
+      let clearedDetail = "Discord cleanup skipped (same season)";
+      if (switched) {
+        const cleared = await clearTeamDiscordRoomsSafe("season.activate");
+        clearedDetail = cleared.detail;
+      }
+      await note(
+        session,
+        "season.set_active",
+        `Set active ${season.name} · ${clearedDetail}`,
+        { seasonId },
+      );
+    });
   } catch (error) {
     throw error instanceof Error ? error : new Error("Could not set active season.");
   }

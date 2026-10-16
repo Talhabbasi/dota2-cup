@@ -1,10 +1,13 @@
 import {
   FLEX,
   MIN_ROSTER,
+  ROLE_LABELS,
   ROLES,
   STARTING_ROLES,
+  parseRoles,
   type PlayerRole,
   type Role,
+  type StartingRole,
 } from "./constants";
 
 export function isRosterSub(rosterRole: string | null): boolean {
@@ -65,13 +68,33 @@ export function deriveRosterRoleFromRegistration(rolesJson: string): Role | null
   return null;
 }
 
-export function parseRegistrationRole(input: string): PlayerRole[] {
-  const role = input.trim().toLowerCase();
-  if (role === FLEX) return [FLEX];
-  if ((ROLES as readonly string[]).includes(role)) {
-    return [role as Role];
+/** Registration roles: one or more of safelane/mid/offlane/supports. No flex. */
+export function parseRegistrationRoles(
+  input: string | string[] | null | undefined,
+): StartingRole[] {
+  const raw = Array.isArray(input)
+    ? input.join(",")
+    : typeof input === "string"
+      ? input
+      : "";
+  const starting = [
+    ...new Set(
+      parseRoles(raw).filter((r): r is StartingRole =>
+        (STARTING_ROLES as readonly string[]).includes(r),
+      ),
+    ),
+  ];
+  if (starting.length === 0) {
+    throw new Error(
+      `Pick at least one role: ${STARTING_ROLES.map((r) => ROLE_LABELS[r]).join(", ")}.`,
+    );
   }
-  throw new Error(`Unknown role "${input}".`);
+  return starting;
+}
+
+/** @deprecated Prefer parseRegistrationRoles — kept for single-string call sites. */
+export function parseRegistrationRole(input: string): PlayerRole[] {
+  return parseRegistrationRoles(input);
 }
 
 export function isEligibleForLot(roles: PlayerRole[], lotRole: Role): boolean {

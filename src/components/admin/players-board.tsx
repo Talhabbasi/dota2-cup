@@ -43,7 +43,6 @@ export function AdminPlayersBoard({
   linkablePlayers = [],
   medalOptions,
   roleOptions,
-  windowOptions,
   readOnly = false,
   publicSeasonParam,
   game = "DOTA",
@@ -53,7 +52,7 @@ export function AdminPlayersBoard({
   teams: { id: string; name: string }[];
   medalOptions: { value: string; label: string }[];
   roleOptions: { value: string; label: string }[];
-  windowOptions: { value: string; label: string }[];
+  windowOptions?: { value: string; label: string }[];
   readOnly?: boolean;
   publicSeasonParam?: string;
   game?: string;
@@ -131,34 +130,25 @@ export function AdminPlayersBoard({
                 ))}
               </select>
             </AdminField>
-            <AdminField label="Role">
-              <select
-                name="role"
-                required
-                defaultValue="mid"
-                className={adminControlClass}
-              >
+            <AdminField label="Roles">
+              <div className="flex flex-wrap gap-2">
                 {roleOptions.map((r) => (
-                  <option key={r.value} value={r.value}>
+                  <label
+                    key={r.value}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-white/10 px-2.5 py-1 text-xs"
+                  >
+                    <input
+                      type="checkbox"
+                      name="roles"
+                      value={r.value}
+                      defaultChecked={r.value === "mid"}
+                    />
                     {r.label}
-                  </option>
+                  </label>
                 ))}
-              </select>
+              </div>
             </AdminField>
-            <AdminField label="Weekend window">
-              <select
-                name="playWindow"
-                required
-                defaultValue="both"
-                className={adminControlClass}
-              >
-                {windowOptions.map((w) => (
-                  <option key={w.value} value={w.value}>
-                    {w.label}
-                  </option>
-                ))}
-              </select>
-            </AdminField>
+            <input type="hidden" name="playWindow" value="both" />
             <AdminSubmitButton className="sm:col-span-2">
               Register
             </AdminSubmitButton>

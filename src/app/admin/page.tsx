@@ -19,7 +19,7 @@ import { getCupFeatureSettings } from "@/lib/cup-features";
 import { getAdminInsights } from "@/lib/admin-insights";
 import { getPaymentCollection } from "@/lib/payments";
 import { isRegistrationOpen } from "@/lib/registration-status";
-import { MEDAL_LABELS, adminRoleName, formatPoints } from "@/lib/constants";
+import { MEDAL_LABELS, formatPoints } from "@/lib/constants";
 import { isSiteAdmin } from "@/lib/site-admin";
 import { getLiveSeason } from "@/lib/seasons";
 import { isPubgSeason } from "@/lib/games";
@@ -146,11 +146,20 @@ export default async function AdminPage({
         <PageHeader
           eyebrow="Organizer"
           title="Admin"
-          subtitle={`Sign in with Discord or username. Discord needs the ${adminRoleName()} role (or a listed admin id).`}
+          subtitle="Organizers only."
         />
         {params.error === "unauthorized" ? (
           <p className="mb-4 text-sm text-rose-300" role="alert">
-            That page is private. Sign in as an organizer to continue.
+            Sign in as an organizer to continue.
+          </p>
+        ) : null}
+        {params.error === "discord" ||
+        params.error === "OAuthCallback" ||
+        params.error === "OAuthSignin" ||
+        params.error === "Callback" ||
+        params.error === "AccessDenied" ? (
+          <p className="mb-4 text-sm text-rose-300" role="alert">
+            Discord login failed. Try again, or use username login.
           </p>
         ) : null}
         <AdminSignIn

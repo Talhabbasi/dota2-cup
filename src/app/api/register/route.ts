@@ -18,7 +18,7 @@ export async function POST(request: Request) {
   }
   if (!(await isRegistrationOpen())) {
     return NextResponse.json(
-      { error: "Registration is closed. Ask an admin if you need a late add." },
+      { error: "Registration is closed." },
       { status: 403 },
     );
   }
@@ -27,22 +27,23 @@ export async function POST(request: Request) {
     steam?: string;
     pubgName?: string;
     medal?: string;
-    role?: string;
+    role?: string | string[];
+    roles?: string | string[];
     playWindow?: string;
   };
   const live = await getLiveSeason();
   const pubg = isPubgSeason(live);
+  const roles = body.roles ?? body.role;
   if (
-    !body.playWindow ||
-    (pubg
+    pubg
       ? !body.pubgName?.trim() || !body.steam?.trim() || !body.medal
-      : !body.steam?.trim() || !body.medal || !body.role)
+      : !body.steam?.trim() || !body.medal || roles == null || roles === ""
   ) {
     return NextResponse.json(
       {
         error: pubg
-          ? "PUBG name, Steam profile, rank, and weekend window are required. One Discord links to one Steam."
-          : "Steam profile URL, rank, role, and weekend window are required.",
+          ? "PUBG name, Steam profile, and rank are required."
+          : "Steam profile, medal, and at least one role are required.",
       },
       { status: 400 },
     );
@@ -55,8 +56,8 @@ export async function POST(request: Request) {
       steam: body.steam,
       pubgName: body.pubgName,
       medal: body.medal,
-      role: body.role,
-      playWindow: body.playWindow,
+      roles,
+      playWindow: body.playWindow || "both",
     });
     revalidatePublicPages();
     const season = await getCurrentSeasonSafe();

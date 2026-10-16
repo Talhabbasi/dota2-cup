@@ -39,7 +39,6 @@ import {
 import {
   adminRoleName,
   BID_INCREMENT,
-  FLEX,
   MAX_ROSTER,
   isAdminDiscordId,
   MEDAL_LABELS,
@@ -272,14 +271,10 @@ const medalChoices = [
     value: m,
   })),
 ];
-const registerRoleChoices = [
-  ...STARTING_ROLES.map((r) => ({
-    name: ROLE_LABELS[r],
-    value: r,
-  })),
-  { name: ROLE_LABELS[FLEX], value: FLEX },
-  { name: ROLE_LABELS.sub, value: "sub" },
-];
+const registerRoleChoices = STARTING_ROLES.map((r) => ({
+  name: ROLE_LABELS[r],
+  value: r,
+}));
 
 const commands = [
   new SlashCommandBuilder()
@@ -304,14 +299,13 @@ const commands = [
     .addStringOption((o) =>
       o
         .setName("role")
-        .setDescription("Your main role (Dota)")
+        .setDescription("One role (Dota). Leave blank to pick several.")
         .addChoices(...registerRoleChoices),
     )
     .addStringOption((o) =>
       o
         .setName("when")
-        .setDescription("Weekend availability (Pakistan time)")
-        .setRequired(true)
+        .setDescription("Optional weekend window")
         .addChoices(...PLAY_WINDOW_DISCORD_CHOICES),
     ),
   new SlashCommandBuilder()
@@ -1454,7 +1448,9 @@ function roleSelectRow() {
   return new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
     new StringSelectMenuBuilder()
       .setCustomId("register:role")
-      .setPlaceholder("Select your main role")
+      .setPlaceholder("Select roles (one or more)")
+      .setMinValues(1)
+      .setMaxValues(registerRoleChoices.length)
       .addOptions(
         registerRoleChoices.map((choice) => ({
           label: choice.name,
@@ -1583,15 +1579,10 @@ function registerReplyLines(
   const roles = formatRoles(parseRolesJson(result.player.rolesJson));
   return [
     `${result.created ? "✅ Registered" : "✅ Updated"} **${result.player.steamName}**`,
-    `Website profile: ${playerPageUrl(result.player.id)}`,
-    `Steam: ${result.profileUrl}`,
-    `Steam32: \`${result.player.steam32}\` · ${result.player.medal} · ${roles}`,
-    `Weekends: **${PLAY_WINDOW_LABELS[playWindowOrBoth(result.player.playWindow)]}** — change anytime with \`/when\``,
-    `If the bot is down next time, register at ${siteUrl()}/register`,
-    result.openDotaLinked
-      ? "OpenDota recognizes this account — match stats will import automatically."
-      : "⚠️ OpenDota has no Dota 2 history yet for this account. Queue on this exact Steam account or stats will not count.",
-  ];
+    `${playerPageUrl(result.player.id)}`,
+    `${result.player.medal} · ${roles}`,
+    result.openDotaLinked ? null : "⚠️ No OpenDota history on this Steam yet.",
+  ].filter((line): line is string => Boolean(line));
 }
 
 function isRegisterChannel(interaction: { channel: unknown }) {
@@ -1940,11 +1931,11 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
       const steam = interaction.options.getString("steam") ?? "";
       const pubgName = interaction.options.getString("pubg_name") ?? "";
       const medal = interaction.options.getString("rank") ?? "";
-      const playWindow = interaction.options.getString("when", true);
+      const playWindow = interaction.options.getString("when") || "both";
       if (pubgCup) {
         if (!pubgName || !steam || !medal) {
           await interaction.editReply(
-            "PUBG registration needs `pubg_name:`, `steam:`, and `rank:`. One Discord links to one Steam.",
+            "Need `pubg_name:`, `steam:`, and `rank:`.",
           );
           return;
         }
@@ -1954,7 +1945,6 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
           steam,
           pubgName,
           medal,
-          role: "flex",
           playWindow,
         });
         void notifySiteRefresh();
@@ -1970,16 +1960,14 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
         return;
       }
       if (!steam || !medal) {
-        await interaction.editReply(
-          "Dota registration needs `steam:` and `rank:`.",
-        );
+        await interaction.editReply("Need `steam:` and `rank:`.");
         return;
       }
       const role = registerRoleOption(interaction);
       if (!role) {
         pendingRegister.set(discordId, { steam, medal, playWindow });
         await interaction.editReply({
-          content: "Select your **main role** from the dropdown below.",
+          content: "Pick your roles:",
           components: [roleSelectRow()],
         });
         return;
@@ -1989,7 +1977,7 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
         discordName,
         steam,
         medal,
-        role,
+        roles: role,
         playWindow,
       });
       void notifySiteRefresh();
@@ -3931,10 +3919,10 @@ client.on("interactionCreate", async (interaction: Interaction) => {
       });
       return;
     }
-    const role = interaction.values[0];
-    if (!role) {
+    const roles = interaction.values;
+    if (roles.length === 0) {
       await interaction.reply({
-        content: "Pick a role from the dropdown.",
+        content: "Pick at least one role.",
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -3948,7 +3936,7 @@ client.on("interactionCreate", async (interaction: Interaction) => {
           interaction.user.globalName || interaction.user.username,
         steam: pending.steam,
         medal: pending.medal,
-        role,
+        roles,
         playWindow: pending.playWindow,
       });
       void notifySiteRefresh();

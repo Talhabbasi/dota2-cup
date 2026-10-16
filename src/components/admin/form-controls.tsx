@@ -130,16 +130,36 @@ export function AdminActionForm({
   }, [open, pending]);
 
   function runSave(formData: FormData) {
-    setOpen(false);
+    // Snapshot fields now — some browsers empty FormData after the form
+    // unmounts / modal closes while the server action is still in flight.
+    const payload = new FormData();
+    for (const [key, value] of formData.entries()) {
+      payload.append(key, value);
+    }
     startTransition(async () => {
       try {
-        onResult?.(await action(formData));
+        onResult?.(await action(payload));
+        setOpen(false);
         if (refresh === "await") router.refresh();
         else if (refresh === "background") setTimeout(() => router.refresh(), 0);
         toast.success(successMessage);
       } catch (error) {
+        const message =
+          error instanceof Error && error.message
+            ? error.message
+            : typeof error === "string"
+              ? error
+              : "Could not save. Try again.";
+        // Next often wraps CSRF / Server Action aborts as opaque digests —
+        // surface something actionable when the message is empty/generic.
+        const lower = message.toLowerCase();
         toast.error(
-          error instanceof Error ? error.message : "Could not save. Try again.",
+          !error ||
+            lower.includes("unexpected") ||
+            lower.includes("digest") ||
+            message === "An error occurred in the Server Components render."
+            ? "Action blocked (dev host mismatch). Use http://127.0.0.1:3000 or restart after config update."
+            : message,
         );
       }
     });

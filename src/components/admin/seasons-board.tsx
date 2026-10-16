@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import {
   AdminCard,
@@ -11,8 +12,8 @@ import {
   AdminConfirmForm,
   AdminSubmitButton,
 } from "@/components/admin/form-controls";
+import { useAdminToast } from "@/components/admin/admin-toast";
 import {
-  actionActivateSeason,
   actionCreateSeason,
   actionDeleteSeason,
   actionEndSeasonArchive,
@@ -25,6 +26,61 @@ import {
   TOURNAMENT_FORMAT,
   formatSeasonLabel,
 } from "@/lib/season-constants";
+
+function SetActiveButton({
+  seasonId,
+  seasonName,
+}: {
+  seasonId: string;
+  seasonName: string;
+}) {
+  const router = useRouter();
+  const toast = useAdminToast();
+  const [pending, setPending] = useState(false);
+
+  async function onClick() {
+    if (pending) return;
+    const ok = window.confirm(
+      `Make ${seasonName} the only Active cup?\n\nHomepage and live boards switch immediately.`,
+    );
+    if (!ok) return;
+    setPending(true);
+    try {
+      const res = await fetch(
+        `/api/admin/seasons/${encodeURIComponent(seasonId)}/set-active`,
+        { method: "POST", credentials: "same-origin" },
+      );
+      const data = (await res.json().catch(() => null)) as {
+        ok?: boolean;
+        error?: string;
+      } | null;
+      if (!res.ok || !data?.ok) {
+        throw new Error(
+          data?.error || `Could not set active season (${res.status}).`,
+        );
+      }
+      toast.success(`Active → ${seasonName}`);
+      router.refresh();
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Could not set active season.",
+      );
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      disabled={pending}
+      onClick={onClick}
+      className="rounded-md border border-white/15 px-2 py-1 text-xs hover:bg-white/5 disabled:opacity-60"
+    >
+      {pending ? "Setting…" : "Set active"}
+    </button>
+  );
+}
 
 type AdminSeasonRow = {
   id: string;
@@ -263,16 +319,10 @@ export function AdminSeasonsBoard({
                           Active
                         </span>
                       ) : (
-                        <AdminConfirmForm
-                          action={actionActivateSeason}
-                          message={`Set ${row.name} as the active season? Homepage and live boards switch immediately. Previous cup Team Chat/Voice rooms and cup roles (Captain, Registered, team, play-window) are removed; Admin stays.`}
-                          successMessage="Active season updated"
-                        >
-                          <input type="hidden" name="seasonId" value={row.id} />
-                          <AdminSubmitButton variant="secondary" className="text-xs">
-                            Set active
-                          </AdminSubmitButton>
-                        </AdminConfirmForm>
+                        <SetActiveButton
+                          seasonId={row.id}
+                          seasonName={row.name}
+                        />
                       )}
                     </td>
                     <td className="py-3 pr-3">{row.phase}</td>

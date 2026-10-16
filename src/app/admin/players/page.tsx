@@ -1,13 +1,17 @@
 import { PageHeader } from "@/components/common";
 import { requireAdmin } from "@/lib/admin-auth";
 import { resolveAdminSeasonView } from "@/lib/admin-season-view";
-import { ROLE_LABELS, labelForMedal, medalsForGame } from "@/lib/constants";
+import {
+  ROLE_LABELS,
+  STARTING_ROLES,
+  labelForMedal,
+  medalsForGame,
+} from "@/lib/constants";
 import {
   listPlayersForAdminSeason,
   listPlayersNotInLiveSeason,
 } from "@/lib/players-admin";
 import { adminListTeamsForPicker } from "@/lib/match-admin";
-import { PLAY_WINDOW_LABELS } from "@/lib/play-window";
 import { pageMeta } from "@/lib/seo";
 import { AdminPlayersBoard } from "@/components/admin/players-board";
 
@@ -36,14 +40,10 @@ export default async function AdminPlayersPage({
       label: labelForMedal(m),
     }),
   );
-  const roleOptions = Object.entries(ROLE_LABELS).map(([value, label]) => ({
+  const roleOptions = STARTING_ROLES.map((value) => ({
     value,
-    label,
+    label: ROLE_LABELS[value],
   }));
-  const windowOptions = Object.entries(PLAY_WINDOW_LABELS).map(
-    ([value, label]) => ({ value, label }),
-  );
-
   return (
     <div className="page">
       <PageHeader
@@ -88,7 +88,6 @@ export default async function AdminPlayersPage({
         teams={teams.map((t) => ({ id: t.id, name: t.name }))}
         medalOptions={medalOptions}
         roleOptions={roleOptions}
-        windowOptions={windowOptions}
         readOnly={readOnly}
         publicSeasonParam={publicSeasonParam}
         game={view.game}

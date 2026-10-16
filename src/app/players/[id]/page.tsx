@@ -10,7 +10,6 @@ import {
 } from "@/components/common";
 import { formatDuration, formatRoles, getPlayer, getPlayerMeta } from "@/lib/data";
 import { formatPoints, labelForMedal } from "@/lib/constants";
-import { PLAY_WINDOW_LABELS, playWindowOrBoth } from "@/lib/play-window";
 import {
   heroIconUrl,
   heroPortraitUrl,
@@ -141,7 +140,7 @@ export default async function PlayerPage({
           </h1>
           <p className="m-0 text-sm text-muted-foreground">
             {labelForMedal(player.medal)}
-            {pubg ? " medal" : ` · ${formatRoles(player.roles)} · ${PLAY_WINDOW_LABELS[playWindowOrBoth(player.playWindow)]}`}
+            {pubg ? "" : ` · ${formatRoles(player.roles)}`}
           </p>
         </div>
         <ul className="m-0 grid list-none grid-cols-2 gap-3 border-b border-white/10 p-5 sm:grid-cols-4">

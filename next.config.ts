@@ -13,9 +13,11 @@ function s3PublicHostname(): string | null {
 const s3CdnHost = s3PublicHostname();
 
 const nextConfig: NextConfig = {
-  // The dev browser and NextAuth redirect land on 127.0.0.1; client chunks
-  // are blocked unless that host is allowed.
-  allowedDevOrigins: ["127.0.0.1"],
+  // Dev browsers hit both localhost and 127.0.0.1; allow both or client
+  // chunks / Server Actions get blocked (CSRF origin mismatch).
+  // Discord OAuth: keep NEXTAUTH_URL on the same host you open in the browser
+  // (http://localhost:3000). Mixing localhost and 127.0.0.1 drops the state cookie.
+  allowedDevOrigins: ["127.0.0.1", "localhost"],
   experimental: {
     staleTimes: {
       dynamic: 30,
@@ -24,6 +26,12 @@ const nextConfig: NextConfig = {
     serverActions: {
       // Admin scoreboard uploads (OCR ingest).
       bodySizeLimit: "12mb",
+      // Host only (no protocol). Mismatch aborts every admin form silently.
+      allowedOrigins: [
+        "localhost:3000",
+        "127.0.0.1:3000",
+        "dota2-cup.vercel.app",
+      ],
     },
   },
   images: {

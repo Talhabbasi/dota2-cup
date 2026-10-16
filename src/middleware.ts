@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
+import { isAdminDiscordId } from "@/lib/constants";
 
 /**
  * Hard gate for organizer routes.
@@ -22,7 +23,16 @@ export async function middleware(request: NextRequest) {
     secret: process.env.NEXTAUTH_SECRET,
   });
 
-  if (!token?.isAdmin) {
+  const discordId =
+    (typeof token?.discordId === "string" && token.discordId) ||
+    (typeof token?.sub === "string" && token.sub) ||
+    "";
+  // JWT isAdmin can go stale after env allowlist updates; also trust listed Discord ids.
+  const allowed =
+    token?.isAdmin === true ||
+    (discordId ? isAdminDiscordId(discordId) : false);
+
+  if (!allowed) {
     const url = request.nextUrl.clone();
     url.pathname = "/admin";
     url.search = "";

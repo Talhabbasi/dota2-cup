@@ -98,9 +98,6 @@ function RosterPlayerRow({
       <EsportsTableCell className="text-muted-foreground">
         {player.rolesLabel || "—"}
       </EsportsTableCell>
-      <EsportsTableCell className="hidden text-muted-foreground sm:table-cell">
-        {player.playWindowLabel}
-      </EsportsTableCell>
     </EsportsTableRow>
   );
 }
@@ -111,7 +108,7 @@ function OpenSlotRow({ position }: { position: string }) {
       <EsportsTableCell className="w-14 font-mono text-sm tabular-nums text-muted-foreground">
         {position}
       </EsportsTableCell>
-      <EsportsTableCell colSpan={4} className="text-muted-foreground">
+      <EsportsTableCell colSpan={3} className="text-muted-foreground">
         Open slot
       </EsportsTableCell>
     </EsportsTableRow>
@@ -170,11 +167,6 @@ export function TeamProfileHero({
                   No captain assigned
                 </Badge>
               )}
-              {playWindowLabel ? (
-                <Badge variant="outline" className="border-white/15 text-muted-foreground">
-                  {playWindowLabel}
-                </Badge>
-              ) : null}
               <Badge
                 variant="outline"
                 className={cn(
@@ -250,9 +242,6 @@ export function TeamRosterBoard({
               <EsportsTableHead>Player</EsportsTableHead>
               <EsportsTableHead>Medal</EsportsTableHead>
               <EsportsTableHead>Roles</EsportsTableHead>
-              <EsportsTableHead className="hidden sm:table-cell">
-                Window
-              </EsportsTableHead>
             </EsportsTableRow>
           </EsportsTableHeader>
           <EsportsTableBody>
@@ -290,9 +279,6 @@ export function TeamRosterBoard({
                 <EsportsTableHead>Player</EsportsTableHead>
                 <EsportsTableHead>Medal</EsportsTableHead>
                 <EsportsTableHead>Roles</EsportsTableHead>
-                <EsportsTableHead className="hidden sm:table-cell">
-                  Window
-                </EsportsTableHead>
               </EsportsTableRow>
             </EsportsTableHeader>
             <EsportsTableBody>

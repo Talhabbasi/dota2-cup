@@ -46,8 +46,7 @@ export function AdminSignIn({
           Discord
         </p>
         <p className="mt-0 mb-4 text-sm text-muted-foreground">
-          Sign in with an organizer Discord account (Admin role or listed admin
-          id).
+          Organizer Discord account.
         </p>
         <RegisterSignIn callbackUrl={callbackUrl} />
       </div>
@@ -57,12 +56,8 @@ export function AdminSignIn({
           onSubmit={onSubmit}
           className="rounded-lg border border-white/10 bg-[#121824] px-5 py-5"
         >
-          <p className="m-0 mb-3 text-[0.65rem] font-semibold tracking-[0.14em] text-muted-foreground uppercase">
+          <p className="m-0 mb-4 text-[0.65rem] font-semibold tracking-[0.14em] text-muted-foreground uppercase">
             Username
-          </p>
-          <p className="mt-0 mb-4 text-sm text-muted-foreground">
-            Credentials from <code className="text-xs">.env</code> — password
-            is stored as a scrypt hash, never plaintext.
           </p>
           <label className="mb-3 grid gap-1.5 text-sm">
             <span className="text-muted-foreground">Username or email</span>

@@ -2,7 +2,7 @@ const STEAM64_BASE = BigInt("76561197960265728");
 const STEAM_COMMUNITY = "https://steamcommunity.com";
 
 export const STEAM_PROFILE_HELP =
-  "Paste your full Steam profile link from the Steam app (Share → Copy Page URL), e.g. https://steamcommunity.com/profiles/76561198… or https://steamcommunity.com/id/yourname";
+  "Use a full steamcommunity.com profile link.";
 
 export type SteamProfile = {
   steam32: number;

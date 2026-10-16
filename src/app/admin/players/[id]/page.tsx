@@ -1,11 +1,16 @@
 import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/common";
 import { requireAdmin } from "@/lib/admin-auth";
-import { ROLE_LABELS, labelForMedal, medalsForGame } from "@/lib/constants";
+import {
+  ROLE_LABELS,
+  STARTING_ROLES,
+  labelForMedal,
+  medalsForGame,
+  type StartingRole,
+} from "@/lib/constants";
 import { resolveAdminSeasonView } from "@/lib/admin-season-view";
 import { prisma } from "@/lib/prisma";
 import { adminListTeamsForPicker } from "@/lib/match-admin";
-import { PLAY_WINDOW_LABELS } from "@/lib/play-window";
 import { parseRolesJson } from "@/lib/roles";
 import { pageMeta } from "@/lib/seo";
 import {
@@ -58,8 +63,10 @@ export default async function AdminPlayerDetailPage({
   }
 
   const pubg = view.game === "PUBG";
-  const roles = parseRolesJson(membership.rolesJson || player.rolesJson);
-  const currentRole = roles[0] ?? "";
+  const roles = parseRolesJson(membership.rolesJson || player.rolesJson).filter(
+    (r): r is StartingRole =>
+      (STARTING_ROLES as readonly string[]).includes(r),
+  );
   const medal = membership.medal || player.medal;
   const team = membership.team;
 
@@ -120,33 +127,30 @@ export default async function AdminPlayerDetailPage({
                 </select>
               </AdminField>
               {pubg ? null : (
-              <AdminField label="Role">
-                <select
-                  name="role"
-                  defaultValue={currentRole}
-                  className={adminControlClass}
-                >
-                  {Object.entries(ROLE_LABELS).map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
+              <AdminField label="Roles">
+                <div className="flex flex-wrap gap-2">
+                  {STARTING_ROLES.map((value) => (
+                    <label
+                      key={value}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-white/10 px-2.5 py-1 text-xs"
+                    >
+                      <input
+                        type="checkbox"
+                        name="roles"
+                        value={value}
+                        defaultChecked={roles.includes(value)}
+                      />
+                      {ROLE_LABELS[value]}
+                    </label>
                   ))}
-                </select>
+                </div>
               </AdminField>
               )}
-              <AdminField label="Weekend window">
-                <select
-                  name="playWindow"
-                  defaultValue={player.playWindow ?? "both"}
-                  className={adminControlClass}
-                >
-                  {Object.entries(PLAY_WINDOW_LABELS).map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-              </AdminField>
+              <input
+                type="hidden"
+                name="playWindow"
+                value={player.playWindow ?? "both"}
+              />
               <AdminSubmitButton>
                 Save profile
               </AdminSubmitButton>

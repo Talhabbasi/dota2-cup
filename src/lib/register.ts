@@ -4,7 +4,7 @@ import { medalBlockedByMaxRank } from "./cup-features";
 import { parseMedalForGame } from "./constants";
 import { isPubgSeason } from "./games";
 import { parsePlayWindow } from "./play-window";
-import { parseRegistrationRole, stringifyRoles } from "./roles";
+import { parseRegistrationRoles, stringifyRoles } from "./roles";
 import { hasOpenDotaProfile, resolveSteamProfile } from "./steam";
 
 async function playersForDiscord(discordId: string) {
@@ -32,12 +32,13 @@ export async function registerPlayer(input: {
   steam?: string | null;
   pubgName?: string | null;
   medal?: string | null;
-  role?: string | null;
-  playWindow: string;
+  role?: string | string[] | null;
+  roles?: string | string[] | null;
+  playWindow?: string | null;
 }) {
   const liveSeason = await getLiveSeason();
   const pubg = isPubgSeason(liveSeason);
-  const playWindow = parsePlayWindow(input.playWindow);
+  const playWindow = parsePlayWindow(input.playWindow || "both");
 
   if (pubg) {
     const pubgName = cleanPubgName(input.pubgName);
@@ -136,7 +137,7 @@ export async function registerPlayer(input: {
   const steam = input.steam?.trim() ?? "";
   if (!steam) throw new Error("Steam profile URL is required.");
   const medal = parseMedalForGame(input.medal ?? "", "DOTA");
-  const roles = parseRegistrationRole(input.role ?? "");
+  const roles = parseRegistrationRoles(input.roles ?? input.role);
 
   const blocked = await medalBlockedByMaxRank(medal);
   if (blocked) throw new Error(blocked);

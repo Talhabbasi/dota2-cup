@@ -61,30 +61,24 @@ function heroSlug(npcName: string): string {
   return npcName.replace(/^npc_dota_hero_/, "");
 }
 
-/** Steam CDN keys that differ from common / renamed hero names. */
-const HERO_CDN_SLUG: Record<string, string> = {
-  outworld_destroyer: "obsidian_destroyer",
-  outworld_devourer: "obsidian_destroyer",
-};
-
-function cdnSlug(slug: string) {
-  return HERO_CDN_SLUG[slug] ?? slug;
-}
-
+/**
+ * Same-origin proxy — Steam CDN often times out for players in PK/IN.
+ * Vercel fetches upstream and browsers load from our domain.
+ */
 export function heroPortraitUrl(slug: string) {
-  return `https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/${cdnSlug(slug)}.png`;
+  return `/api/dota-cdn/portrait/${encodeURIComponent(slug)}`;
 }
 
 export function heroRenderUrl(slug: string) {
-  return `https://cdn.cloudflare.steamstatic.com/apps/dota2/videos/dota_react/heroes/renders/${cdnSlug(slug)}.png`;
+  return `/api/dota-cdn/render/${encodeURIComponent(slug)}`;
 }
 
 export function heroIconUrl(slug: string): string {
-  return `https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/icons/${cdnSlug(slug)}.png`;
+  return `/api/dota-cdn/icon/${encodeURIComponent(slug)}`;
 }
 
 export function itemIconUrl(key: string): string {
-  return `https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/items/${key}.png`;
+  return `/api/dota-cdn/item/${encodeURIComponent(key)}`;
 }
 
 function cacheHeroList(list: HeroInfo[]) {

@@ -39,6 +39,7 @@ export default async function HeroesPage() {
   const played = heroes.filter((h) => h.plays > 0);
   const unpicked = heroes.length - played.length;
   const totalPicks = heroes.reduce((n, h) => n + h.plays, 0);
+  const hasPicks = totalPicks > 0;
   const mostPicked =
     played.length > 0
       ? [...played].sort(
@@ -52,35 +53,52 @@ export default async function HeroesPage() {
         className="heroes-list-hero"
         eyebrow="Pool"
         title="Heroes"
+        subtitle={
+          hasPicks
+            ? `Pick rates from ${live.name} matches.`
+            : `${live.name} is live — pick rates appear once scoreboards are logged.`
+        }
         pills={[
-          {
-            value: (
-              <>
-                {played.length} / {heroes.length}
-              </>
-            ),
-            label: "picked",
-          },
-          ...(totalPicks > 0
+          hasPicks
+            ? {
+                value: (
+                  <>
+                    {played.length} / {heroes.length}
+                  </>
+                ),
+                label: "picked",
+              }
+            : {
+                value: heroes.length,
+                label: "in the pool",
+              },
+          ...(hasPicks
             ? [{ value: totalPicks, label: "hero picks in matches" }]
-            : []),
+            : [{ value: live.name, label: "season" }]),
         ]}
       />
 
-      <ul className="mb-6 grid list-none grid-cols-1 gap-3 p-0 sm:grid-cols-3">
-        <li>
-          <StatTile
-            label="Most picked"
-            value={mostPicked ? mostPicked.name : "—"}
-          />
-        </li>
-        <li>
-          <StatTile label="Unpicked in cup" value={String(unpicked)} />
-        </li>
-        <li>
-          <StatTile label="Season" value={live.name} />
-        </li>
-      </ul>
+      {hasPicks ? (
+        <ul className="mb-6 grid list-none grid-cols-1 gap-3 p-0 sm:grid-cols-3">
+          <li>
+            <StatTile
+              label="Most picked"
+              value={mostPicked ? mostPicked.name : "—"}
+            />
+          </li>
+          <li>
+            <StatTile label="Unpicked in cup" value={String(unpicked)} />
+          </li>
+          <li>
+            <StatTile label="Season" value={live.name} />
+          </li>
+        </ul>
+      ) : (
+        <div className="mb-6 rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm text-muted-foreground">
+          No cup matches with hero picks yet. Browse the pool below — counts
+          fill in after organizers log scoreboards.
+        </div>
+      )}
 
       <HeroesGrid heroes={heroes} />
     </div>

@@ -4,28 +4,19 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { startNavigation } from "@/components/navigation-loader";
 import {
-  FLEX,
   MEDALS,
   PUBG_MEDALS,
   ROLE_LABELS,
-  ROLES,
+  STARTING_ROLES,
   labelForMedal,
+  type StartingRole,
 } from "@/lib/constants";
-import {
-  PLAY_WINDOW_LABELS,
-  PLAY_WINDOWS,
-  type PlayWindow,
-} from "@/lib/play-window";
-import { STEAM_PROFILE_HELP } from "@/lib/steam";
-
-const ROLE_OPTIONS = [...ROLES, FLEX] as const;
 
 type Existing = {
   steamUrl: string;
   pubgName: string;
   medal: string;
-  role: string;
-  playWindow: PlayWindow;
+  roles: StartingRole[];
   locked: boolean;
 };
 
@@ -51,22 +42,33 @@ export function RegisterForm({
         ? "gold"
         : "archon",
   );
-  const [role, setRole] = useState(existing?.role ?? "mid");
-  const [playWindow, setPlayWindow] = useState<PlayWindow>(
-    existing?.playWindow ?? "both",
+  const [roles, setRoles] = useState<StartingRole[]>(
+    existing?.roles?.length ? existing.roles : ["mid"],
   );
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  function toggleRole(role: StartingRole) {
+    setRoles((prev) =>
+      prev.includes(role)
+        ? prev.filter((r) => r !== role)
+        : [...prev, role],
+    );
+  }
+
   async function onSubmit(event: React.FormEvent) {
     event.preventDefault();
     setError(null);
+    if (!pubg && roles.length === 0) {
+      setError("Pick at least one role.");
+      return;
+    }
     setBusy(true);
     try {
       const res = await fetch("/api/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ steam, pubgName, medal, role, playWindow }),
+        body: JSON.stringify({ steam, pubgName, medal, roles }),
       });
       const data = (await res.json().catch(() => ({}))) as {
         id?: string;
@@ -100,96 +102,62 @@ export function RegisterForm({
             required
             minLength={2}
             maxLength={24}
-            placeholder="Your in-game name"
+            placeholder="In-game name"
             value={pubgName}
             onChange={(e) => setPubgName(e.target.value)}
             disabled={busy || existing?.locked}
           />
-          <small>
-            {rosterLabel
-              ? `${rosterLabel}. Discord and Steam must be the same person.`
-              : "Discord and Steam must be the same person."}
-          </small>
+          {rosterLabel ? <small>{rosterLabel}</small> : null}
         </label>
       ) : null}
 
       <label className="register-field">
-        <span>Steam profile URL</span>
+        <span>Steam profile</span>
         <input
           type="url"
           required
-          placeholder="https://steamcommunity.com/id/yourname"
+          placeholder="https://steamcommunity.com/id/…"
           value={steam}
           onChange={(e) => setSteam(e.target.value)}
           disabled={busy || existing?.locked}
         />
-        <small>{STEAM_PROFILE_HELP}</small>
       </label>
 
-      <div className="register-row">
-        <label className="register-field">
-          <span>{pubg ? "PUBG rank" : "Rank"}</span>
-          <select
-            value={medal}
-            onChange={(e) => setMedal(e.target.value)}
-            disabled={busy || existing?.locked}
-          >
-            {rankOptions.map((m) => (
-              <option key={m} value={m}>
-                {labelForMedal(m)}
-              </option>
-            ))}
-          </select>
-          {pubg ? (
-            <small>
-              PUBG PC (Steam) ranked tier, Bronze through Survivor. Divisions
-              inside a tier still count as that tier.
-            </small>
-          ) : null}
-        </label>
-
-        {pubg ? null : (
-        <label className="register-field">
-          <span>Role</span>
-          <select
-            value={role}
-            onChange={(e) => setRole(e.target.value)}
-            disabled={busy || existing?.locked}
-          >
-            {ROLE_OPTIONS.map((r) => (
-              <option key={r} value={r}>
-                {ROLE_LABELS[r]}
-              </option>
-            ))}
-          </select>
-        </label>
-        )}
-      </div>
-
       <label className="register-field">
-        <span>Weekend availability (Pakistan time)</span>
+        <span>{pubg ? "Rank" : "Medal"}</span>
         <select
-          value={playWindow}
-          onChange={(e) => setPlayWindow(e.target.value as PlayWindow)}
-          disabled={busy}
+          value={medal}
+          onChange={(e) => setMedal(e.target.value)}
+          disabled={busy || existing?.locked}
         >
-          {PLAY_WINDOWS.map((w) => (
-            <option key={w} value={w}>
-              {PLAY_WINDOW_LABELS[w]}
+          {rankOptions.map((m) => (
+            <option key={m} value={m}>
+              {labelForMedal(m)}
             </option>
           ))}
         </select>
-        <small>
-          Evening games kick off at 11:30 PM. Late games kick off at 12:30 AM.
-          Pick <strong>Available either window</strong> if you can play both.
-        </small>
       </label>
 
+      {pubg ? null : (
+        <fieldset className="register-field register-roles" disabled={busy || existing?.locked}>
+          <legend>Roles</legend>
+          <div className="register-role-grid">
+            {STARTING_ROLES.map((r) => (
+              <label key={r} className="register-role-chip">
+                <input
+                  type="checkbox"
+                  checked={roles.includes(r)}
+                  onChange={() => toggleRole(r)}
+                />
+                <span>{ROLE_LABELS[r]}</span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+      )}
+
       {existing?.locked ? (
-        <p className="muted">
-          Medal and role are locked because you already joined a team. You can
-          still change your weekend play window.
-        </p>
+        <p className="muted">Medal and roles are locked while you are on a team.</p>
       ) : null}
 
       {error ? (
@@ -199,11 +167,7 @@ export function RegisterForm({
       ) : null}
 
       <button type="submit" className="btn btn-gold" disabled={busy}>
-        {busy
-          ? "Saving…"
-          : existing
-            ? "Update registration"
-            : "Register for the cup"}
+        {busy ? "Saving…" : existing ? "Update" : "Register"}
       </button>
     </form>
   );

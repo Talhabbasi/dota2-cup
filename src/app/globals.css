@@ -4553,6 +4553,52 @@ tr:last-child td {
   line-height: 1.45;
 }
 
+.register-field legend {
+  font-family: var(--font-oxanium), sans-serif;
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--gold);
+  padding: 0;
+  margin: 0 0 0.35rem;
+}
+
+.register-roles {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.register-role-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.register-role-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--bg-soft);
+  cursor: pointer;
+  font-size: 0.88rem;
+}
+
+.register-role-chip:has(input:checked) {
+  border-color: color-mix(in srgb, var(--gold) 55%, transparent);
+  background: color-mix(in srgb, var(--gold) 12%, transparent);
+}
+
+.register-role-chip input {
+  width: auto;
+  margin: 0;
+  accent-color: var(--gold);
+}
+
 .register-error {
   margin: 0;
   color: var(--ember);
