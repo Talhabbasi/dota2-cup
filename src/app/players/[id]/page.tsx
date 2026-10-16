@@ -18,7 +18,7 @@ import {
 import type { Metadata } from "next";
 import { isMatchStandIn } from "@/lib/stand-in";
 import { liveCupBrand } from "@/lib/seo";
-import { getPublicSeasonContext } from "@/lib/season-page";
+import { resolveViewSeason } from "@/lib/season-view";
 import { cn } from "@/lib/utils";
 
 export const revalidate = 30;
@@ -64,11 +64,13 @@ export default async function PlayerPage({
   const { id } = await params;
   const sp = await searchParams;
   const explicitSeason = Boolean(sp.season?.trim());
-  const { seasonId, view } = await getPublicSeasonContext(sp);
+  const view = await resolveViewSeason(
+    explicitSeason ? { season: sp.season } : undefined,
+  );
   // Only pin focus when ?season= is set; otherwise show whatever this Discord played
   // (live membership if any, else newest season with roster/matches/lots).
   const player = await getPlayer(id, {
-    seasonId: explicitSeason ? seasonId : undefined,
+    seasonId: explicitSeason ? view?.id : undefined,
   });
   if (!player) notFound();
   const pubg =

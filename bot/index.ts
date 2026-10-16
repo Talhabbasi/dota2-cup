@@ -138,7 +138,6 @@ import {
   seedDefaultPlayerAliases,
 } from "../src/lib/player-aliases";
 import {
-  backfillSeason1,
   createSeason,
   currentSeasonFilter,
   updateSeasonAdmin,
@@ -406,6 +405,13 @@ const commands = [
         )
         .addStringOption((o) =>
           o
+            .setName("when")
+            .setDescription("Weekend availability")
+            .setRequired(true)
+            .addChoices(...PLAY_WINDOW_DISCORD_CHOICES),
+        )
+        .addStringOption((o) =>
+          o
             .setName("pubg_name")
             .setDescription("PUBG in-game name (required on a PUBG season)"),
         )
@@ -425,13 +431,6 @@ const commands = [
             .setName("role")
             .setDescription("Main role (Dota)")
             .addChoices(...registerRoleChoices),
-        )
-        .addStringOption((o) =>
-          o
-            .setName("when")
-            .setDescription("Weekend availability")
-            .setRequired(true)
-            .addChoices(...PLAY_WINDOW_DISCORD_CHOICES),
         ),
     )
     .addSubcommand((s) =>
@@ -4102,17 +4101,8 @@ client.once(Events.ClientReady, async () => {
       }
     }
   })();
-  try {
-    const seeded = await backfillSeason1();
-    console.log(
-      `Season ready: ${formatSeasonLabel(seeded.season)} (copied teams ${seeded.copied.teams}, players ${seeded.copied.players}, fixtures ${seeded.copied.fixtures})`,
-    );
-  } catch (error) {
-    console.warn(
-      "season backfill",
-      error instanceof Error ? error.message : error,
-    );
-  }
+  // Do NOT call backfillSeason1() on boot — it syncSeasonPlayer()'d every Player
+  // onto the live cup and leaked Season 1 into Season 2 lists. One-time script only.
   try {
     const aliases = await seedDefaultPlayerAliases();
     if (aliases > 0) {

@@ -2,14 +2,14 @@ import { resolveViewSeason } from "./season-view";
 import { getLiveSeason } from "./seasons";
 
 /**
- * Default: live season. Explicit `?season=` (id or number) selects an archive
- * cup — used on player/team profiles and deep links from season pages.
+ * Main-site lists (players, teams, matches, …) always use the live season.
+ * Past cups are on /seasons and on detail pages via explicit `?season=`.
  */
-export async function getPublicSeasonContext(searchParams?: {
+export async function getPublicSeasonContext(_searchParams?: {
   season?: string;
 }) {
   const live = await getLiveSeason();
-  const view = await resolveViewSeason({ season: searchParams?.season });
-  const seasonId = view?.id ?? live?.id ?? null;
+  const view = await resolveViewSeason();
+  const seasonId = live?.id ?? view?.id ?? null;
   return { view, live, seasonId };
 }

@@ -915,10 +915,28 @@ export async function startSeason(number: number, game?: string | null) {
   };
 }
 
+/**
+ * One-time migration: attach null-seasonId rows to DOTA Season 1 only.
+ * Never touches the live season and never creates SeasonPlayer on the live cup.
+ */
 export async function backfillSeason1() {
-  const season = await ensureDefaultSeason();
+  let season = await prisma.season.findFirst({
+    where: { number: DEFAULT_SEASON_NUMBER, game: "DOTA" },
+  });
+  if (!season) {
+    season = await prisma.season.create({
+      data: {
+        number: DEFAULT_SEASON_NUMBER,
+        name: DEFAULT_SEASON_NAME,
+        game: "DOTA",
+        status: SEASON_STATUS.archived,
+        phase: SEASON_PHASE.COMPLETED,
+        isActive: false,
+      },
+    });
+  }
 
-  const [teams, matches, fixtures, lots, payments, players] = await Promise.all([
+  const [teams, matches, fixtures, lots, payments] = await Promise.all([
     prisma.team.updateMany({
       where: { seasonId: null },
       data: { seasonId: season.id },
@@ -939,13 +957,31 @@ export async function backfillSeason1() {
       where: { seasonId: null },
       data: { seasonId: season.id },
     }),
-    prisma.player.findMany({
-      select: { id: true },
-    }),
   ]);
 
+  // Season 1 memberships only — do not call syncSeasonPlayer (that uses live).
+  const players = await prisma.player.findMany({ select: { id: true } });
+  let memberships = 0;
   for (const player of players) {
-    await syncSeasonPlayer(player.id);
+    const existing = await prisma.seasonPlayer.findUnique({
+      where: {
+        seasonId_playerId: { seasonId: season.id, playerId: player.id },
+      },
+    });
+    if (existing) continue;
+    await prisma.seasonPlayer.create({
+      data: {
+        seasonId: season.id,
+        playerId: player.id,
+        teamId: null,
+        rosterRole: null,
+        teamJoinedAt: null,
+        isCaptain: false,
+        paidAt: null,
+        paymentAmount: 0,
+      },
+    });
+    memberships += 1;
   }
 
   return {
@@ -956,7 +992,7 @@ export async function backfillSeason1() {
       fixtures: fixtures.count,
       lots: lots.count,
       payments: payments.count,
-      players: players.length,
+      players: memberships,
     },
   };
 }

@@ -10,6 +10,7 @@ import {
 import { getStandings, getTeam, getTeamName, formatRoles } from "@/lib/data";
 import { loadStandingsForSeason } from "@/lib/season-data";
 import { getPublicSeasonContext } from "@/lib/season-page";
+import { resolveViewSeason } from "@/lib/season-view";
 import {
   PLAY_WINDOW_SHORT,
   deriveTeamPlayWindow,
@@ -66,7 +67,11 @@ export default async function TeamPage({
   const { id } = await params;
   const sp = await searchParams;
   const explicitSeason = Boolean(sp.season?.trim());
-  const { seasonId } = await getPublicSeasonContext(sp);
+  const { seasonId: liveSeasonId } = await getPublicSeasonContext();
+  const archiveView = explicitSeason
+    ? await resolveViewSeason({ season: sp.season })
+    : null;
+  const seasonId = archiveView?.id ?? liveSeasonId;
   const team = await getTeam(id);
   if (!team) notFound();
 
