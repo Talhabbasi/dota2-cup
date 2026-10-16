@@ -198,6 +198,7 @@ export async function actionRegisterPlayer(formData: FormData) {
       medal,
       roles: role,
       playWindow,
+      bypassCapacity: true,
     });
     await note(session, "player.register", `Registered player ${discordName || discordId}`, {
       discordId,

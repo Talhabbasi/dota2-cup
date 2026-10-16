@@ -2,10 +2,15 @@ import { NextResponse } from "next/server";
 import { authSession } from "@/lib/auth";
 import { publicErrorMessage } from "@/lib/public-error";
 import { revalidatePublicPages } from "@/lib/page-cache";
-import { isRegistrationOpen } from "@/lib/registration-status";
+import {
+  isRegistrationOpen,
+  registrationFullMessage,
+  getLiveRegistrationCapacity,
+} from "@/lib/registration-status";
 import { isPubgSeason } from "@/lib/games";
 import { registerPlayer } from "@/lib/register";
 import { getCurrentSeasonSafe, getLiveSeason } from "@/lib/seasons";
+import { prisma } from "@/lib/prisma";
 
 export async function POST(request: Request) {
   const session = await authSession();
@@ -21,6 +26,35 @@ export async function POST(request: Request) {
       { error: "Registration is closed." },
       { status: 403 },
     );
+  }
+  const capacity = await getLiveRegistrationCapacity();
+  if (capacity.full && capacity.live) {
+    const existingPlayer = await prisma.player.findFirst({
+      where: {
+        OR: [
+          { discordId },
+          { discordId: { startsWith: `${discordId}:` } },
+        ],
+      },
+      select: { id: true },
+    });
+    const enrolled = existingPlayer
+      ? await prisma.seasonPlayer.findUnique({
+          where: {
+            seasonId_playerId: {
+              seasonId: capacity.live.id,
+              playerId: existingPlayer.id,
+            },
+          },
+          select: { playerId: true },
+        })
+      : null;
+    if (!enrolled) {
+      return NextResponse.json(
+        { error: registrationFullMessage(capacity.count, capacity.max) },
+        { status: 403 },
+      );
+    }
   }
 
   const body = (await request.json().catch(() => ({}))) as {

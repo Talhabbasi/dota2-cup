@@ -40,6 +40,7 @@ import {
   adminRoleName,
   BID_INCREMENT,
   MAX_ROSTER,
+  MAX_SUBS,
   isAdminDiscordId,
   MEDAL_LABELS,
   MEDALS,
@@ -2661,7 +2662,7 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
         const result = await adminCreateDummyTeams(count);
         await trySyncCupChannelAccess(interaction.guild);
         const body = result.created
-          .map((t) => `• **${t.name}** — ${t.players.length}/7`)
+          .map((t) => `• **${t.name}** — ${t.players.length}/${MAX_ROSTER}`)
           .join("\n");
         await interaction.editReply(
           `Created **${result.created.length}** dummy teams:\n${body}\nThey stay off the website. Next: \`/schedule generate\` when every team has 5+ players.`,
@@ -2688,6 +2689,7 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
           medal: interaction.options.getString("rank") ?? "uncalibrated",
           role: interaction.options.getString("role") ?? "flex",
           playWindow: interaction.options.getString("when", true),
+          bypassCapacity: true,
         });
         void notifySiteRefresh();
         await trySetPlayWindowRoles(
@@ -2817,7 +2819,7 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
         }
         const synced = await adminResyncRosterRole(targetId);
         await interaction.editReply(
-          `Rebalanced **${synced.name}**'s team roster (5 starters + up to 2 subs).`,
+          `Rebalanced **${synced.name}**'s team roster (5 starters + up to ${MAX_SUBS} sub${MAX_SUBS === 1 ? "" : "s"}).`,
         );
         return;
       }
@@ -2963,7 +2965,7 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
         return;
       }
       await interaction.reply({
-        content: `**${team.name}** · ${team.players.length}/7 · purse ${team.purse}\n${rosterSummary(team.players) || "_empty_"}`,
+        content: `**${team.name}** · ${team.players.length}/${MAX_ROSTER} · purse ${team.purse}\n${rosterSummary(team.players) || "_empty_"}`,
         flags: MessageFlags.Ephemeral,
       });
       return;

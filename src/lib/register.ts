@@ -4,6 +4,7 @@ import { medalBlockedByMaxRank } from "./cup-features";
 import { parseMedalForGame } from "./constants";
 import { isPubgSeason } from "./games";
 import { parsePlayWindow } from "./play-window";
+import { assertCanJoinLiveSeason } from "./registration-status";
 import { parseRegistrationRoles, stringifyRoles } from "./roles";
 import { hasOpenDotaProfile, resolveSteamProfile } from "./steam";
 
@@ -35,10 +36,13 @@ export async function registerPlayer(input: {
   role?: string | string[] | null;
   roles?: string | string[] | null;
   playWindow?: string | null;
+  /** Admin late adds may enroll past the public team×roster cap. */
+  bypassCapacity?: boolean;
 }) {
   const liveSeason = await getLiveSeason();
   const pubg = isPubgSeason(liveSeason);
   const playWindow = parsePlayWindow(input.playWindow || "both");
+  const capacity = { bypassCapacity: input.bypassCapacity };
 
   if (pubg) {
     const pubgName = cleanPubgName(input.pubgName);
@@ -91,6 +95,10 @@ export async function registerPlayer(input: {
     const locked = Boolean(seasonMembership?.teamId);
 
     if (current) {
+      await assertCanJoinLiveSeason({
+        playerId: current.id,
+        ...capacity,
+      });
       const player = await prisma.player.update({
         where: { id: current.id },
         data: {
@@ -113,6 +121,7 @@ export async function registerPlayer(input: {
       };
     }
 
+    await assertCanJoinLiveSeason(capacity);
     const player = await prisma.player.create({
       data: {
         discordId: input.discordId,
@@ -172,6 +181,10 @@ export async function registerPlayer(input: {
 
   if (existingBySteam || existingByDiscord) {
     const current = existingBySteam ?? existingByDiscord!;
+    await assertCanJoinLiveSeason({
+      playerId: current.id,
+      ...capacity,
+    });
     const liveSeason = await getLiveSeason();
     const seasonMembership = liveSeason
       ? await prisma.seasonPlayer.findUnique({
@@ -206,6 +219,7 @@ export async function registerPlayer(input: {
     };
   }
 
+  await assertCanJoinLiveSeason(capacity);
   const player = await prisma.player.create({
     data: {
       discordId: input.discordId,

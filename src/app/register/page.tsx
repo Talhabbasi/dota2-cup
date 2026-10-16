@@ -2,13 +2,18 @@ import Link from "next/link";
 import { currentPlayer } from "@/lib/auth";
 import { RegisterForm } from "@/components/register-form";
 import { RegisterSignIn } from "@/components/register-signin";
-import { isRegistrationOpen, formatEntryFee } from "@/lib/registration-status";
+import {
+  isRegistrationOpen,
+  formatEntryFee,
+  getLiveRegistrationCapacity,
+} from "@/lib/registration-status";
 import { parseRolesJson } from "@/lib/roles";
 import { livePageMeta } from "@/lib/seo";
 import { steam32To64, steamProfileUrl } from "@/lib/steam";
 import { isPubgSeason, rosterRules } from "@/lib/games";
 import { getCupFeatureSettings } from "@/lib/cup-features";
 import { labelForMedal, STARTING_ROLES, type StartingRole } from "@/lib/constants";
+import { prisma } from "@/lib/prisma";
 import { getLiveSeason } from "@/lib/seasons";
 import {
   formatSeasonStartDate,
@@ -24,10 +29,11 @@ export function generateMetadata() {
 
 export default async function RegisterPage() {
   const { session, player } = await currentPlayer();
-  const [publicOpen, features, live] = await Promise.all([
+  const [publicOpen, features, live, capacity] = await Promise.all([
     isRegistrationOpen(),
     getCupFeatureSettings(),
     getLiveSeason(),
+    getLiveRegistrationCapacity(),
   ]);
   const planLine = live
     ? seasonPlanLine({
@@ -60,6 +66,19 @@ export default async function RegisterPage() {
       }
     : null;
 
+  const enrolled =
+    player && live
+      ? await prisma.seasonPlayer.findUnique({
+          where: {
+            seasonId_playerId: {
+              seasonId: live.id,
+              playerId: player.id,
+            },
+          },
+          select: { playerId: true },
+        })
+      : null;
+
   if (!publicOpen) {
     return (
       <div className="page register-page">
@@ -88,6 +107,27 @@ export default async function RegisterPage() {
     );
   }
 
+  if (capacity.full && !enrolled) {
+    return (
+      <div className="page register-page">
+        <header className="teams-list-hero register-hero">
+          <div className="team-hero-glow" aria-hidden />
+          <div className="teams-list-hero-body">
+            <p className="eyebrow">Sign-up{planLine ? ` · ${planLine}` : ""}</p>
+            <h1>Registration full</h1>
+            <p className="lede">
+              All {capacity.max} spots are taken
+              {live
+                ? ` (${live.teamCount} teams × ${roster.max} — ${roster.label})`
+                : ""}
+              . Ask an admin in Discord if you need a late add.
+            </p>
+          </div>
+        </header>
+      </div>
+    );
+  }
+
   return (
     <div className="page register-page">
       <header className="teams-list-hero register-hero">
@@ -101,6 +141,9 @@ export default async function RegisterPage() {
                 : `Entry ${formatEntryFee()} · pay in Discord #payments`}
               {live
                 ? ` · ${live.name} · ${tournamentFormatLabel(live.tournamentFormat)} · ${live.teamCount} teams`
+                : ""}
+              {capacity.max > 0
+                ? ` · ${capacity.count}/${capacity.max} registered`
                 : ""}
               {startLabel ? ` · ${startLabel}` : ""}
               {features.maxMedalToApply

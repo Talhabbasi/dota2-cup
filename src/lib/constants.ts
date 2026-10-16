@@ -3,8 +3,8 @@ export const MAX_CAPTAINS = 15;
 export const BID_INCREMENT = 100;
 export const BID_CLOCK_SECONDS = 30;
 export const MIN_ROSTER = 5;
-export const MAX_ROSTER = 7;
-export const MAX_SUBS = 2;
+export const MAX_ROSTER = 6;
+export const MAX_SUBS = 1;
 
 export const MEDALS = [
   "immortal",

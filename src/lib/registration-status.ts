@@ -1,7 +1,10 @@
 import { cache } from "react";
 import { getCupSettings } from "./cup-settings-cache";
+import { publicPlayerWhere } from "./dummy";
+import { rosterRules } from "./games";
 import { prisma } from "./prisma";
 import { CUP_NAME } from "@/lib/brand";
+import { getLiveSeason } from "./seasons";
 
 function envRegistrationOpen() {
   const value = process.env.REGISTRATION_OPEN?.trim().toLowerCase();
@@ -25,6 +28,94 @@ export async function setRegistrationOpen(open: boolean) {
     update: { registrationOpen: open },
   });
   return row.registrationOpen;
+}
+
+/**
+ * Public sign-up cap for a season: teamCount × roster max
+ * (Dota: 5 starters + 1 sub per team).
+ */
+export function maxRegisteredPlayersForSeason(season: {
+  teamCount: number;
+  game?: string | null;
+  pubgMode?: string | null;
+}) {
+  const teams = Math.max(0, season.teamCount);
+  return teams * rosterRules(season).max;
+}
+
+/** Real (non-dummy) players enrolled in the live season. */
+export async function countLiveSeasonRegistrations() {
+  const live = await getLiveSeason();
+  if (!live) return 0;
+  return prisma.seasonPlayer.count({
+    where: {
+      seasonId: live.id,
+      player: publicPlayerWhere,
+    },
+  });
+}
+
+export async function getLiveRegistrationCapacity() {
+  const live = await getLiveSeason();
+  if (!live) return { count: 0, max: 0, full: false, live: null };
+  const max = maxRegisteredPlayersForSeason(live);
+  const count = await prisma.seasonPlayer.count({
+    where: {
+      seasonId: live.id,
+      player: publicPlayerWhere,
+    },
+  });
+  return { count, max, full: max > 0 && count >= max, live };
+}
+
+export async function isRegistrationFull() {
+  const { full } = await getLiveRegistrationCapacity();
+  return full;
+}
+
+/**
+ * Blocks new live-season enrollments once the public cap is hit.
+ * Already-enrolled players may still update their profile.
+ * Admins pass `bypassCapacity` for late adds.
+ */
+export async function assertCanJoinLiveSeason(opts?: {
+  playerId?: string | null;
+  bypassCapacity?: boolean;
+}) {
+  if (opts?.bypassCapacity) return;
+
+  const { count, max, full, live } = await getLiveRegistrationCapacity();
+  if (!live || max <= 0 || !full) return;
+
+  if (opts?.playerId) {
+    const existing = await prisma.seasonPlayer.findUnique({
+      where: {
+        seasonId_playerId: {
+          seasonId: live.id,
+          playerId: opts.playerId,
+        },
+      },
+      select: { playerId: true },
+    });
+    if (existing) return;
+  }
+
+  throw new Error(registrationFullMessage(count, max));
+}
+
+export function registrationFullMessage(count?: number, max?: number) {
+  const n = count ?? max;
+  const m = max;
+  const filled =
+    typeof n === "number" && typeof m === "number" && m > 0
+      ? `${n}/${m}`
+      : null;
+  return (
+    (filled
+      ? `Registration is full (${filled} players). `
+      : "Registration is full. ") +
+    "Ask an admin if you need a late add."
+  );
 }
 
 export function paymentsChannelName() {

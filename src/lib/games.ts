@@ -63,11 +63,11 @@ export function rosterRules(
       game: CUP_GAME.DOTA,
       pubgMode: null,
       min: 5,
-      max: 7,
-      subs: 2,
+      max: 6,
+      subs: 1,
       entryFeePkr: fee,
       teamFeePkr: 5000,
-      label: "5 starters + 2 subs",
+      label: "5 starters + 1 sub",
     };
   }
   const mode = parsePubgMode(season?.pubgMode);

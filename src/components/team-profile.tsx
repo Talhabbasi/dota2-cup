@@ -17,6 +17,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import {
   MAX_ROSTER,
+  MAX_SUBS,
   labelForMedal,
   MIN_ROSTER,
   ROLE_SHORT,
@@ -195,7 +196,7 @@ export function TeamProfileHero({
           <div className="mb-1.5 flex items-center justify-between text-[0.68rem] tracking-[0.12em] text-muted-foreground uppercase">
             <span>Roster fill</span>
             <span className="font-mono tabular-nums text-foreground">
-              {subCount}/2 subs · {fillPct}%
+              {subCount}/{MAX_SUBS} {MAX_SUBS === 1 ? "sub" : "subs"} · {fillPct}%
             </span>
           </div>
           <div className="h-1.5 overflow-hidden rounded-full bg-white/10">

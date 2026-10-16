@@ -354,6 +354,7 @@ export async function adminRegisterPlayerBySteam(input: {
     medal: input.medal,
     role: input.role,
     playWindow: input.playWindow,
+    bypassCapacity: true,
   });
 }
 

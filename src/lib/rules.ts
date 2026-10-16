@@ -75,7 +75,7 @@ export const CUP_RULES = {
         "Admins can fix a wrong rank, role, or window with `/player edit user:@player rank:<medal> role:<role> when:<evening|late|both>` (or `discord_id`).",
         "Your **medal / rank** decides which **auction pool** you appear in (Immortal, Divine, etc.). Role does not split the pool.",
         "Teams draft any mix of players within budget — two safelanes, two mids, etc. is fine.",
-        "Roster is **5 starters + 2 subs** (captain counts as one starter). Subs are auto-tagged after the fifth pick.",
+        "Roster is **5 starters + 1 sub** (captain counts as one starter). The sub is auto-tagged after the fifth pick.",
         "Register honestly — sandbagging may get you removed by admins.",
       ],
     },
