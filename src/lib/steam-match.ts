@@ -1,12 +1,7 @@
 import type { OpenDotaMatch, OpenDotaMatchPlayer } from "./opendota";
+import { steamWebApiKey } from "./steam";
 
-export function steamWebApiKey() {
-  return (
-    process.env.STEAM_WEB_API_KEY?.trim() ||
-    process.env.STEAM_API_KEY?.trim() ||
-    ""
-  );
-}
+export { steamWebApiKey };
 
 type SteamPlayer = {
   account_id?: number;
