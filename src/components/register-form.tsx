@@ -156,10 +156,6 @@ export function RegisterForm({
         </fieldset>
       )}
 
-      {existing?.locked ? (
-        <p className="muted">Medal and roles are locked while you are on a team.</p>
-      ) : null}
-
       {error ? (
         <p className="register-error" role="alert">
           {error}

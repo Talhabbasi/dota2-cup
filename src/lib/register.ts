@@ -19,6 +19,28 @@ async function playersForDiscord(discordId: string) {
   });
 }
 
+async function liveSeasonMembership(playerId: string, seasonId: string | undefined) {
+  if (!seasonId) return null;
+  return prisma.seasonPlayer.findUnique({
+    where: {
+      seasonId_playerId: { seasonId, playerId },
+    },
+    select: { teamId: true },
+  });
+}
+
+/** Public register: one Discord per live season. Admins may still update via bypassCapacity. */
+function assertNotAlreadyRegistered(input: {
+  enrolled: boolean;
+  bypassCapacity?: boolean;
+}) {
+  if (input.enrolled && !input.bypassCapacity) {
+    throw new Error(
+      "Already registered. Ask an admin if you need to change rank or roles.",
+    );
+  }
+}
+
 function cleanPubgName(raw: string | null | undefined) {
   const name = raw?.trim().replace(/\s+/g, " ") ?? "";
   if (name.length < 2 || name.length > 24) {
@@ -83,21 +105,17 @@ export async function registerPlayer(input: {
     }
 
     const current = existingBySteam ?? existingByDiscord;
-    const seasonMembership =
-      current && liveSeason
-        ? await prisma.seasonPlayer.findUnique({
-            where: {
-              seasonId_playerId: {
-                seasonId: liveSeason.id,
-                playerId: current.id,
-              },
-            },
-            select: { teamId: true },
-          })
-        : null;
-    const locked = Boolean(seasonMembership?.teamId);
+    const seasonMembership = current
+      ? await liveSeasonMembership(current.id, liveSeason?.id)
+      : null;
+    const enrolled = Boolean(seasonMembership);
+    const onTeam = Boolean(seasonMembership?.teamId);
 
     if (current) {
+      assertNotAlreadyRegistered({
+        enrolled,
+        bypassCapacity: input.bypassCapacity,
+      });
       await assertCanJoinLiveSeason({
         playerId: current.id,
         ...capacity,
@@ -107,11 +125,11 @@ export async function registerPlayer(input: {
         data: {
           discordId: input.discordId,
           discordName: input.discordName,
-          pubgName: locked ? current.pubgName ?? pubgName : pubgName,
+          pubgName: onTeam ? current.pubgName ?? pubgName : pubgName,
           steam32: profile.steam32,
-          steamName: locked ? current.steamName : pubgName,
-          medal: locked ? current.medal : medal,
-          basePrice: locked ? current.basePrice : null,
+          steamName: onTeam ? current.steamName : pubgName,
+          medal: onTeam ? current.medal : medal,
+          basePrice: onTeam ? current.basePrice : null,
           playWindow,
           ...(discordAvatarUrl ? { discordAvatarUrl } : {}),
         },
@@ -186,32 +204,28 @@ export async function registerPlayer(input: {
 
   if (existingBySteam || existingByDiscord) {
     const current = existingBySteam ?? existingByDiscord!;
+    const seasonMembership = await liveSeasonMembership(
+      current.id,
+      liveSeason?.id,
+    );
+    const enrolled = Boolean(seasonMembership);
+    const onTeam = Boolean(seasonMembership?.teamId);
+    assertNotAlreadyRegistered({
+      enrolled,
+      bypassCapacity: input.bypassCapacity,
+    });
     await assertCanJoinLiveSeason({
       playerId: current.id,
       ...capacity,
     });
-    const liveSeason = await getLiveSeason();
-    const seasonMembership = liveSeason
-      ? await prisma.seasonPlayer.findUnique({
-          where: {
-            seasonId_playerId: {
-              seasonId: liveSeason.id,
-              playerId: current.id,
-            },
-          },
-          select: { teamId: true },
-        })
-      : null;
-    // Lock identity fields once rostered in the *active* season — not past seasons.
-    const locked = Boolean(seasonMembership?.teamId);
     const player = await prisma.player.update({
       where: { id: current.id },
       data: {
         discordId: input.discordId,
         discordName: input.discordName,
-        steamName: locked ? current.steamName : profile.steamName,
-        medal: locked ? current.medal : medal,
-        rolesJson: locked ? current.rolesJson : stringifyRoles(roles),
+        steamName: onTeam ? current.steamName : profile.steamName,
+        medal: onTeam ? current.medal : medal,
+        rolesJson: onTeam ? current.rolesJson : stringifyRoles(roles),
         playWindow,
         ...(discordAvatarUrl ? { discordAvatarUrl } : {}),
       },

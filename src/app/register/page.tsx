@@ -48,6 +48,19 @@ export default async function RegisterPage() {
 
   const pubg = isPubgSeason(live);
   const roster = rosterRules(live);
+  const enrolled =
+    player && live
+      ? await prisma.seasonPlayer.findUnique({
+          where: {
+            seasonId_playerId: {
+              seasonId: live.id,
+              playerId: player.id,
+            },
+          },
+          select: { playerId: true },
+        })
+      : null;
+
   const existingRoles = player
     ? parseRolesJson(player.rolesJson).filter((r): r is StartingRole =>
         (STARTING_ROLES as readonly string[]).includes(r),
@@ -62,22 +75,10 @@ export default async function RegisterPage() {
         pubgName: player.pubgName ?? "",
         medal: player.medal,
         roles: existingRoles.length ? existingRoles : (["mid"] as StartingRole[]),
-        locked: Boolean(player.teamId),
+        // Rank/roles lock as soon as they are on the live season — not only after auction.
+        locked: Boolean(enrolled),
       }
     : null;
-
-  const enrolled =
-    player && live
-      ? await prisma.seasonPlayer.findUnique({
-          where: {
-            seasonId_playerId: {
-              seasonId: live.id,
-              playerId: player.id,
-            },
-          },
-          select: { playerId: true },
-        })
-      : null;
 
   if (!publicOpen) {
     return (
@@ -159,24 +160,26 @@ export default async function RegisterPage() {
             <p>Sign in with Discord to register.</p>
             <RegisterSignIn />
           </div>
+        ) : enrolled && player ? (
+          <div className="register-gate">
+            <p className="register-error" role="alert">
+              Already registered as{" "}
+              <strong>{player.pubgName || player.steamName}</strong>.
+            </p>
+            <p className="muted">
+              Ask an admin if you need to change rank or roles.{" "}
+              <Link href={`/players/${player.id}`} className="text-link">
+                View profile
+              </Link>
+            </p>
+          </div>
         ) : (
-          <>
-            {player ? (
-              <p className="muted">
-                Registered as{" "}
-                <strong>{player.pubgName || player.steamName}</strong>.{" "}
-                <Link href={`/players/${player.id}`} className="text-link">
-                  Profile
-                </Link>
-              </p>
-            ) : null}
-            <RegisterForm
-              discordName={session.user.name ?? "Discord"}
-              existing={existing}
-              pubg={pubg}
-              rosterLabel={pubg ? roster.label : ""}
-            />
-          </>
+          <RegisterForm
+            discordName={session.user.name ?? "Discord"}
+            existing={existing}
+            pubg={pubg}
+            rosterLabel={pubg ? roster.label : ""}
+          />
         )}
       </section>
     </div>
