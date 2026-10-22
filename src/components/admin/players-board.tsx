@@ -17,6 +17,11 @@ import {
   AdminActionForm,
   AdminSubmitButton,
 } from "@/components/admin/form-controls";
+import {
+  formatModifiedAt,
+  matchesModifiedFilter,
+  MODIFIED_FILTER_OPTIONS,
+} from "@/lib/modified-filter";
 import { cn } from "@/lib/utils";
 
 export type AdminPlayerRow = {
@@ -30,6 +35,7 @@ export type AdminPlayerRow = {
   teamName: string | null;
   isCaptain: boolean;
   rosterRole: string | null;
+  updatedAt: string;
 };
 
 export type LinkablePlayerRow = {
@@ -228,7 +234,7 @@ export function AdminPlayersBoard({
         hrefFor={(p) => `/admin/players/${p.id}?season=${publicSeasonParam ?? ""}`}
         searchPlaceholder="Search name, Discord, or id…"
         searchText={(p) =>
-          `${p.steamName} ${p.discordName} ${p.discordId} ${p.teamName ?? ""} ${p.medalLabel}`
+          `${p.steamName} ${p.discordName} ${p.discordId} ${p.teamName ?? ""} ${p.medalLabel} ${formatModifiedAt(p.updatedAt)}`
         }
         emptyLabel="No registered players."
         filters={[
@@ -277,6 +283,12 @@ export function AdminPlayersBoard({
             ],
             match: (p, value) =>
               value === "__unsigned__" ? !p.teamName : p.teamName === value,
+          },
+          {
+            key: "modified",
+            label: "Modified",
+            options: [...MODIFIED_FILTER_OPTIONS],
+            match: (p, value) => matchesModifiedFilter(p.updatedAt, value),
           },
         ]}
         columns={[
@@ -327,6 +339,15 @@ export function AdminPlayersBoard({
                       ? "starter"
                       : "unsigned"}
               </AdminStatus>
+            ),
+          },
+          {
+            key: "modified",
+            header: "Modified",
+            cell: (p) => (
+              <span className="tabular-nums text-muted-foreground">
+                {formatModifiedAt(p.updatedAt)}
+              </span>
             ),
           },
         ]}

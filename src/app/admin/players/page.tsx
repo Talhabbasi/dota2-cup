@@ -78,6 +78,7 @@ export default async function AdminPlayersPage({
           teamName: p.team?.name ?? null,
           isCaptain: p.isCaptain,
           rosterRole: p.rosterRole,
+          updatedAt: p.updatedAt,
         }))}
         linkablePlayers={linkable.map((p) => ({
           id: p.id,

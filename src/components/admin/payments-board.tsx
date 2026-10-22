@@ -7,6 +7,11 @@ import {
   AdminToolbar,
 } from "@/components/admin/ui";
 import {
+  formatModifiedAt,
+  matchesModifiedFilter,
+  MODIFIED_FILTER_OPTIONS,
+} from "@/lib/modified-filter";
+import {
   EsportsTable,
   EsportsTableBody,
   EsportsTableCell,
@@ -25,6 +30,7 @@ export type PaymentPlayerRow = {
   paid: boolean;
   amount: number;
   paidAtLabel: string | null;
+  updatedAt: string;
   slot: string;
 };
 
@@ -161,7 +167,7 @@ export function AdminPaymentsBoard({
         hrefFor={(p) => `/admin/payments/${p.id}?season=${seasonId}`}
         searchPlaceholder="Search name, Discord, or team…"
         searchText={(p) =>
-          `${p.steamName} ${p.discordName} ${p.teamName ?? ""} ${p.slot}`
+          `${p.steamName} ${p.discordName} ${p.teamName ?? ""} ${p.slot} ${formatModifiedAt(p.updatedAt)}`
         }
         emptyLabel="No players to track."
         filters={[
@@ -205,6 +211,12 @@ export function AdminPaymentsBoard({
             ],
             match: (p, value) =>
               value === "__unsigned__" ? !p.teamName : p.teamName === value,
+          },
+          {
+            key: "modified",
+            label: "Modified",
+            options: [...MODIFIED_FILTER_OPTIONS],
+            match: (p, value) => matchesModifiedFilter(p.updatedAt, value),
           },
         ]}
         columns={[
@@ -262,6 +274,15 @@ export function AdminPaymentsBoard({
               ) : (
                 <AdminStatus tone="danger">unpaid</AdminStatus>
               ),
+          },
+          {
+            key: "modified",
+            header: "Modified",
+            cell: (p) => (
+              <span className="tabular-nums text-muted-foreground">
+                {formatModifiedAt(p.updatedAt)}
+              </span>
+            ),
           },
         ]}
       />

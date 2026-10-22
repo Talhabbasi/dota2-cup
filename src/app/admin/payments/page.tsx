@@ -77,6 +77,7 @@ export default async function AdminPaymentsPage({
           paid: p.paid,
           amount: p.amount || fee,
           paidAtLabel: p.paidAtLabel,
+          updatedAt: p.updatedAt,
           slot: p.isCaptain
             ? "captain"
             : p.rosterRole === "sub"

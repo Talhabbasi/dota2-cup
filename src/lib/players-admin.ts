@@ -577,6 +577,7 @@ export async function listPlayersForAdminSeason(seasonId: string) {
       medal: true,
       rolesJson: true,
       paidAt: true,
+      updatedAt: true,
       team: { select: { name: true } },
       player: {
         select: {
@@ -605,6 +606,7 @@ export async function listPlayersForAdminSeason(seasonId: string) {
     isCaptain: row.isCaptain,
     rosterRole: row.rosterRole,
     paidAt: row.paidAt,
+    updatedAt: row.updatedAt.toISOString(),
   }));
 }
 

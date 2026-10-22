@@ -218,6 +218,7 @@ export type AdminPaymentPlayerRow = {
   paid: boolean;
   amount: number;
   paidAtLabel: string | null;
+  updatedAt: string;
 };
 
 async function seasonForPayments(seasonId?: string | null) {
@@ -249,6 +250,7 @@ export async function adminListPaymentPlayers(
       isCaptain: true,
       paidAt: true,
       paymentAmount: true,
+      updatedAt: true,
       team: { select: { name: true } },
       player: {
         select: {
@@ -282,6 +284,7 @@ export async function adminListPaymentPlayers(
             month: "short",
           })
         : null,
+      updatedAt: row.updatedAt.toISOString(),
     };
   });
 }
