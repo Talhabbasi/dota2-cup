@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 import { isAdminDiscordId } from "@/lib/constants";
+import { isLoginSessionFresh } from "@/lib/session-lifetime";
 
 /**
  * Hard gate for organizer routes.
@@ -22,6 +23,13 @@ export async function middleware(request: NextRequest) {
     req: request,
     secret: process.env.NEXTAUTH_SECRET,
   });
+  if (!isLoginSessionFresh(token)) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/admin";
+    url.search = "";
+    url.searchParams.set("error", "unauthorized");
+    return NextResponse.redirect(url);
+  }
 
   const discordId =
     (typeof token?.discordId === "string" && token.discordId) ||

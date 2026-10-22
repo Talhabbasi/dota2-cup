@@ -43,6 +43,19 @@ export function maxRegisteredPlayersForSeason(season: {
   return teams * rosterRules(season).max;
 }
 
+/** True only when this player is on the current live season, not a past one. */
+export async function isPlayerEnrolledInLiveSeason(playerId: string) {
+  const live = await getLiveSeason();
+  if (!live) return false;
+  const row = await prisma.seasonPlayer.findUnique({
+    where: {
+      seasonId_playerId: { seasonId: live.id, playerId },
+    },
+    select: { playerId: true },
+  });
+  return Boolean(row);
+}
+
 /** Real (non-dummy) players enrolled in the live season. */
 export async function countLiveSeasonRegistrations() {
   const live = await getLiveSeason();

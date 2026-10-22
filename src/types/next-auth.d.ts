@@ -15,5 +15,10 @@ declare module "next-auth/jwt" {
     authProvider?: "discord" | "credentials" | "captain";
     discordId?: string;
     isAdmin?: boolean;
+    /** Set on sign-in. Missing or stale values mean the login is cleared. */
+    sessionEpoch?: number;
+    /** Unix seconds when this login started. Does not slide on each visit. */
+    loggedInAt?: number;
+    expired?: boolean;
   }
 }

@@ -15,6 +15,7 @@ import {
   liveSeasonLabel,
 } from "@/lib/seasons";
 import { currentPlayer } from "@/lib/auth";
+import { isPlayerEnrolledInLiveSeason } from "@/lib/registration-status";
 import "./globals.css";
 
 const oxanium = Oxanium({
@@ -80,6 +81,9 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
     currentPlayer(),
     countCompletedSeasons(),
   ]);
+  const enrolledInLiveSeason = player
+    ? await isPlayerEnrolledInLiveSeason(player.id)
+    : false;
   const game = isPubgSeason(live) ? "PUBG" : "DOTA";
   const seasonLabel = live
     ? liveSeasonLabel(live)
@@ -99,14 +103,14 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
           <SiteChrome
             seasonLabel={seasonLabel}
             game={game}
-            showRegister={!player}
+            showRegister={!enrolledInLiveSeason}
             showSeasons={completedCount > 0}
             auctionHref={
-              player?.isCaptain
-                ? "/auction/captain"
-                : player
-                  ? "/auction"
-                  : null
+              !enrolledInLiveSeason
+                ? null
+                : player?.isCaptain
+                  ? "/auction/captain"
+                  : "/auction"
             }
             banner={<ClosedBanner />}
           >

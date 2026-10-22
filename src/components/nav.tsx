@@ -65,7 +65,7 @@ export function Nav({
 }: {
   showSeasons?: boolean;
   seasonLabel: string;
-  /** Keep Register until this Discord account has a player row. */
+  /** Keep Register until this account is enrolled in the live season. */
   showRegister?: boolean;
   game?: string;
   /**

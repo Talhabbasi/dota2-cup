@@ -9,11 +9,16 @@ import {
 import { syncPlayerDiscordAvatar } from "./discord-avatar";
 import { prisma } from "./prisma";
 import { isAdminDiscordId } from "./constants";
+import {
+  isLoginSessionFresh,
+  LOGIN_MAX_AGE_SECONDS,
+  SESSION_EPOCH,
+} from "./session-lifetime";
 import { isSiteAdmin } from "./site-admin";
 
 export const authOptions: NextAuthOptions = {
   secret: process.env.NEXTAUTH_SECRET,
-  session: { strategy: "jwt" },
+  session: { strategy: "jwt", maxAge: LOGIN_MAX_AGE_SECONDS },
   providers: [
     DiscordProvider({
       clientId: process.env.DISCORD_CLIENT_ID ?? "",
@@ -59,6 +64,14 @@ export const authOptions: NextAuthOptions = {
       return true;
     },
     async jwt({ token, user, account }) {
+      if (user || account) {
+        token.sessionEpoch = SESSION_EPOCH;
+        token.loggedInAt = Math.floor(Date.now() / 1000);
+        token.expired = false;
+      } else if (!isLoginSessionFresh(token)) {
+        return { expired: true, sessionEpoch: SESSION_EPOCH };
+      }
+
       if (account?.provider === "admin-credentials" && user) {
         token.authProvider = "credentials";
         token.isAdmin = true;
@@ -84,6 +97,10 @@ export const authOptions: NextAuthOptions = {
       return token;
     },
     async session({ session, token }) {
+      if (!isLoginSessionFresh(token)) {
+        // Empty body is what NextAuth treats as signed out (no user, cookie cleared of identity).
+        return {} as typeof session;
+      }
       if (session.user) {
         if (token.authProvider === "credentials") {
           session.user.discordId = undefined;
