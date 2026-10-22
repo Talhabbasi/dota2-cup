@@ -22,6 +22,7 @@ import { cn } from "@/lib/utils";
 export type AdminPlayerRow = {
   id: string;
   discordId: string;
+  discordName: string;
   steamName: string;
   pubgName?: string | null;
   medal: string;
@@ -225,9 +226,9 @@ export function AdminPlayersBoard({
         items={players}
         getId={(p) => p.id}
         hrefFor={(p) => `/admin/players/${p.id}?season=${publicSeasonParam ?? ""}`}
-        searchPlaceholder="Search name or Discord id…"
+        searchPlaceholder="Search name, Discord, or id…"
         searchText={(p) =>
-          `${p.steamName} ${p.discordId} ${p.teamName ?? ""} ${p.medalLabel}`
+          `${p.steamName} ${p.discordName} ${p.discordId} ${p.teamName ?? ""} ${p.medalLabel}`
         }
         emptyLabel="No registered players."
         filters={[
@@ -287,6 +288,11 @@ export function AdminPlayersBoard({
                 {game === "PUBG" ? p.pubgName || p.steamName : p.steamName}
               </span>
             ),
+          },
+          {
+            key: "discord",
+            header: "Discord",
+            cell: (p) => p.discordName || "—",
           },
           {
             key: "medal",

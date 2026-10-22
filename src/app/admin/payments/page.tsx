@@ -70,6 +70,7 @@ export default async function AdminPaymentsPage({
         players={players.map((p) => ({
           id: p.id,
           discordId: p.discordId,
+          discordName: p.discordName,
           steamName: p.steamName,
           teamName: p.teamName,
           mustPay: p.mustPay,

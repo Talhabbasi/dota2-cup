@@ -582,6 +582,7 @@ export async function listPlayersForAdminSeason(seasonId: string) {
         select: {
           id: true,
           discordId: true,
+          discordName: true,
           steamName: true,
           pubgName: true,
           medal: true,
@@ -594,6 +595,7 @@ export async function listPlayersForAdminSeason(seasonId: string) {
   return rows.map((row) => ({
     id: row.player.id,
     discordId: row.player.discordId,
+    discordName: row.player.discordName,
     steamName: row.player.steamName,
     pubgName: row.player.pubgName,
     medal: row.medal || row.player.medal,

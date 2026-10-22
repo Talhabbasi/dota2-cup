@@ -209,6 +209,7 @@ export async function adminClearPaid(
 export type AdminPaymentPlayerRow = {
   id: string;
   discordId: string;
+  discordName: string;
   steamName: string;
   teamName: string | null;
   rosterRole: string | null;
@@ -254,6 +255,7 @@ export async function adminListPaymentPlayers(
           id: true,
           steamName: true,
           discordId: true,
+          discordName: true,
         },
       },
     },
@@ -266,6 +268,7 @@ export async function adminListPaymentPlayers(
     return {
       id: row.player.id,
       discordId: row.player.discordId,
+      discordName: row.player.discordName,
       steamName: row.player.steamName,
       teamName: row.team?.name ?? null,
       rosterRole: row.rosterRole,

@@ -18,6 +18,7 @@ import {
 export type PaymentPlayerRow = {
   id: string;
   discordId: string;
+  discordName: string;
   steamName: string;
   teamName: string | null;
   mustPay: boolean;
@@ -158,8 +159,10 @@ export function AdminPaymentsBoard({
         items={players}
         getId={(p) => p.id}
         hrefFor={(p) => `/admin/payments/${p.id}?season=${seasonId}`}
-        searchPlaceholder="Search name or team…"
-        searchText={(p) => `${p.steamName} ${p.teamName ?? ""} ${p.slot}`}
+        searchPlaceholder="Search name, Discord, or team…"
+        searchText={(p) =>
+          `${p.steamName} ${p.discordName} ${p.teamName ?? ""} ${p.slot}`
+        }
         emptyLabel="No players to track."
         filters={[
           {
@@ -209,6 +212,11 @@ export function AdminPaymentsBoard({
             key: "name",
             header: "Player",
             cell: (p) => <span className="font-medium">{p.steamName}</span>,
+          },
+          {
+            key: "discord",
+            header: "Discord",
+            cell: (p) => p.discordName || "—",
           },
           {
             key: "team",

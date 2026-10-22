@@ -69,6 +69,7 @@ export default async function AdminPlayersPage({
         players={players.map((p) => ({
           id: p.id,
           discordId: p.discordId,
+          discordName: p.discordName,
           steamName: p.steamName,
           pubgName: p.pubgName,
           medal: p.medal,
