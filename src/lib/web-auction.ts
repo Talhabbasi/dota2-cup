@@ -569,7 +569,8 @@ export function placeWebBidByDiscord(input:{discordId:string;amount?:number;bump
 
 async function settle(kind:"sold"|"unsold",lotId?:string|null,revision?:number) {
   const [config,roster]=await Promise.all([liveConfig(),liveRoster()]);
-  return withAuctionLock(async db=>{
+  let assignedDiscordId: string | null = null;
+  const view = await withAuctionLock(async db=>{
     const session=await activeSession(db,config);
     requireLot(session,lotId);
     if(revision !== undefined && revision !== session.revision) throw new AuctionError("The auction changed. Review the latest bid before confirming.");
@@ -588,6 +589,8 @@ async function settle(kind:"sold"|"unsold",lotId?:string|null,revision?:number) 
       const assignment={teamId:team.id,teamJoinedAt:new Date(),rosterRole:roster.subs > 0 && team.rosterCount>=roster.min ? "sub" : null,isCaptain:false};
       const moved=await db.seasonPlayer.updateMany({where:{seasonId:session.seasonId,playerId,teamId:null},data:assignment});
       if(moved.count !== 1) throw new AuctionError("This player has already been assigned or is no longer registered.");
+      const soldPlayer = await db.player.findUnique({ where: { id: playerId }, select: { discordId: true } });
+      assignedDiscordId = soldPlayer?.discordId ?? null;
       await db.player.update({where:{id:playerId},data:{...assignment,auctionStatus:AUCTION_PLAYER_STATUS.SOLD}});
       team.purse-=session.currentBid;
       team.rosterCount++;
@@ -614,6 +617,11 @@ async function settle(kind:"sold"|"unsold",lotId?:string|null,revision?:number) 
     await writeSession(db,session);
     return viewFrom(session);
   });
+  if (assignedDiscordId) {
+    const { pushDiscordRoleSync } = await import("./discord-role-sync-rest");
+    await pushDiscordRoleSync([assignedDiscordId]);
+  }
+  return view;
 }
 
 export function confirmWebSold(lotId?:string|null,revision?:number) { return settle("sold",lotId,revision); }

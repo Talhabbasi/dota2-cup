@@ -1,3 +1,5 @@
+import { pushDiscordRoleSync } from "./discord-role-sync-rest";
+import { prisma } from "./prisma";
 import { createSeasonTeam } from "./season-roster";
 import { withAuctionLock, requireAuctionInactive } from "./auction-lock";
 
@@ -10,13 +12,19 @@ export async function adminCreateManualTeam(input: {
   /** Ignored — purse is set from the captain’s medal. */
   purse?: number;
 }) {
-  return createSeasonTeam({
+  const team = await createSeasonTeam({
     name: input.name,
     tag: input.tag,
     logoUrl: input.logoUrl,
     captainDiscordId: input.captainDiscordId,
     captainPlayerId: input.captainPlayerId,
   });
+  const captain = await prisma.player.findUnique({
+    where: { id: team.captainId },
+    select: { discordId: true },
+  });
+  if (captain) await pushDiscordRoleSync([captain.discordId]);
+  return team;
 }
 
 export async function adminUpdateTeamMeta(input: {
@@ -25,7 +33,16 @@ export async function adminUpdateTeamMeta(input: {
   logoUrl?: string | null;
   name?: string | null;
 }) {
-  return withAuctionLock(async db => {
+  const previous = input.name?.trim()
+    ? await prisma.team.findUnique({
+        where: { id: input.teamId },
+        select: {
+          name: true,
+          players: { select: { discordId: true } },
+        },
+      })
+    : null;
+  const team = await withAuctionLock(async db => {
     await requireAuctionInactive(db);
   const data: { tag?: string | null; logoUrl?: string | null; name?: string } = {};
   if (input.tag !== undefined) data.tag = input.tag?.trim() || null;
@@ -36,6 +53,13 @@ export async function adminUpdateTeamMeta(input: {
     data,
   });
   });
+  if (previous && previous.name !== team.name) {
+    await pushDiscordRoleSync(
+      previous.players.map((player) => player.discordId),
+      { renameTeam: { from: previous.name, to: team.name } },
+    );
+  }
+  return team;
 }
 
 export async function adminSetPlayerAuctionMeta(input: {

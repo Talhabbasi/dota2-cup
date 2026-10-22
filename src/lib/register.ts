@@ -4,6 +4,7 @@ import { medalBlockedByMaxRank } from "./cup-features";
 import { parseMedalForGame } from "./constants";
 import { isPubgSeason } from "./games";
 import { parsePlayWindow } from "./play-window";
+import { pushDiscordRoleSync } from "./discord-role-sync-rest";
 import { assertCanJoinLiveSeason } from "./registration-status";
 import { parseRegistrationRoles, stringifyRoles } from "./roles";
 import { hasOpenDotaProfile, resolveSteamProfile } from "./steam";
@@ -135,6 +136,7 @@ export async function registerPlayer(input: {
         },
       });
       await syncSeasonPlayer(player.id);
+      await pushDiscordRoleSync([player.discordId]);
       return {
         player,
         created: false,
@@ -158,6 +160,7 @@ export async function registerPlayer(input: {
       },
     });
     await syncSeasonPlayer(player.id);
+    await pushDiscordRoleSync([player.discordId]);
     return {
       player,
       created: true,
@@ -231,6 +234,7 @@ export async function registerPlayer(input: {
       },
     });
     await syncSeasonPlayer(player.id);
+    await pushDiscordRoleSync([player.discordId]);
     return {
       player,
       created: false,
@@ -253,6 +257,7 @@ export async function registerPlayer(input: {
     },
   });
   await syncSeasonPlayer(player.id);
+  await pushDiscordRoleSync([player.discordId]);
   return {
     player,
     created: true,
@@ -273,6 +278,7 @@ export async function setPlayerPlayWindow(discordId: string, window: string) {
     data: { playWindow },
   });
   await syncSeasonPlayers(players.map((p) => p.id));
+  await pushDiscordRoleSync(players.map((player) => player.discordId));
 
   return { playWindow, steamName: players[0].steamName };
 }

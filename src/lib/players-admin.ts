@@ -1,4 +1,5 @@
 import { withAuctionLock, requireAuctionInactive, type AuctionDb } from "./auction-lock";
+import { pushDiscordRoleSync } from "./discord-role-sync-rest";
 import { syncPlayerRosterToSeason } from "./season-roster";
 import {
   MAX_CAPTAINS,
@@ -61,7 +62,7 @@ async function requirePlayer(discordId: string, db: AuctionDb = prisma) {
 }
 
 export async function adminDeletePlayer(discordId: string) {
- return withAuctionLock(async db => {
+ const result = await withAuctionLock(async db => {
  await requireAuctionInactive(db);
   const player = await requirePlayer(discordId, db);
   if (player.isCaptain) {
@@ -112,13 +113,18 @@ export async function adminDeletePlayer(discordId: string) {
   return { name: player.steamName, teamName: teamName ?? null, remainingTeam };
 
  });
+ await pushDiscordRoleSync([
+   discordId,
+   ...(result.remainingTeam?.players.map((member) => member.discordId) ?? []),
+ ]);
+ return result;
 }
 
 export async function adminAddPlayerToTeam(input: {
   discordId: string;
   teamName: string;
 }) {
- return withAuctionLock(async db => {
+ const result = await withAuctionLock(async db => {
  await requireAuctionInactive(db);
   const player = await requirePlayer(input.discordId, db);
   if (player.teamId) {
@@ -158,10 +164,12 @@ export async function adminAddPlayerToTeam(input: {
   return { team: updated, player };
 
  });
+ await pushDiscordRoleSync([input.discordId]);
+ return result;
 }
 
 export async function adminRemovePlayerFromTeam(discordId: string) {
- return withAuctionLock(async db => {
+ const result = await withAuctionLock(async db => {
  await requireAuctionInactive(db);
   const player = await requirePlayer(discordId, db);
   if (player.isCaptain) {
@@ -194,6 +202,8 @@ export async function adminRemovePlayerFromTeam(discordId: string) {
   };
 
  });
+ await pushDiscordRoleSync([discordId]);
+ return result;
 }
 
 /** Captain, then join order: first 5 are starters; 6–7 are subs. */
@@ -440,7 +450,7 @@ export async function adminUpdatePlayerProfile(input: {
   role?: string | null;
   playWindow?: string | null;
 }) {
- return withAuctionLock(async db => {
+ const result = await withAuctionLock(async db => {
  await requireAuctionInactive(db);
   const nameInput = input.steamName?.trim() || undefined;
   const medalInput = input.medal?.trim() || undefined;
@@ -478,6 +488,10 @@ export async function adminUpdatePlayerProfile(input: {
   };
 
  });
+ if (result.previousPlayWindow !== result.player.playWindow) {
+   await pushDiscordRoleSync([input.discordId]);
+ }
+ return result;
 }
 
 /** Force starter or sub without waiting for auto rebalance. */
@@ -640,6 +654,7 @@ export async function adminEnrollPlayerInLiveSeason(playerId: string) {
   }
 
   await syncSeasonPlayer(player.id);
+  await pushDiscordRoleSync([player.discordId]);
   return player;
 }
 

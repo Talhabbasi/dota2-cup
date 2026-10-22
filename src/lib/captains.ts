@@ -7,6 +7,7 @@ import {
 import { formatRoles } from "./data";
 import { PLAY_WINDOW_SHORT, playWindowOrBoth } from "./play-window";
 import { rebalanceTeamRoster } from "./players-admin";
+import { pushDiscordRoleSync } from "./discord-role-sync-rest";
 import { prisma } from "./prisma";
 import { liveRoster } from "./live-roster";
 import { currentSeasonFilter } from "./seasons";
@@ -29,11 +30,16 @@ export async function adminAddCaptain(input: {
   discordId: string;
   teamName: string;
 }) {
-  return createSeasonTeam({ name: input.teamName, captainDiscordId: input.discordId });
+  const team = await createSeasonTeam({
+    name: input.teamName,
+    captainDiscordId: input.discordId,
+  });
+  await pushDiscordRoleSync([input.discordId]);
+  return team;
 }
 
 export async function adminRemoveCaptain(discordId: string) {
- return withAuctionLock(async db => {
+ const result = await withAuctionLock(async db => {
  await requireAuctionInactive(db);
   const player = await requirePlayer(discordId, db);
   if (!player.isCaptain || !player.teamId) {
@@ -84,6 +90,8 @@ export async function adminRemoveCaptain(discordId: string) {
   };
 
  });
+ await pushDiscordRoleSync(result.rosterDiscordIds);
+ return result;
 }
 
 async function findTeamByName(name: string, db: AuctionDb = prisma) {
@@ -117,7 +125,7 @@ export async function adminChangeCaptain(input: {
   teamName: string;
   discordId: string;
 }) {
- return withAuctionLock(async db => {
+ const result = await withAuctionLock(async db => {
  await requireAuctionInactive(db);
   const team = await findTeamByName(input.teamName, db);
   const next = await requirePlayer(input.discordId, db);
@@ -198,6 +206,11 @@ export async function adminChangeCaptain(input: {
   };
 
  });
+ await pushDiscordRoleSync([
+   result.nextCaptain.discordId,
+   ...(result.previousCaptain ? [result.previousCaptain.discordId] : []),
+ ]);
+ return result;
 }
 
 /**
@@ -208,7 +221,7 @@ export async function adminRenameTeam(input: {
   teamName: string;
   newName: string;
 }) {
- return withAuctionLock(async db => {
+ const result = await withAuctionLock(async db => {
  await requireAuctionInactive(db);
   const team = await findTeamByName(input.teamName, db);
   const newName = input.newName.trim();
@@ -247,6 +260,15 @@ export async function adminRenameTeam(input: {
   };
 
  });
+ const members = await prisma.player.findMany({
+   where: { teamId: result.id },
+   select: { discordId: true },
+ });
+ await pushDiscordRoleSync(
+   members.map((member) => member.discordId),
+   { renameTeam: { from: result.oldName, to: result.newName } },
+ );
+ return result;
 }
 
 export async function getTeamByCaptainDiscord(discordId: string) {

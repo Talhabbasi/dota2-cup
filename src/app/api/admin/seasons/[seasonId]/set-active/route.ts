@@ -52,11 +52,15 @@ export async function POST(
     revalidatePublicPages();
 
     after(async () => {
-      let clearedDetail = "Discord cleanup skipped (same season)";
+      let clearedDetail = "Discord roles synced from the database";
       if (switched) {
         const cleared = await clearTeamDiscordRoomsSafe("season.activate");
-        clearedDetail = cleared.detail;
+        clearedDetail = `${cleared.detail} · roles reapplied from the database`;
       }
+      const { pushDiscordRoleSync } = await import(
+        "@/lib/discord-role-sync-rest"
+      );
+      await pushDiscordRoleSync();
       await logAdminActivity(session, {
         action: "season.set_active",
         summary: `Set active ${season.name} · ${clearedDetail}`,
