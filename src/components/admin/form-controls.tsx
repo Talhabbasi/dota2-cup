@@ -147,11 +147,18 @@ export function AdminActionForm({
           (result as { ok: unknown }).ok === false
         ) {
           const err = (result as { error?: unknown }).error;
+          const saved =
+            "saved" in result && (result as { saved?: unknown }).saved === true;
           toast.error(
             typeof err === "string" && err.trim()
               ? err
               : "Could not save. Try again.",
           );
+          if (saved) {
+            setOpen(false);
+            if (refresh === "await") router.refresh();
+            else if (refresh === "background") setTimeout(() => router.refresh(), 0);
+          }
           return;
         }
         onResult?.(result);

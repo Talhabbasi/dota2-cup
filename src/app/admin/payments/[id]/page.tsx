@@ -4,7 +4,11 @@ import { requireAdmin } from "@/lib/admin-auth";
 import { resolveAdminSeasonView } from "@/lib/admin-season-view";
 import { prisma } from "@/lib/prisma";
 import { playerMustPay } from "@/lib/payments";
-import { entryFeePkr, formatEntryFee } from "@/lib/registration-status";
+import {
+  entryFeePkr,
+  formatEntryFee,
+  paymentsChannelName,
+} from "@/lib/registration-status";
 import { pageMeta } from "@/lib/seo";
 import {
   AdminBackLink,
@@ -45,6 +49,7 @@ export default async function AdminPaymentDetailPage({
   }
 
   const fee = entryFeePkr();
+  const paymentsChannel = paymentsChannelName();
   const mustPay = playerMustPay(membership.rosterRole);
   const paid = Boolean(membership.paidAt);
   const amount = paid ? membership.paymentAmount || fee : fee;
@@ -100,7 +105,8 @@ export default async function AdminPaymentDetailPage({
               </p>
               <AdminConfirmForm
                 action={actionClearPaid}
-                message={`Clear payment for ${player.steamName}?`}
+                message={`Clear payment for ${player.steamName} and post that in #${paymentsChannel}?`}
+                successMessage={`Payment cleared and posted in #${paymentsChannel}`}
               >
                 <input type="hidden" name="discordId" value={player.discordId} />
                 <input type="hidden" name="seasonId" value={view.id} />
@@ -124,7 +130,8 @@ export default async function AdminPaymentDetailPage({
               </p>
               <AdminConfirmForm
                 action={actionMarkPaid}
-                message={`Mark ${player.steamName} as paid (Rs ${amount.toLocaleString("en-PK")})?`}
+                message={`Mark ${player.steamName} as paid (Rs ${amount.toLocaleString("en-PK")}) and post it in #${paymentsChannel}?`}
+                successMessage={`Marked paid and posted in #${paymentsChannel}`}
               >
                 <input type="hidden" name="discordId" value={player.discordId} />
                 <input type="hidden" name="seasonId" value={view.id} />

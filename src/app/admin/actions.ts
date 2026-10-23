@@ -38,6 +38,11 @@ import { updateCupFeatureSettings } from "@/lib/cup-features";
 import { addPlayerAlias } from "@/lib/player-aliases";
 import { revalidatePublicPages } from "@/lib/page-cache";
 import { adminClearPaid, adminMarkPaid } from "@/lib/payments";
+import {
+  announceClearedPaidInDiscord,
+  announceMarkedPaidInDiscord,
+} from "@/lib/discord-payments-rest";
+import { paymentsChannelName } from "@/lib/registration-status";
 import { uploadMatchScreenshot, isObjectStorageConfigured } from "@/lib/object-storage";
 import { ingestScoreboardScreenshot, listScoreboardKnownNames } from "@/lib/scoreboard-shot";
 import { recordManualSeriesWinner } from "@/lib/results";
@@ -552,23 +557,71 @@ export async function actionMarkPaid(formData: FormData) {
   const session = await requireAdmin();
   const discordId = String(formData.get("discordId") ?? "");
   const seasonId = String(formData.get("seasonId") ?? "");
-  await adminMarkPaid(discordId, "web-admin", seasonId);
-  await note(session, "payment.mark", `Marked ${await who(discordId)} as paid`, {
+  const result = await adminMarkPaid(discordId, "web-admin", seasonId);
+  const name = result.player.steamName;
+  if (result.skipped) {
+    await note(session, "payment.mark", `${name} is a substitute — no fee`, {
+      discordId,
+    });
+    revalidateAdmin();
+    return;
+  }
+  if (result.alreadyPaid) {
+    await note(session, "payment.mark", `${name} was already paid`, { discordId });
+    revalidateAdmin();
+    return;
+  }
+
+  const discord = await announceMarkedPaidInDiscord({
+    discordId,
+    steamName: name,
+    teamId: result.player.teamId,
+  });
+  const channel = paymentsChannelName();
+  const discordNote = discord.ok ? `posted in #${channel}` : discord.reason;
+  await note(session, "payment.mark", `Marked ${name} as paid · ${discordNote}`, {
     discordId,
   });
   revalidateAdmin();
+  if (!discord.ok) {
+    return {
+      ok: false as const,
+      saved: true as const,
+      error: `Marked paid, but #${channel} was not updated: ${discord.reason}`,
+    };
+  }
 }
 
 export async function actionClearPaid(formData: FormData) {
   const session = await requireAdmin();
   const discordId = String(formData.get("discordId") ?? "");
   const seasonId = String(formData.get("seasonId") ?? "");
-  const name = await who(discordId);
-  await adminClearPaid(discordId, seasonId);
-  await note(session, "payment.clear", `Cleared payment for ${name}`, {
+  const result = await adminClearPaid(discordId, seasonId);
+  const name = result.player.steamName;
+  if (!result.cleared) {
+    await note(session, "payment.clear", `${name} was not paid`, { discordId });
+    revalidateAdmin();
+    return;
+  }
+
+  const discord = await announceClearedPaidInDiscord({
+    discordId,
+    steamName: name,
+    teamId: result.player.teamId,
+  });
+  const channel = paymentsChannelName();
+  const discordNote = discord.ok ? `posted in #${channel}` : discord.reason;
+  await note(session, "payment.clear", `Cleared payment for ${name} · ${discordNote}`, {
     discordId,
   });
   revalidateAdmin();
+  if (!discord.ok) {
+    return {
+      ok: false as const,
+      saved: true as const,
+      error: `Payment cleared, but #${channel} was not updated: ${discord.reason}`,
+    };
+  }
 }
 
 const MAX_SCOREBOARD_BYTES = 12 * 1024 * 1024;
