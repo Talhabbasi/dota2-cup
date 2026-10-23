@@ -28,6 +28,7 @@ import {
 } from "@/components/admin/form-controls";
 import {
   actionAddAlias,
+  actionRemoveAlias,
   actionAddToTeam,
   actionRemoveFromTeam,
   actionSetRosterSlot,
@@ -50,7 +51,10 @@ export default async function AdminPlayerDetailPage({
   const sp = await searchParams;
   const { view, readOnly } = await resolveAdminSeasonView(sp.season);
   const backHref = `/admin/players?season=${view.id}`;
-  const player = await prisma.player.findUnique({ where: { id } });
+  const player = await prisma.player.findUnique({
+    where: { id },
+    include: { aliases: { orderBy: { alias: "asc" } } },
+  });
   if (!player) notFound();
   const [membership, teams] = await Promise.all([
     prisma.seasonPlayer.findUnique({
@@ -162,6 +166,37 @@ export default async function AdminPlayerDetailPage({
 
         <AdminCard>
           <AdminSection title="Scoreboard alias">
+            {player.aliases.length === 0 ? (
+              <p className="m-0 text-sm text-muted-foreground">No aliases saved.</p>
+            ) : (
+              <ul className="m-0 grid list-none gap-2 p-0">
+                {player.aliases.map((row) => (
+                  <li
+                    key={row.id}
+                    className="flex items-center justify-between gap-2 rounded-md border border-white/10 px-2.5 py-1.5"
+                  >
+                    <code className="text-sm text-foreground">{row.alias}</code>
+                    {readOnly ? null : (
+                      <AdminConfirmForm
+                        action={actionRemoveAlias}
+                        message={`Remove alias ${row.alias}?`}
+                        successMessage="Alias removed"
+                      >
+                        <input type="hidden" name="discordId" value={player.discordId} />
+                        <input type="hidden" name="alias" value={row.alias} />
+                        <AdminSubmitButton
+                          variant="ghost"
+                          className="text-xs"
+                          pendingLabel="Removing…"
+                        >
+                          Remove
+                        </AdminSubmitButton>
+                      </AdminConfirmForm>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
             {readOnly ? (
               <p className="m-0 text-sm text-muted-foreground">
                 Aliases stay with the player. This season is read-only.
@@ -177,10 +212,13 @@ export default async function AdminPlayerDetailPage({
                 <input
                   name="alias"
                   required
-                  placeholder="OCR misspelling"
+                  placeholder="Name as it appears on the scoreboard"
                   className={adminControlClass}
                 />
               </AdminField>
+              <p className="m-0 text-xs text-muted-foreground">
+                Spaces and symbols are removed when it is saved, so “Foo Bar” is stored as foobar.
+              </p>
               <AdminSubmitButton variant="secondary" pendingLabel="Adding…">
                 Add alias
               </AdminSubmitButton>

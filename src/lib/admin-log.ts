@@ -23,6 +23,7 @@ export const ADMIN_ACTION_LABELS: Record<string, string> = {
   "player.delete": "Deleted player",
   "player.roster_slot": "Changed roster slot",
   "player.alias": "Added alias",
+  "player.unalias": "Removed alias",
   "team.add_player": "Added to team",
   "team.remove_player": "Removed from team",
   "team.add_captain": "Set captain",

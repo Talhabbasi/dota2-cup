@@ -35,7 +35,7 @@ import {
   adminSetMatchTeams,
 } from "@/lib/match-admin";
 import { updateCupFeatureSettings } from "@/lib/cup-features";
-import { addPlayerAlias } from "@/lib/player-aliases";
+import { addPlayerAlias, removePlayerAlias } from "@/lib/player-aliases";
 import { revalidatePublicPages } from "@/lib/page-cache";
 import { adminClearPaid, adminMarkPaid } from "@/lib/payments";
 import {
@@ -345,14 +345,30 @@ export async function actionAddAlias(formData: FormData) {
   const session = await requireAdmin();
   const discordId = String(formData.get("discordId") ?? "");
   const alias = String(formData.get("alias") ?? "");
-  await addPlayerAlias({ discordId, alias });
+  const result = await addPlayerAlias({ discordId, alias });
   await note(
     session,
     "player.alias",
-    `Added alias “${alias}” for ${await who(discordId)}`,
-    { discordId, alias },
+    `Added alias “${result.alias.alias}” for ${result.player.steamName}`,
+    { discordId, alias: result.alias.alias },
   );
   revalidateAdmin();
+  revalidatePath(`/admin/players/${result.player.id}`);
+}
+
+export async function actionRemoveAlias(formData: FormData) {
+  const session = await requireAdmin();
+  const discordId = String(formData.get("discordId") ?? "");
+  const alias = String(formData.get("alias") ?? "");
+  const result = await removePlayerAlias({ discordId, alias });
+  await note(
+    session,
+    "player.unalias",
+    `Removed alias “${result.alias.alias}” from ${result.player.steamName}`,
+    { discordId, alias: result.alias.alias },
+  );
+  revalidateAdmin();
+  revalidatePath(`/admin/players/${result.player.id}`);
 }
 
 export async function actionAddCaptain(formData: FormData) {
