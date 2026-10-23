@@ -987,11 +987,15 @@ export async function actionActivateSeason(formData: FormData) {
       const { pushDiscordRoleSync } = await import(
         "@/lib/discord-role-sync-rest"
       );
+      const { pushDiscordTeamRooms } = await import(
+        "@/lib/discord-team-rooms-rest"
+      );
       await pushDiscordRoleSync();
+      await pushDiscordTeamRooms({ all: true });
       await note(
         session,
         "season.set_active",
-        `Set active ${season.name} · ${clearedDetail}`,
+        `Set active ${season.name} · ${clearedDetail} · team rooms rebuilt`,
         { seasonId },
       );
     });

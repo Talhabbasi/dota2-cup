@@ -8,6 +8,7 @@ import { formatRoles } from "./data";
 import { PLAY_WINDOW_SHORT, playWindowOrBoth } from "./play-window";
 import { rebalanceTeamRoster } from "./players-admin";
 import { pushDiscordRoleSync } from "./discord-role-sync-rest";
+import { pushDiscordTeamRooms } from "./discord-team-rooms-rest";
 import { prisma } from "./prisma";
 import { liveRoster } from "./live-roster";
 import { currentSeasonFilter } from "./seasons";
@@ -35,6 +36,7 @@ export async function adminAddCaptain(input: {
     captainDiscordId: input.discordId,
   });
   await pushDiscordRoleSync([input.discordId]);
+  await pushDiscordTeamRooms({ teamNames: [team.name] });
   return team;
 }
 
@@ -91,6 +93,7 @@ export async function adminRemoveCaptain(discordId: string) {
 
  });
  await pushDiscordRoleSync(result.rosterDiscordIds);
+ await pushDiscordTeamRooms({ removeTeam: result.teamName });
  return result;
 }
 
@@ -210,6 +213,7 @@ export async function adminChangeCaptain(input: {
    result.nextCaptain.discordId,
    ...(result.previousCaptain ? [result.previousCaptain.discordId] : []),
  ]);
+ await pushDiscordTeamRooms({ teamNames: [result.team.name] });
  return result;
 }
 
@@ -268,6 +272,10 @@ export async function adminRenameTeam(input: {
    members.map((member) => member.discordId),
    { renameTeam: { from: result.oldName, to: result.newName } },
  );
+ await pushDiscordTeamRooms({
+   teamNames: [result.newName],
+   renameTeam: { from: result.oldName, to: result.newName },
+ });
  return result;
 }
 

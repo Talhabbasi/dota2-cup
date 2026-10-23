@@ -1,4 +1,5 @@
 import { pushDiscordRoleSync } from "./discord-role-sync-rest";
+import { pushDiscordTeamRooms } from "./discord-team-rooms-rest";
 import { prisma } from "./prisma";
 import { createSeasonTeam } from "./season-roster";
 import { withAuctionLock, requireAuctionInactive } from "./auction-lock";
@@ -24,6 +25,7 @@ export async function adminCreateManualTeam(input: {
     select: { discordId: true },
   });
   if (captain) await pushDiscordRoleSync([captain.discordId]);
+  await pushDiscordTeamRooms({ teamNames: [team.name] });
   return team;
 }
 
@@ -58,6 +60,10 @@ export async function adminUpdateTeamMeta(input: {
       previous.players.map((player) => player.discordId),
       { renameTeam: { from: previous.name, to: team.name } },
     );
+    await pushDiscordTeamRooms({
+      teamNames: [team.name],
+      renameTeam: { from: previous.name, to: team.name },
+    });
   }
   return team;
 }

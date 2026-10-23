@@ -1,5 +1,6 @@
 import { withAuctionLock, requireAuctionInactive, type AuctionDb } from "./auction-lock";
 import { pushDiscordRoleSync } from "./discord-role-sync-rest";
+import { pushDiscordTeamRooms } from "./discord-team-rooms-rest";
 import { syncPlayerRosterToSeason } from "./season-roster";
 import {
   MAX_CAPTAINS,
@@ -117,6 +118,9 @@ export async function adminDeletePlayer(discordId: string) {
    discordId,
    ...(result.remainingTeam?.players.map((member) => member.discordId) ?? []),
  ]);
+ if (result.remainingTeam) {
+   await pushDiscordTeamRooms({ teamNames: [result.remainingTeam.name] });
+ }
  return result;
 }
 
@@ -165,6 +169,7 @@ export async function adminAddPlayerToTeam(input: {
 
  });
  await pushDiscordRoleSync([input.discordId]);
+ await pushDiscordTeamRooms({ teamNames: [result.team.name] });
  return result;
 }
 
@@ -203,6 +208,7 @@ export async function adminRemovePlayerFromTeam(discordId: string) {
 
  });
  await pushDiscordRoleSync([discordId]);
+ await pushDiscordTeamRooms({ teamNames: [result.teamName] });
  return result;
 }
 
