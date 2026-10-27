@@ -313,6 +313,7 @@ export default async function Home() {
                 wins: row.wins,
                 losses: row.losses,
                 points: row.points,
+                purse: row.purse,
               }))}
             />
           </section>

@@ -120,6 +120,7 @@ export default async function TeamPage({
         subCount={subs.length}
         wins={record?.wins ?? 0}
         losses={record?.losses ?? 0}
+        purse={team.purse}
         playWindowLabel={PLAY_WINDOW_SHORT[teamWindow]}
       />
 

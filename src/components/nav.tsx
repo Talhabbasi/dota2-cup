@@ -45,6 +45,7 @@ const AuthButtons = dynamic(
 const BASE_LINKS = [
   ["/", "Home"],
   ["/teams", "Teams"],
+  ["/players", "Players"],
   ["/schedule", "Schedule"],
   ["/playoffs", "Playoffs"],
   ["/matches", "Matches"],

@@ -103,6 +103,7 @@ export default async function TablePage({
     wins: row.wins,
     losses: row.losses,
     points: row.points,
+    purse: row.purse,
   }));
 
   const groupGames =

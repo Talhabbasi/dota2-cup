@@ -16,6 +16,7 @@ const COLUMNS = [
     links: [
       ["/", "Home"],
       ["/teams", "Teams"],
+      ["/players", "Players"],
       ["/player-insight", "Player Insight"],
       ["/heroes", "Heroes"],
     ],

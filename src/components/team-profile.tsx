@@ -19,6 +19,7 @@ import {
   MAX_ROSTER,
   MAX_SUBS,
   labelForMedal,
+  formatPoints,
   MIN_ROSTER,
   ROLE_SHORT,
   STARTING_ROLES,
@@ -124,6 +125,7 @@ export function TeamProfileHero({
   subCount,
   wins,
   losses,
+  purse,
   playWindowLabel,
 }: {
   teamName: string;
@@ -133,6 +135,7 @@ export function TeamProfileHero({
   subCount: number;
   wins: number;
   losses: number;
+  purse: number;
   playWindowLabel?: string | null;
 }) {
   const rosterReady = starterCount >= MIN_ROSTER;
@@ -185,11 +188,12 @@ export function TeamProfileHero({
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
           <StatTile label="Wins" value={wins} />
           <StatTile label="Losses" value={losses} />
           <StatTile label="Starters" value={`${starterCount}/${MIN_ROSTER}`} />
           <StatTile label="Roster" value={`${playerCount}/${MAX_ROSTER}`} />
+          <StatTile label="Purse" value={formatPoints(purse)} />
         </div>
 
         <div>

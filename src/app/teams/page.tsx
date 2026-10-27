@@ -75,6 +75,7 @@ export default async function TeamsPage({
       rank: rankById.get(team.id) ?? 0,
       playerNames: team.players.map((p) => p.steamName),
       form: formFromRecord(wins, losses),
+      purse: team.purse,
     };
   });
 

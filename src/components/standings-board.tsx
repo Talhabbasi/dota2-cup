@@ -11,6 +11,7 @@ import {
   EsportsTableRow,
   TeamBadge,
 } from "@/components/common";
+import { formatPoints } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
 export type StandingRowView = {
@@ -20,6 +21,7 @@ export type StandingRowView = {
   wins: number;
   losses: number;
   points: number;
+  purse: number;
 };
 
 type SortKey = "points" | "wins" | "name";
@@ -92,6 +94,9 @@ const StandingTableRow = memo(function StandingTableRow({
       ))}
       <EsportsTableCell className="text-right! font-mono text-sm font-bold tabular-nums text-amber-400">
         {row.points}
+      </EsportsTableCell>
+      <EsportsTableCell className="text-right! font-mono text-sm tabular-nums">
+        {formatPoints(row.purse)}
       </EsportsTableCell>
     </EsportsTableRow>
   );
@@ -181,7 +186,7 @@ export function StandingsBoard({
             <EsportsTableRow className="hover:bg-transparent">
               <EsportsTableHead className="w-12">#</EsportsTableHead>
               <EsportsTableHead>Team</EsportsTableHead>
-              {["P", "W", "L", "PTS"].map((label) => (
+              {["P", "W", "L", "PTS", "Purse"].map((label) => (
                 <EsportsTableHead key={label} className="text-right!">
                   {label}
                 </EsportsTableHead>

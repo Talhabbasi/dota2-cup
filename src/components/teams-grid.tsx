@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 import { EsportsCard, StatTile, TeamBadge } from "@/components/common";
 import { Pagination, usePagedList } from "@/components/pagination";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { MAX_ROSTER, MIN_ROSTER } from "@/lib/constants";
+import { formatPoints, MAX_ROSTER, MIN_ROSTER } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
 export type FormDot = "W" | "L" | "·";
@@ -22,9 +22,10 @@ export type TeamCardView = {
   rank: number;
   playerNames: string[];
   form: FormDot[];
+  purse: number;
 };
 
-type SortKey = "standings" | "name" | "roster";
+type SortKey = "standings" | "name" | "roster" | "purse";
 
 const STARTER_SLOTS = 5;
 
@@ -112,7 +113,7 @@ function TeamCard({ team }: { team: TeamCardView }) {
 
         <PlayerStrip names={team.playerNames} />
 
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-2 gap-2">
           <StatTile
             label="Roster"
             value={`${team.playerCount}/${MAX_ROSTER}`}
@@ -126,6 +127,11 @@ function TeamCard({ team }: { team: TeamCardView }) {
           <StatTile
             label="Subs"
             value={`${team.subCount}/2`}
+            className="px-2.5 py-2"
+          />
+          <StatTile
+            label="Purse"
+            value={formatPoints(team.purse)}
             className="px-2.5 py-2"
           />
         </div>
@@ -160,6 +166,10 @@ export function TeamsGrid({ teams }: { teams: TeamCardView[] }) {
       list.sort(
         (a, b) =>
           b.playerCount - a.playerCount || a.name.localeCompare(b.name),
+      );
+    } else if (sort === "purse") {
+      list.sort(
+        (a, b) => b.purse - a.purse || a.name.localeCompare(b.name),
       );
     } else {
       list.sort(
@@ -199,6 +209,15 @@ export function TeamsGrid({ teams }: { teams: TeamCardView[] }) {
             onClick={() => setSort("roster")}
           >
             Roster fill
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={sort === "purse"}
+            className={sort === "purse" ? "active" : ""}
+            onClick={() => setSort("purse")}
+          >
+            Purse
           </button>
           <button
             type="button"
