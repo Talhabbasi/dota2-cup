@@ -7,6 +7,7 @@
  */
 
 import { isDummyDiscordId, publicPlayerWhere } from "./dummy";
+import { noteFailedResponse } from "./public-error";
 import { PLAY_WINDOW_ROLE_NAMES, playWindowOrBoth } from "./play-window";
 import { prisma } from "./prisma";
 import { getLiveSeason } from "./seasons";
@@ -67,7 +68,10 @@ async function discord(
       init.body = JSON.stringify(body);
     }
     const res = await fetch(`${API}${path}`, init);
-    if (res.status !== 429) return res;
+    if (res.status !== 429) {
+      if (!res.ok) void noteFailedResponse(`Discord ${method} ${path}`, res);
+      return res;
+    }
     const data = (await res.json().catch(() => null)) as {
       retry_after?: number;
     } | null;

@@ -8,6 +8,7 @@ export function useAuctionView(initial: WebAuctionView) {
   const [receivedAt, setReceivedAt] = useState(0);
   const [now, setNow] = useState(0);
   const [online, setOnline] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
   const latest = useRef(initial);
   const accept = useCallback((next: WebAuctionView) => {
     if (next.revision < latest.current.revision || (next.revision === latest.current.revision && next.serverTime < latest.current.serverTime)) return;
@@ -30,13 +31,28 @@ export function useAuctionView(initial: WebAuctionView) {
       const timeout = setTimeout(() => controller?.abort(), 8000);
       try {
         const res = await fetch("/api/auction/status", { cache: "no-store", signal: controller.signal });
-        if (!res.ok) throw new Error("Updates unavailable");
+        if (!res.ok) {
+          const data = (await res.json().catch(() => ({}))) as { error?: string };
+          throw new Error(
+            data.error?.trim() || `Auction updates failed (${res.status}).`,
+          );
+        }
         const data: WebAuctionView = await res.json();
         if (stopped) return;
         accept(data);
         failures = 0;
-      } catch {
-        if (!stopped) { setOnline(false); failures++; }
+        setProblem(null);
+      } catch (error) {
+        if (!stopped) {
+          setOnline(false);
+          failures++;
+          const message = error instanceof Error ? error.message.trim() : "";
+          setProblem(
+            !message || /aborted/i.test(message)
+              ? "The update request timed out."
+              : message,
+          );
+        }
       } finally {
         clearTimeout(timeout);
         inFlight = false;
@@ -61,5 +77,5 @@ export function useAuctionView(initial: WebAuctionView) {
   const serverNow = view.serverTime + Math.max(0, now - receivedAt);
   const secondsLeft = view.status === "paused" ? view.secondsLeft : view.endsAt ? Math.max(0, Math.ceil((new Date(view.endsAt).getTime() - serverNow) / 1000)) : 0;
   const closed = view.awaitingDecision || (view.status === "running" && !!view.endsAt && secondsLeft === 0);
-  return { view, accept, connected, secondsLeft, closed };
+  return { view, accept, connected, problem, secondsLeft, closed };
 }

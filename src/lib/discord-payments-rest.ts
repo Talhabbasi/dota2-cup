@@ -3,6 +3,7 @@
  * Uses the bot token over REST, so the local gateway bot does not need to be running.
  */
 
+import { noteFailedResponse } from "./public-error";
 import {
   formatEntryFee,
   isPaymentsChannelName,
@@ -35,7 +36,10 @@ async function discord(
       init.body = JSON.stringify(body);
     }
     const res = await fetch(`${API}${path}`, init);
-    if (res.status !== 429) return res;
+    if (res.status !== 429) {
+      if (!res.ok) void noteFailedResponse(`Discord ${method} ${path}`, res);
+      return res;
+    }
     const data = (await res.json().catch(() => null)) as {
       retry_after?: number;
     } | null;

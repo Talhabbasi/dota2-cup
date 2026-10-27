@@ -55,7 +55,11 @@ export function AuctionQueueClient({
   return (
     <div className="grid gap-4">
       {!live.connected ? (
-        <p className="m-0 text-sm text-amber-200">Reconnecting to live auction…</p>
+        <p className="m-0 text-sm text-amber-200">
+          {live.problem
+            ? `Reconnecting to live auction — ${live.problem}`
+            : "Reconnecting to live auction…"}
+        </p>
       ) : null}
       <AuctionPlayerQueue
         current={current}

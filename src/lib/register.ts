@@ -30,14 +30,20 @@ async function liveSeasonMembership(playerId: string, seasonId: string | undefin
   });
 }
 
-/** Public register: one Discord per live season. Admins may still update via bypassCapacity. */
+function sameDiscord(storedId: string, inputId: string) {
+  return storedId === inputId || storedId.startsWith(`${inputId}:`);
+}
+
+/** One Discord registration per live season. A past season does not block the next one. */
 function assertNotAlreadyRegistered(input: {
   enrolled: boolean;
   bypassCapacity?: boolean;
+  seasonName?: string | null;
 }) {
   if (input.enrolled && !input.bypassCapacity) {
+    const season = input.seasonName?.trim() || "this season";
     throw new Error(
-      "Already registered. Ask an admin if you need to change rank or roles.",
+      `Already registered for **${season}**. The same Discord can register again in a later season. Ask an admin to change rank, roles, or Steam ID for this one.`,
     );
   }
 }
@@ -88,20 +94,10 @@ export async function registerPlayer(input: {
 
     if (
       existingBySteam &&
-      existingBySteam.discordId !== input.discordId &&
-      !existingBySteam.discordId.startsWith(`${input.discordId}:`)
+      !sameDiscord(existingBySteam.discordId, input.discordId)
     ) {
       throw new Error(
         `That Steam account is already linked to **${existingBySteam.discordName}**. One Steam account can only belong to one Discord.`,
-      );
-    }
-
-    if (
-      existingByDiscord?.steam32 != null &&
-      existingByDiscord.steam32 !== profile.steam32
-    ) {
-      throw new Error(
-        "This Discord is already linked to a different Steam account. One Discord ↔ one Steam.",
       );
     }
 
@@ -116,6 +112,7 @@ export async function registerPlayer(input: {
       assertNotAlreadyRegistered({
         enrolled,
         bypassCapacity: input.bypassCapacity,
+        seasonName: liveSeason?.name,
       });
       await assertCanJoinLiveSeason({
         playerId: current.id,
@@ -188,20 +185,10 @@ export async function registerPlayer(input: {
 
   if (
     existingBySteam &&
-    existingBySteam.discordId !== input.discordId &&
-    !existingBySteam.discordId.startsWith(`${input.discordId}:`)
+    !sameDiscord(existingBySteam.discordId, input.discordId)
   ) {
     throw new Error(
       `That Steam account is already linked to **${existingBySteam.discordName}**. One Steam account can only belong to one Discord.`,
-    );
-  }
-
-  if (
-    existingByDiscord &&
-    existingByDiscord.steam32 !== profile.steam32
-  ) {
-    throw new Error(
-      "This Discord is already linked to a different Steam account. One Discord ↔ one Steam. Ask an admin for `/player delete` if you need a reset.",
     );
   }
 
@@ -216,6 +203,7 @@ export async function registerPlayer(input: {
     assertNotAlreadyRegistered({
       enrolled,
       bypassCapacity: input.bypassCapacity,
+      seasonName: liveSeason?.name,
     });
     await assertCanJoinLiveSeason({
       playerId: current.id,
@@ -226,6 +214,7 @@ export async function registerPlayer(input: {
       data: {
         discordId: input.discordId,
         discordName: input.discordName,
+        steam32: profile.steam32,
         steamName: onTeam ? current.steamName : profile.steamName,
         medal: onTeam ? current.medal : medal,
         rolesJson: onTeam ? current.rolesJson : stringifyRoles(roles),

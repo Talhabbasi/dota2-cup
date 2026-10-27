@@ -5,6 +5,9 @@ import {
   formatEntryFee,
   isRegistrationOpen,
   isPaymentsChannelName,
+  paymentAccountName,
+  paymentAccountNumber,
+  paymentBankName,
   paymentsChannelName,
 } from "./registration-status";
 
@@ -155,7 +158,8 @@ export async function moderatePaymentsChannel(
     const notice = await message.channel.send({
       content:
         `<@${message.author.id}> **#${paymentsChannelName()}** is for **payment screenshots only**. ` +
-        `Upload the **${formatEntryFee()}** transfer picture. An Admin clicks ✅ to confirm. Questions go in **#general**.`,
+        `Pay **${formatEntryFee()}** to **${paymentBankName()}** \`${paymentAccountNumber()}\` ` +
+        `(${paymentAccountName()}), then upload the transfer picture. An Admin clicks ✅ to confirm. Questions go in **#general**.`,
     });
     setTimeout(() => notice.delete().catch(() => {}), 12_000);
   } catch {

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { sessionIsAdmin } from "@/lib/admin-auth";
+import { publicErrorMessage } from "@/lib/public-error";
 import { endSeasonArchive } from "@/lib/seasons";
 
 export async function POST(
@@ -27,8 +28,10 @@ export async function POST(
     }
     return NextResponse.json({ ok: true, season });
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Could not archive season.";
-    return NextResponse.json({ ok: false, error: message }, { status: 400 });
+    console.error("[seasons/end]", error);
+    return NextResponse.json(
+      { ok: false, error: publicErrorMessage(error, "Could not archive season.") },
+      { status: 400 },
+    );
   }
 }

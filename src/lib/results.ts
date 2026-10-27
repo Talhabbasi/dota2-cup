@@ -1,3 +1,4 @@
+import { noteFailedResponse } from "./public-error";
 import { prisma } from "./prisma";
 import { currentSeasonId } from "./seasons";
 import {
@@ -53,7 +54,10 @@ async function fetchPlayerMatchRows(steam32: number): Promise<RecentRow[]> {
       await wait(1600);
       continue;
     }
-    if (!res.ok) return [];
+    if (!res.ok) {
+      await noteFailedResponse(`OpenDota recent matches ${steam32}`, res);
+      return [];
+    }
     const rows = (await res.json()) as RecentRow[];
     return Array.isArray(rows) ? rows : [];
   }

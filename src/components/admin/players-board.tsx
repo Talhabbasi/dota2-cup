@@ -29,12 +29,14 @@ export type AdminPlayerRow = {
   discordId: string;
   discordName: string;
   steamName: string;
+  steam32: number | null;
   pubgName?: string | null;
   medal: string;
   medalLabel: string;
   teamName: string | null;
   isCaptain: boolean;
   rosterRole: string | null;
+  createdAt: string;
   updatedAt: string;
 };
 
@@ -88,7 +90,7 @@ export function AdminPlayersBoard({
               Register player
             </span>
             <span className="text-sm text-muted-foreground">
-              Discord and Steam identify one player. PUBG also needs the in-game name and rank.
+              Discord and Steam identify one player for this season. A later season can use the same Discord with a new Steam ID.
             </span>
           </span>
           <span className="text-primary">{showRegister ? "−" : "+"}</span>
@@ -110,7 +112,7 @@ export function AdminPlayersBoard({
               <input
                 name="steam"
                 className={adminControlClass}
-                placeholder="Required. One Steam account per Discord."
+                placeholder="Profile URL, or Steam32 / Steam64"
               />
             </AdminField>
             <AdminField label="Discord user id">
@@ -234,7 +236,7 @@ export function AdminPlayersBoard({
         hrefFor={(p) => `/admin/players/${p.id}?season=${publicSeasonParam ?? ""}`}
         searchPlaceholder="Search name, Discord, or id…"
         searchText={(p) =>
-          `${p.steamName} ${p.discordName} ${p.discordId} ${p.teamName ?? ""} ${p.medalLabel} ${formatModifiedAt(p.updatedAt)}`
+          `${p.steamName} ${p.discordName} ${p.discordId} ${p.steam32 ?? ""} ${p.teamName ?? ""} ${p.medalLabel} ${formatModifiedAt(p.createdAt)} ${formatModifiedAt(p.updatedAt)}`
         }
         emptyLabel="No registered players."
         filters={[
@@ -285,6 +287,12 @@ export function AdminPlayersBoard({
               value === "__unsigned__" ? !p.teamName : p.teamName === value,
           },
           {
+            key: "created",
+            label: "Created",
+            options: [...MODIFIED_FILTER_OPTIONS],
+            match: (p, value) => matchesModifiedFilter(p.createdAt, value),
+          },
+          {
             key: "modified",
             label: "Modified",
             options: [...MODIFIED_FILTER_OPTIONS],
@@ -305,6 +313,15 @@ export function AdminPlayersBoard({
             key: "discord",
             header: "Discord",
             cell: (p) => p.discordName || "—",
+          },
+          {
+            key: "steam",
+            header: "Steam ID",
+            cell: (p) => (
+              <span className="tabular-nums text-muted-foreground">
+                {p.steam32 ?? "—"}
+              </span>
+            ),
           },
           {
             key: "medal",
@@ -339,6 +356,15 @@ export function AdminPlayersBoard({
                       ? "starter"
                       : "unsigned"}
               </AdminStatus>
+            ),
+          },
+          {
+            key: "created",
+            header: "Created",
+            cell: (p) => (
+              <span className="tabular-nums text-muted-foreground">
+                {formatModifiedAt(p.createdAt)}
+              </span>
             ),
           },
           {

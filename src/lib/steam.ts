@@ -1,3 +1,5 @@
+import { noteFailedResponse } from "./public-error";
+
 const STEAM64_BASE = BigInt("76561197960265728");
 const STEAM_COMMUNITY = "https://steamcommunity.com";
 
@@ -48,7 +50,18 @@ type ParsedProfileInput =
   | { kind: "profiles"; steam64: string }
   | { kind: "vanity"; vanity: string };
 
-function parseProfileInput(input: string): ParsedProfileInput {
+function parseProfileInput(
+  input: string,
+  options?: { allowNumericId?: boolean },
+): ParsedProfileInput {
+  const trimmed = input.trim();
+  if (options?.allowNumericId && /^\d{6,17}$/.test(trimmed)) {
+    const steam64 =
+      trimmed.length >= 17
+        ? trimmed
+        : steam32To64(Number(trimmed)).toString();
+    return { kind: "profiles", steam64 };
+  }
   rejectBareNumericId(input);
   const normalized = normalizeInput(input);
 
@@ -71,15 +84,32 @@ function parseProfileInput(input: string): ParsedProfileInput {
   );
 }
 
-async function fetchProfileXml(url: string): Promise<string | null> {
+function steamNotFound(notes: string[]) {
+  const extra = [...new Set(notes.filter(Boolean))].slice(-2).join(" ");
+  const base =
+    "Steam profile not found. Make sure the link is correct and the profile is public.";
+  return extra ? `${base} ${extra}` : base;
+}
+
+async function fetchProfileXml(
+  url: string,
+  notes: string[],
+): Promise<string | null> {
   try {
     const res = await fetch(url, {
       headers: { "User-Agent": "MM-Dota-Cup/1.0 (+discord registration)" },
       cache: "no-store",
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      notes.push(await noteFailedResponse("Steam community profile", res));
+      return null;
+    }
     return res.text();
-  } catch {
+  } catch (error) {
+    const reason =
+      error instanceof Error ? error.message : "Steam community request failed.";
+    notes.push(reason);
+    console.error("Steam community profile request failed", error);
     return null;
   }
 }
@@ -107,9 +137,15 @@ function parseProfileXml(
   return { steam32, steam64, steamName };
 }
 
-async function resolveVanityViaSteamApi(vanity: string): Promise<string | null> {
+async function resolveVanityViaSteamApi(
+  vanity: string,
+  notes: string[],
+): Promise<string | null> {
   const key = steamWebApiKey();
-  if (!key) return null;
+  if (!key) {
+    notes.push("STEAM_WEB_API_KEY is not set, so the vanity URL was not resolved by Steam.");
+    return null;
+  }
   try {
     const url = new URL(
       "https://api.steampowered.com/ISteamUser/ResolveVanityURL/v0001/",
@@ -117,22 +153,36 @@ async function resolveVanityViaSteamApi(vanity: string): Promise<string | null> 
     url.searchParams.set("key", key);
     url.searchParams.set("vanityurl", vanity);
     const res = await fetch(url, { cache: "no-store" });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      notes.push(await noteFailedResponse("Steam vanity lookup", res));
+      return null;
+    }
     const data = (await res.json()) as {
       response?: { success?: number; steamid?: string };
     };
-    if (data.response?.success !== 1 || !data.response.steamid) return null;
+    if (data.response?.success !== 1 || !data.response.steamid) {
+      notes.push("Steam vanity lookup did not return a profile for that link.");
+      return null;
+    }
     return data.response.steamid;
-  } catch {
+  } catch (error) {
+    notes.push(
+      error instanceof Error ? error.message : "Steam vanity lookup failed.",
+    );
+    console.error("Steam vanity lookup failed", error);
     return null;
   }
 }
 
 async function personaViaSteamApi(
   steam64: string,
+  notes: string[],
 ): Promise<Omit<SteamProfile, "profileUrl"> | null> {
   const key = steamWebApiKey();
-  if (!key) return null;
+  if (!key) {
+    notes.push("STEAM_WEB_API_KEY is not set, so the Steam profile API was skipped.");
+    return null;
+  }
   try {
     const url = new URL(
       "https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/",
@@ -140,7 +190,10 @@ async function personaViaSteamApi(
     url.searchParams.set("key", key);
     url.searchParams.set("steamids", steam64);
     const res = await fetch(url, { cache: "no-store" });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      notes.push(await noteFailedResponse("Steam player summary", res));
+      return null;
+    }
     const data = (await res.json()) as {
       response?: {
         players?: { steamid?: string; personaname?: string }[];
@@ -149,13 +202,20 @@ async function personaViaSteamApi(
     const player = data.response?.players?.[0];
     const name = player?.personaname?.trim();
     const id64 = player?.steamid?.trim();
-    if (!name || !id64 || id64 !== steam64) return null;
+    if (!name || !id64 || id64 !== steam64) {
+      notes.push("Steam player summary did not include a public name for that profile.");
+      return null;
+    }
     return {
       steam32: steam64To32(BigInt(id64)),
       steam64: id64,
       steamName: name,
     };
-  } catch {
+  } catch (error) {
+    notes.push(
+      error instanceof Error ? error.message : "Steam player summary failed.",
+    );
+    console.error("Steam player summary failed", error);
     return null;
   }
 }
@@ -163,12 +223,16 @@ async function personaViaSteamApi(
 async function personaViaOpenDota(
   steam32: number,
   expectedSteam64: string,
+  notes: string[],
 ): Promise<Omit<SteamProfile, "profileUrl"> | null> {
   try {
     const res = await fetch(`https://api.opendota.com/api/players/${steam32}`, {
       cache: "no-store",
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      notes.push(await noteFailedResponse("OpenDota player", res));
+      return null;
+    }
     const data = (await res.json()) as {
       profile?: {
         account_id?: number;
@@ -183,6 +247,7 @@ async function personaViaOpenDota(
       data.profile?.account_id !== steam32 ||
       (id64 && id64 !== expectedSteam64)
     ) {
+      notes.push("OpenDota has no public persona for that Steam account.");
       return null;
     }
     return {
@@ -190,57 +255,66 @@ async function personaViaOpenDota(
       steam64: expectedSteam64,
       steamName: name,
     };
-  } catch {
+  } catch (error) {
+    notes.push(error instanceof Error ? error.message : "OpenDota player lookup failed.");
+    console.error("OpenDota player lookup failed", error);
     return null;
   }
 }
 
-async function resolveSteam64(parsed: ParsedProfileInput): Promise<string> {
+async function resolveSteam64(
+  parsed: ParsedProfileInput,
+  notes: string[],
+): Promise<string> {
   if (parsed.kind === "profiles") return parsed.steam64;
 
-  const viaApi = await resolveVanityViaSteamApi(parsed.vanity);
+  const viaApi = await resolveVanityViaSteamApi(parsed.vanity, notes);
   if (viaApi) return viaApi;
 
   const xml = await fetchProfileXml(
     `${STEAM_COMMUNITY}/id/${encodeURIComponent(parsed.vanity)}?xml=1`,
+    notes,
   );
   if (xml) {
     const profile = parseProfileXml(xml);
     if (profile) return profile.steam64;
+    notes.push("Steam community XML did not include a profile id.");
   }
 
-  throw new Error(
-    "Steam profile not found. Make sure the link is correct and the profile is public.",
-  );
+  throw new Error(steamNotFound(notes));
 }
 
 async function resolvePersona(
   steam64: string,
+  notes: string[],
 ): Promise<Omit<SteamProfile, "profileUrl">> {
   const steam32 = steam64To32(BigInt(steam64));
 
-  const viaApi = await personaViaSteamApi(steam64);
+  const viaApi = await personaViaSteamApi(steam64, notes);
   if (viaApi) return viaApi;
 
-  const xml = await fetchProfileXml(`${steamProfileUrl(steam64)}?xml=1`);
+  const xml = await fetchProfileXml(`${steamProfileUrl(steam64)}?xml=1`, notes);
   if (xml) {
     const profile = parseProfileXml(xml, steam32);
     if (profile) return profile;
+    notes.push("Steam community XML did not include a public name.");
   }
 
-  const viaOpenDota = await personaViaOpenDota(steam32, steam64);
+  const viaOpenDota = await personaViaOpenDota(steam32, steam64, notes);
   if (viaOpenDota) return viaOpenDota;
 
-  throw new Error(
-    "Steam profile not found. Make sure the link is correct and the profile is public.",
-  );
+  throw new Error(steamNotFound(notes));
 }
 
 /** Resolve and verify a Steam profile URL (registration only — not bare IDs). */
-export async function resolveSteamProfile(input: string): Promise<SteamProfile> {
-  const parsed = parseProfileInput(input);
-  const steam64 = await resolveSteam64(parsed);
-  const profile = await resolvePersona(steam64);
+export async function resolveSteamProfile(
+  input: string,
+  options?: { allowNumericId?: boolean },
+): Promise<SteamProfile> {
+  const notes: string[] = [];
+  const parsed = parseProfileInput(input, options);
+  const steam64 = await resolveSteam64(parsed, notes);
+  const profile = await resolvePersona(steam64, notes);
   return { ...profile, profileUrl: steamProfileUrl(profile.steam64) };
 }
 
@@ -249,7 +323,7 @@ export async function verifySteamAccount(
   steam32: number,
 ): Promise<{ steamName: string; profileUrl: string }> {
   const steam64 = steam32To64(steam32).toString();
-  const profile = await resolvePersona(steam64);
+  const profile = await resolvePersona(steam64, []);
   if (profile.steam32 !== steam32) {
     throw new Error(
       "Steam profile could not be verified. Copy the link again from the Steam app.",
@@ -264,7 +338,10 @@ export async function verifySteamAccount(
 export async function hasOpenDotaProfile(steam32: number): Promise<boolean> {
   try {
     const res = await fetch(`https://api.opendota.com/api/players/${steam32}`);
-    if (!res.ok) return false;
+    if (!res.ok) {
+      await noteFailedResponse("OpenDota profile check", res);
+      return false;
+    }
     const data = (await res.json()) as { profile?: { account_id?: number } };
     return data.profile?.account_id === steam32;
   } catch {
@@ -281,7 +358,10 @@ export async function fetchSteamPersona(steam32: number): Promise<string> {
   }
   try {
     const res = await fetch(`https://api.opendota.com/api/players/${steam32}`);
-    if (!res.ok) return `Player ${steam32}`;
+    if (!res.ok) {
+      await noteFailedResponse("OpenDota persona", res);
+      return `Player ${steam32}`;
+    }
     const data = (await res.json()) as {
       profile?: { personaname?: string };
     };

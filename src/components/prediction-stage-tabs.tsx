@@ -136,8 +136,13 @@ export function PredictionStageTabs({
       setDrafts({});
       setJustSaved(true);
       router.refresh();
-    } catch {
-      setError("Could not save those picks.");
+    } catch (error) {
+      const detail = error instanceof Error ? error.message.trim() : "";
+      setError(
+        detail
+          ? `Could not save those picks. ${detail}`
+          : "Could not save those picks.",
+      );
     } finally {
       setSaving(false);
     }

@@ -186,12 +186,25 @@ export function paymentIban() {
   return process.env.PAYMENT_IBAN?.trim() || "PK16SADA0000003013396885";
 }
 
+/** Plain-text account block for Discord posts (easy to find / copy). */
+export function formatPaymentAccountDetails() {
+  return [
+    `**${paymentBankName()}**`,
+    `Account number: \`${paymentAccountNumber()}\``,
+    `IBAN: \`${paymentIban()}\``,
+    `Account title: **${paymentAccountName()}**`,
+    `Amount: **${formatEntryFee()} per person** (subs do not pay)`,
+  ].join("\n");
+}
+
 export function registrationClosedPublicMessage() {
   const channel = paymentsChannelName();
   return [
     `Registration for **${CUP_NAME}** is **closed**.`,
     "This is an **indoor tournament** for players who have played with **MM**. Outdoor / outside members are not allowed.",
-    `Pay **${formatEntryFee()} per person**, then send your screenshot in **#${channel}**. An Admin clicks ✅ to confirm — you are not paid until then.`,
+    `Pay **${formatEntryFee()} per person** to:`,
+    formatPaymentAccountDetails(),
+    `Then send your screenshot in **#${channel}**. An Admin clicks ✅ to confirm — you are not paid until then.`,
     "Already registered? You are in. Need a late add or a player removed? Ask an admin.",
   ].join("\n");
 }

@@ -1,3 +1,5 @@
+import { noteFailedResponse } from "./public-error";
+
 export type OpenDotaMatchPlayer = {
   account_id?: number;
   personaname?: string;
@@ -109,7 +111,10 @@ async function loadHeroCatalogFromApi(): Promise<HeroInfo[]> {
   const res = await fetch("https://api.opendota.com/api/constants/heroes", {
     next: { revalidate: 86400 },
   });
-  if (!res.ok) return [];
+  if (!res.ok) {
+    await noteFailedResponse("OpenDota heroes", res);
+    return [];
+  }
   const data = (await res.json()) as Record<string, HeroConst>;
   return cacheHeroList(
     Object.values(data)
@@ -147,7 +152,10 @@ export async function loadItemCatalog(): Promise<Record<number, ItemInfo>> {
   const res = await fetch("https://api.opendota.com/api/constants/items", {
     next: { revalidate: 86400 },
   });
-  if (!res.ok) return {};
+  if (!res.ok) {
+    await noteFailedResponse("OpenDota items", res);
+    return {};
+  }
   const data = (await res.json()) as Record<string, ItemConst>;
   itemByIdCache = {};
   for (const [key, item] of Object.entries(data)) {
@@ -190,7 +198,12 @@ async function requestOpenDotaParse(matchId: string) {
   await fetch(`https://api.opendota.com/api/request/${matchId}`, {
     method: "POST",
     cache: "no-store",
-  }).catch(() => undefined);
+  }).catch((error) => {
+    console.error(
+      `OpenDota parse request for ${matchId} failed`,
+      error instanceof Error ? error.message : error,
+    );
+  });
 }
 
 export async function fetchOpenDotaMatchIfReady(
@@ -201,6 +214,7 @@ export async function fetchOpenDotaMatchIfReady(
   });
   if (!res.ok) {
     if (res.status === 404) await requestOpenDotaParse(matchId);
+    else await noteFailedResponse(`OpenDota match ${matchId}`, res);
     return null;
   }
   const data = (await res.json()) as OpenDotaMatch;
@@ -240,7 +254,8 @@ export async function fetchOpenDotaMatch(
         `OpenDota does not have match **${matchId}** yet — the replay is still uploading. I asked OpenDota to fetch it. Wait 3–10 minutes after the lobby ends, then post \`!result ${matchId}\` again.`,
       );
     }
-    throw new Error(`OpenDota returned ${res.status}. Try again in a minute.`);
+    const reason = await noteFailedResponse(`OpenDota match ${matchId}`, res);
+    throw new Error(`${reason} Try again in a minute.`);
   }
   throw new Error(
     `OpenDota does not have match **${matchId}** yet. Wait a few minutes and try \`!result ${matchId}\` again.`,

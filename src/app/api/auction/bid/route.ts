@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { authSession } from "@/lib/auth";
 import { placeWebBid } from "@/lib/web-auction";
 import { AuctionError } from "@/lib/auction-lock";
+import { publicErrorMessage } from "@/lib/public-error";
 import { isAllowedRequestOrigin } from "@/lib/request-origin";
 
 export const runtime = "nodejs";
@@ -33,6 +34,15 @@ export async function POST(request: Request) {
   } catch (error) {
     if (error instanceof AuctionError) return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
     console.error("Auction bid failed", error);
-    return NextResponse.json({ ok: false, error: "Could not confirm the bid. Retry the same request to check its result." }, { status: 503 });
+    return NextResponse.json(
+      {
+        ok: false,
+        error: publicErrorMessage(
+          error,
+          "Could not confirm the bid. Retry the same request to check its result.",
+        ),
+      },
+      { status: 503 },
+    );
   }
 }

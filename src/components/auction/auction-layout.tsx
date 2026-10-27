@@ -38,12 +38,14 @@ export function AuctionHeader({
   title,
   subtitle,
   connected,
+  problem,
   actions,
   className,
 }: {
   title: string;
   subtitle?: React.ReactNode;
   connected?: boolean;
+  problem?: string | null;
   actions?: React.ReactNode;
   className?: string;
 }) {
@@ -78,7 +80,11 @@ export function AuctionHeader({
               )}
               aria-hidden
             />
-            {connected ? "Live connected" : "Reconnecting…"}
+            {connected
+              ? "Live connected"
+              : problem
+                ? `Reconnecting — ${problem}`
+                : "Reconnecting…"}
           </p>
         ) : null}
         {actions}

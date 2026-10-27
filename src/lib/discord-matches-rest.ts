@@ -14,6 +14,7 @@ import {
   playoffEmbeds,
 } from "./playoff-discord";
 import { getPlayoffViewFresh } from "./playoff";
+import { noteFailedResponse } from "./public-error";
 import { matchesChannelName } from "./registration-status";
 
 const DISCORD_API = "https://discord.com/api/v10";
@@ -25,7 +26,7 @@ async function discordBotFetch(
 ): Promise<Response | null> {
   const token = process.env.DISCORD_TOKEN?.trim();
   if (!token) return null;
-  return fetch(`${DISCORD_API}${path}`, {
+  const res = await fetch(`${DISCORD_API}${path}`, {
     method,
     headers: {
       Authorization: `Bot ${token}`,
@@ -34,6 +35,8 @@ async function discordBotFetch(
     body: body !== undefined ? JSON.stringify(body) : undefined,
     cache: "no-store",
   });
+  if (!res.ok) void noteFailedResponse(`Discord ${method} ${path}`, res);
+  return res;
 }
 
 function embedsToJson(embeds: { toJSON: () => APIEmbed }[]): APIEmbed[] {

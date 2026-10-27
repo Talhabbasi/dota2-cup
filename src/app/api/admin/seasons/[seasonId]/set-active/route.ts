@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { sessionIsAdmin } from "@/lib/admin-auth";
 import { logAdminActivity } from "@/lib/admin-log";
 import { revalidatePublicPages } from "@/lib/page-cache";
+import { publicErrorMessage } from "@/lib/public-error";
 import { getLiveSeason, setActiveSeason } from "@/lib/seasons";
 
 async function clearTeamDiscordRoomsSafe(label: string) {
@@ -77,8 +78,13 @@ export async function POST(
       season: { id: season.id, name: season.name, isActive: season.isActive },
     });
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Could not set active season.";
-    return NextResponse.json({ ok: false, error: message }, { status: 400 });
+    console.error("[seasons/set-active]", error);
+    return NextResponse.json(
+      {
+        ok: false,
+        error: publicErrorMessage(error, "Could not set active season."),
+      },
+      { status: 400 },
+    );
   }
 }

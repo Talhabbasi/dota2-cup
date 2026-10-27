@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { sessionIsAdmin } from "@/lib/admin-auth";
+import { publicErrorMessage } from "@/lib/public-error";
 import { createSeasonAdmin } from "@/lib/seasons";
 
 export async function POST(request: Request) {
@@ -24,8 +25,10 @@ export async function POST(request: Request) {
     });
     return NextResponse.json({ ok: true, season });
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Could not create season.";
-    return NextResponse.json({ ok: false, error: message }, { status: 400 });
+    console.error("[seasons/create]", error);
+    return NextResponse.json(
+      { ok: false, error: publicErrorMessage(error, "Could not create season.") },
+      { status: 400 },
+    );
   }
 }

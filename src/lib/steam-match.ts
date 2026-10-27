@@ -1,4 +1,5 @@
 import type { OpenDotaMatch, OpenDotaMatchPlayer } from "./opendota";
+import { noteFailedResponse } from "./public-error";
 import { steamWebApiKey } from "./steam";
 
 export { steamWebApiKey };
@@ -71,10 +72,16 @@ export async function fetchSteamMatchDetails(
   url.searchParams.set("key", key);
   url.searchParams.set("match_id", matchId);
   const res = await fetch(url, { cache: "no-store" });
-  if (!res.ok) return null;
+  if (!res.ok) {
+    await noteFailedResponse(`Steam match ${matchId}`, res);
+    return null;
+  }
   const data = (await res.json()) as SteamMatchDetails;
   const match = data.result;
   if (!match || match.error || !match.players || match.players.length < 10) {
+    if (match?.error) {
+      console.error(`Steam match ${matchId} failed: ${match.error}`);
+    }
     return null;
   }
   return {
@@ -98,7 +105,10 @@ export async function fetchSteamRecentMatchIds(
   url.searchParams.set("account_id", String(steam32));
   url.searchParams.set("matches_requested", "20");
   const res = await fetch(url, { cache: "no-store" });
-  if (!res.ok) return [];
+  if (!res.ok) {
+    await noteFailedResponse(`Steam match history ${steam32}`, res);
+    return [];
+  }
   const data = (await res.json()) as SteamHistory;
   return (data.result?.matches ?? []).filter(
     (row) => row.match_id && row.start_time,

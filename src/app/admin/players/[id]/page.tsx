@@ -13,6 +13,8 @@ import { prisma } from "@/lib/prisma";
 import { adminListTeamsForPicker } from "@/lib/match-admin";
 import { parseRolesJson } from "@/lib/roles";
 import { pageMeta } from "@/lib/seo";
+import { formatModifiedAt } from "@/lib/modified-filter";
+import { steam32To64, steamProfileUrl } from "@/lib/steam";
 import {
   AdminBackLink,
   AdminCard,
@@ -74,6 +76,9 @@ export default async function AdminPlayerDetailPage({
   );
   const medal = membership.medal || player.medal;
   const team = membership.team;
+  const steam64 =
+    player.steam32 == null ? null : steam32To64(player.steam32).toString();
+  const steamUrl = steam64 ? steamProfileUrl(steam64) : "";
 
   return (
     <div className="page">
@@ -106,6 +111,13 @@ export default async function AdminPlayerDetailPage({
               className="grid gap-3"
             >
               <input type="hidden" name="discordId" value={player.discordId} />
+              <AdminField label="Discord name">
+                <input
+                  name="discordName"
+                  defaultValue={player.discordName}
+                  className={adminControlClass}
+                />
+              </AdminField>
               <AdminField label="Display name">
                 <input
                   name="steamName"
@@ -113,6 +125,40 @@ export default async function AdminPlayerDetailPage({
                   className={adminControlClass}
                 />
               </AdminField>
+              <AdminField label="New Steam profile or ID">
+                <input
+                  name="steam"
+                  placeholder={
+                    steamUrl ||
+                    (player.steam32 != null
+                      ? `Leave blank to keep ${player.steam32}`
+                      : "Profile URL, Steam64, or Steam32")
+                  }
+                  className={adminControlClass}
+                />
+              </AdminField>
+              <p className="m-0 text-xs text-muted-foreground">
+                Discord ID <code>{player.discordId.split(":")[0]}</code>
+                {player.steam32 != null ? (
+                  <>
+                    {" "}
+                    · Steam32 <code>{player.steam32}</code>
+                    {steam64 ? (
+                      <>
+                        {" "}
+                        · Steam64 <code>{steam64}</code>
+                      </>
+                    ) : null}
+                  </>
+                ) : (
+                  " · No Steam ID yet"
+                )}
+                {membership.paidAt
+                  ? ` · Paid ${formatModifiedAt(membership.paidAt.toISOString())}`
+                  : " · Unpaid"}
+                {` · Added ${formatModifiedAt(membership.createdAt.toISOString())}`}
+                {` · Updated ${formatModifiedAt(membership.updatedAt.toISOString())}`}
+              </p>
               <AdminField label="Medal">
                 <select
                   name="medal"

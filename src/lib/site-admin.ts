@@ -1,4 +1,5 @@
 import { adminRoleName, isAdminDiscordId } from "./constants";
+import { noteFailedResponse } from "./public-error";
 
 type GuildRole = { id: string; name: string };
 
@@ -13,7 +14,10 @@ async function discordApi<T>(path: string): Promise<T | null> {
     headers: { Authorization: `Bot ${token}` },
     cache: "no-store",
   });
-  if (!res.ok) return null;
+  if (!res.ok) {
+    await noteFailedResponse(`Discord ${path}`, res);
+    return null;
+  }
   return (await res.json()) as T;
 }
 

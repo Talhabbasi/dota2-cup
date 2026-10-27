@@ -18,6 +18,7 @@ import { playerMustPay } from "./payments";
 import { liveRoster } from "./live-roster";
 import { parsePlayWindow } from "./play-window";
 import { prisma } from "./prisma";
+import { resolveSteamProfile } from "./steam";
 import {
   parseRegistrationRole,
   parseRolesJson,
@@ -451,24 +452,49 @@ export async function adminClearDummyPlayers() {
 
 export async function adminUpdatePlayerProfile(input: {
   discordId: string;
+  discordName?: string | null;
+  steam?: string | null;
   steamName?: string | null;
   medal?: string | null;
   role?: string | null;
   playWindow?: string | null;
 }) {
+  const steamInput = input.steam?.trim() || "";
+  const nextSteam = steamInput
+    ? await resolveSteamProfile(steamInput, { allowNumericId: true })
+    : null;
+
  const result = await withAuctionLock(async db => {
  await requireAuctionInactive(db);
   const nameInput = input.steamName?.trim() || undefined;
+  const discordNameInput = input.discordName?.trim() || undefined;
   const medalInput = input.medal?.trim() || undefined;
   const roleInput = input.role?.trim() || undefined;
   const windowInput = input.playWindow?.trim() || undefined;
-  if (!nameInput && !medalInput && !roleInput && !windowInput) {
+  if (
+    !nameInput &&
+    !discordNameInput &&
+    !nextSteam &&
+    !medalInput &&
+    !roleInput &&
+    !windowInput
+  ) {
     throw new Error(
-      "Provide **name**, **rank**, **role**, and/or **when** to change.",
+      "Provide a name, Steam ID, rank, role, or play window to change.",
     );
   }
 
   const player = await requirePlayer(input.discordId, db);
+  if (nextSteam && nextSteam.steam32 !== player.steam32) {
+    const clash = await db.player.findUnique({
+      where: { steam32: nextSteam.steam32 },
+    });
+    if (clash && clash.id !== player.id) {
+      throw new Error(
+        `That Steam account is already linked to ${clash.discordName || clash.steamName}.`,
+      );
+    }
+  }
   const medal =
     medalInput && medalInput !== player.medal ? parseMedal(medalInput) : undefined;
   const roles = roleInput ? parseRegistrationRole(roleInput) : undefined;
@@ -477,7 +503,9 @@ export async function adminUpdatePlayerProfile(input: {
   const updated = await db.player.update({
     where: { id: player.id },
     data: {
+      ...(discordNameInput ? { discordName: discordNameInput } : {}),
       ...(nameInput ? { steamName: nameInput } : {}),
+      ...(nextSteam ? { steam32: nextSteam.steam32 } : {}),
       ...(medal ? { medal } : {}),
       ...(roles ? { rolesJson: stringifyRoles(roles) } : {}),
       ...(playWindow ? { playWindow } : {}),
@@ -583,6 +611,7 @@ export async function listPlayersForAdminSeason(seasonId: string) {
       medal: true,
       rolesJson: true,
       paidAt: true,
+      createdAt: true,
       updatedAt: true,
       team: { select: { name: true } },
       player: {
@@ -591,6 +620,7 @@ export async function listPlayersForAdminSeason(seasonId: string) {
           discordId: true,
           discordName: true,
           steamName: true,
+          steam32: true,
           pubgName: true,
           medal: true,
           rolesJson: true,
@@ -604,6 +634,7 @@ export async function listPlayersForAdminSeason(seasonId: string) {
     discordId: row.player.discordId,
     discordName: row.player.discordName,
     steamName: row.player.steamName,
+    steam32: row.player.steam32,
     pubgName: row.player.pubgName,
     medal: row.medal || row.player.medal,
     rolesJson: row.rolesJson || row.player.rolesJson,
@@ -612,6 +643,7 @@ export async function listPlayersForAdminSeason(seasonId: string) {
     isCaptain: row.isCaptain,
     rosterRole: row.rosterRole,
     paidAt: row.paidAt,
+    createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   }));
 }

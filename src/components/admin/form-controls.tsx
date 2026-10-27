@@ -23,6 +23,7 @@ import {
   adminBtnPrimaryClass,
   adminBtnSecondaryClass,
 } from "@/components/admin/ui";
+import { publicErrorMessage } from "@/lib/public-error";
 import { cn } from "@/lib/utils";
 
 const AdminFormPendingContext = createContext(false);
@@ -172,13 +173,7 @@ export function AdminActionForm({
           setOpen(false);
           throw error;
         }
-        const message =
-          error instanceof Error && error.message
-            ? error.message
-            : typeof error === "string"
-              ? error
-              : "Could not save. Try again.";
-        // Next wraps many Server Action failures as opaque digests in production.
+        const message = publicErrorMessage(error, "Could not save. Try again.");
         const lower = message.toLowerCase();
         const opaque =
           !message.trim() ||
@@ -187,7 +182,7 @@ export function AdminActionForm({
           message === "An error occurred in the Server Components render.";
         toast.error(
           opaque
-            ? "Save failed. Refresh the page and try again (or use https://dota2-cup.vercel.app)."
+            ? "Save failed before a reason came back. Refresh and try again. The server log has the full error."
             : message,
         );
       }

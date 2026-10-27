@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { publicErrorMessage } from "@/lib/public-error";
 import { getWebAuctionView } from "@/lib/web-auction";
 
 export const dynamic = "force-dynamic";
@@ -10,6 +11,14 @@ export async function GET() {
     return NextResponse.json(await getWebAuctionView(), { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     console.error("Auction status unavailable", error);
-    return NextResponse.json({ error: "Live auction updates are temporarily unavailable." }, { status: 503, headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json(
+      {
+        error: publicErrorMessage(
+          error,
+          "Live auction updates are temporarily unavailable.",
+        ),
+      },
+      { status: 503, headers: { "Cache-Control": "no-store" } },
+    );
   }
 }

@@ -163,7 +163,7 @@ export default async function RegisterPage() {
         ) : enrolled && player ? (
           <div className="register-gate">
             <p className="register-error" role="alert">
-              Already registered as{" "}
+              Already registered for {live?.name ?? "this season"} as{" "}
               <strong>{player.pubgName || player.steamName}</strong>.
             </p>
             <p className="muted">

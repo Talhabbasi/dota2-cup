@@ -30,6 +30,7 @@ export type PaymentPlayerRow = {
   paid: boolean;
   amount: number;
   paidAtLabel: string | null;
+  createdAt: string;
   updatedAt: string;
   slot: string;
 };
@@ -167,7 +168,7 @@ export function AdminPaymentsBoard({
         hrefFor={(p) => `/admin/payments/${p.id}?season=${seasonId}`}
         searchPlaceholder="Search name, Discord, or team…"
         searchText={(p) =>
-          `${p.steamName} ${p.discordName} ${p.teamName ?? ""} ${p.slot} ${formatModifiedAt(p.updatedAt)}`
+          `${p.steamName} ${p.discordName} ${p.teamName ?? ""} ${p.slot} ${formatModifiedAt(p.createdAt)} ${formatModifiedAt(p.updatedAt)}`
         }
         emptyLabel="No players to track."
         filters={[
@@ -211,6 +212,12 @@ export function AdminPaymentsBoard({
             ],
             match: (p, value) =>
               value === "__unsigned__" ? !p.teamName : p.teamName === value,
+          },
+          {
+            key: "created",
+            label: "Created",
+            options: [...MODIFIED_FILTER_OPTIONS],
+            match: (p, value) => matchesModifiedFilter(p.createdAt, value),
           },
           {
             key: "modified",
@@ -274,6 +281,15 @@ export function AdminPaymentsBoard({
               ) : (
                 <AdminStatus tone="danger">unpaid</AdminStatus>
               ),
+          },
+          {
+            key: "created",
+            header: "Created",
+            cell: (p) => (
+              <span className="tabular-nums text-muted-foreground">
+                {formatModifiedAt(p.createdAt)}
+              </span>
+            ),
           },
           {
             key: "modified",

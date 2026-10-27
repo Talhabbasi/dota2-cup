@@ -6,6 +6,7 @@ import {
   type TextChannel,
 } from "discord.js";
 import { adminRoleName } from "./constants";
+import { noteFailedResponse } from "./public-error";
 import { ensureMatchesChannel, ensurePaymentsChannel } from "./cup-announcements";
 import {
   ensureRegisteredRole,
@@ -594,11 +595,13 @@ async function discordBotFetch(
 ): Promise<Response | null> {
   const token = process.env.DISCORD_TOKEN?.trim();
   if (!token) return null;
-  return fetch(`${DISCORD_API}${path}`, {
+  const res = await fetch(`${DISCORD_API}${path}`, {
     method,
     headers: { Authorization: `Bot ${token}` },
     cache: "no-store",
   });
+  if (!res.ok) void noteFailedResponse(`Discord ${method} ${path}`, res);
+  return res;
 }
 
 export async function tryStripMemberTeamRoles(

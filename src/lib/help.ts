@@ -24,8 +24,9 @@ Pinned in **#admin** for every Admin. Re-post anytime with \`/admin help\`.
 \`/roster\` — your 5–7 and empty slots
 
 **Admin — setup**
-\`/admin setup\` — #payments, team chats, team voice, and this sheet in **#admin**
+\`/admin setup\` — #payments, team chats, team voice, lock @everyone to Admin, Discord AutoMod anti-spam, and this sheet in **#admin**
 \`/admin help\` — post & pin this sheet in **#admin** again
+**Anti-spam (works offline).** Discord role perms + AutoMod: only **Admin** can @everyone; scam nitro/gift posts and mention spam are blocked; scam/staff-impersonation nicknames are blocked. Alerts go to **#admin**. Extra cleanup still runs when the bot is online.
 \`/season current\` — which season the bot is writing to
 \`/season list\` — every season
 \`/season create name:<optional>\` — add the next season (does **not** switch live data)
@@ -42,7 +43,7 @@ Pinned in **#admin** for every Admin. Re-post anytime with \`/admin help\`.
 \`/cup completeteam mode:on|off\`
 \`/rules post\` — post & pin full cup rules in #general
 \`/rules channels\` — pin a short guide in every cup channel
-\`/rules closed\` — #payments + closed / indoor / payment messages
+\`/rules closed\` — #payments (@everyone + account details) + closed / indoor messages
 \`/rules clear\` — remove bot-posted channel guides
 
 **Admin — players & captains**

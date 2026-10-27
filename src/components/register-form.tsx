@@ -81,8 +81,13 @@ export function RegisterForm({
       startNavigation();
       router.push(`/players/${data.id}`);
       router.refresh();
-    } catch {
-      setError("Could not reach the server. Try again.");
+    } catch (error) {
+      const detail = error instanceof Error ? error.message.trim() : "";
+      setError(
+        detail
+          ? `Could not reach the server. ${detail}`
+          : "Could not reach the server. Try again.",
+      );
     } finally {
       setBusy(false);
     }

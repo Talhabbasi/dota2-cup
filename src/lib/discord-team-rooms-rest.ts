@@ -14,6 +14,8 @@ import { prisma } from "./prisma";
 import { currentSeasonFilter } from "./seasons";
 import { CUP_NAME } from "@/lib/brand";
 
+import { noteFailedResponse } from "./public-error";
+
 const API = "https://discord.com/api/v10";
 const TEAM_ROLE_PREFIX = "Team · ";
 
@@ -179,7 +181,10 @@ async function discord(
       init.body = JSON.stringify(body);
     }
     const res = await fetch(`${API}${path}`, init);
-    if (res.status !== 429) return res;
+    if (res.status !== 429) {
+      if (!res.ok) void noteFailedResponse(`Discord ${method} ${path}`, res);
+      return res;
+    }
     const data = (await res.json().catch(() => null)) as {
       retry_after?: number;
     } | null;

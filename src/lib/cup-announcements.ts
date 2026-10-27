@@ -20,6 +20,7 @@ import {
 } from "./updates";
 import {
   formatEntryFee,
+  formatPaymentAccountDetails,
   formatTeamFee,
   paymentAccountName,
   paymentAccountNumber,
@@ -35,11 +36,26 @@ export { adminChannelName, matchesChannelName };
 
 const GOLD = 0xb07d1f;
 
+/** Message body for #payments — account details always visible above the embed. */
+export function paymentsAnnouncementContent(options?: {
+  mentionEveryone?: boolean;
+}) {
+  const lines = [
+    options?.mentionEveryone ? "@everyone" : null,
+    "**Pay here — account details**",
+    formatPaymentAccountDetails(),
+    "",
+    `Upload a clear transfer screenshot in this channel. An **Admin** clicks ✅ to confirm.`,
+  ].filter((line): line is string => line != null);
+  return lines.join("\n");
+}
+
 /** Manage Channels + Messages + Roles + send/view/react so the bot can create #payments. */
 export const BOT_INVITE_PERMISSIONS = String(
   PermissionFlagsBits.ManageChannels |
     PermissionFlagsBits.ManageRoles |
     PermissionFlagsBits.ManageMessages |
+    PermissionFlagsBits.ManageNicknames |
     PermissionFlagsBits.ViewChannel |
     PermissionFlagsBits.SendMessages |
     PermissionFlagsBits.EmbedLinks |
@@ -84,7 +100,9 @@ export function registrationClosedEmbed() {
         `Public registration for **${CUP_NAME}** is now **closed**.`,
         "If you have already registered, you are in the pool.",
         "",
-        `The entry fee is **${formatEntryFee()} per person**.`,
+        "**Pay here**",
+        formatPaymentAccountDetails(),
+        "",
         `Send a **clear payment screenshot** in **#${paymentsChannelName()}**. An **Admin** will click ✅ to confirm. You are not marked as paid until then.`,
         `Substitutes do **not** pay. Each team must collect **exactly ${formatTeamFee()}** (five starters).`,
         "",
@@ -154,17 +172,44 @@ export async function refreshPinnedPaymentAnnouncement(
   if (!payments) return;
 
   const embed = paymentsChannelEmbed();
+  // Quiet body refresh by default. Ping @everyone only when the pin was missing account details.
+  const content = paymentsAnnouncementContent({ mentionEveryone: false });
+  const accountNumber = paymentAccountNumber();
   try {
     const { items } = await payments.messages.fetchPins();
     let updated = 0;
+    let shouldPingEveryone = false;
     for (const pin of items) {
       const msg = pin.message;
       if (!isPaymentAnnouncementMessage(msg, botUserId)) continue;
-      await msg.edit({ embeds: [embed] });
+      if (!msg.content.includes(accountNumber)) {
+        shouldPingEveryone = true;
+      }
+      await msg.edit({ content, embeds: [embed] });
       updated += 1;
     }
     if (updated > 0) {
       console.log(`Updated ${updated} pinned payment announcement(s) in #${payments.name}`);
+      if (shouldPingEveryone) {
+        try {
+          await payments.send({
+            content: [
+              "@everyone",
+              "**Pay here — account details**",
+              formatPaymentAccountDetails(),
+              "",
+              "Also pinned at the top of this channel.",
+            ].join("\n"),
+            allowedMentions: { parse: ["everyone"] },
+          });
+          console.log(`Pinged @everyone with payment account details in #${payments.name}`);
+        } catch (error) {
+          console.warn(
+            "Could not @everyone payment details (bot needs Mention Everyone):",
+            error instanceof Error ? error.message : error,
+          );
+        }
+      }
       return;
     }
   } catch (error) {
@@ -175,7 +220,11 @@ export async function refreshPinnedPaymentAnnouncement(
   }
 
   try {
-    const sent = await payments.send({ embeds: [embed] });
+    const sent = await payments.send({
+      content: paymentsAnnouncementContent({ mentionEveryone: true }),
+      embeds: [embed],
+      allowedMentions: { parse: ["everyone"] },
+    });
     await sent.pin().catch(() => undefined);
     console.log(`Posted payment announcement in #${payments.name}`);
   } catch (error) {
@@ -563,6 +612,25 @@ export async function setupCupDiscord(
   const results: SetupResult[] = [];
 
   try {
+    const { ensureDiscordAntiSpam } = await import("./anti-spam-moderation");
+    const detail = await ensureDiscordAntiSpam(guild);
+    results.push({
+      channel: "anti-spam (offline-safe)",
+      ok: true,
+      detail: `${detail} — Discord enforces this even when the bot is offline`,
+    });
+  } catch (error) {
+    results.push({
+      channel: "anti-spam (offline-safe)",
+      ok: false,
+      detail:
+        error instanceof Error
+          ? `${error.message} — bot needs **Manage Roles** + **Manage Server**.`
+          : "Could not lock anti-spam (need Manage Roles + Manage Server)",
+    });
+  }
+
+  try {
     const payments = await ensurePaymentsChannel(guild);
     results.push({
       channel: payments.name,
@@ -755,7 +823,11 @@ export async function postCupAnnouncements(
     });
     if (payments) {
       try {
-        const sent = await payments.send({ embeds: [paymentsChannelEmbed()] });
+        const sent = await payments.send({
+          content: paymentsAnnouncementContent({ mentionEveryone: true }),
+          embeds: [paymentsChannelEmbed()],
+          allowedMentions: { parse: ["everyone"] },
+        });
         try {
           await sent.pin();
         } catch {
@@ -764,7 +836,7 @@ export async function postCupAnnouncements(
         results.push({
           channel: payments.name,
           ok: true,
-          detail: `posted payment instructions — ${payments}`,
+          detail: `posted payment instructions (@everyone) — ${payments}`,
         });
       } catch (error) {
         results.push({
@@ -785,17 +857,35 @@ export async function postCupAnnouncements(
     }
   }
 
-  const posts: { channel: TextChannel; embed: EmbedBuilder; pin: boolean }[] = [
+  const posts: {
+    channel: TextChannel;
+    embed: EmbedBuilder;
+    pin: boolean;
+    content?: string;
+    mentionEveryone?: boolean;
+  }[] = [
     { channel: general, embed: registrationClosedEmbed(), pin: true },
     { channel: general, embed: indoorLeagueEmbed(), pin: true },
   ];
   if (payments) {
-    posts.push({ channel: payments, embed: paymentsChannelEmbed(), pin: true });
+    posts.push({
+      channel: payments,
+      embed: paymentsChannelEmbed(),
+      pin: true,
+      content: paymentsAnnouncementContent({ mentionEveryone: true }),
+      mentionEveryone: true,
+    });
   }
 
   for (const post of posts) {
     try {
-      const sent = await post.channel.send({ embeds: [post.embed] });
+      const sent = await post.channel.send({
+        content: post.content,
+        embeds: [post.embed],
+        allowedMentions: post.mentionEveryone
+          ? { parse: ["everyone"] }
+          : { parse: [] },
+      });
       if (post.pin) {
         try {
           await sent.pin();
@@ -811,7 +901,7 @@ export async function postCupAnnouncements(
       results.push({
         channel: post.channel.name,
         ok: true,
-        detail: `posted "${post.embed.data.title}"`,
+        detail: `posted "${post.embed.data.title}"${post.mentionEveryone ? " (@everyone)" : ""}`,
       });
     } catch (error) {
       results.push({

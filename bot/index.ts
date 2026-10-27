@@ -80,6 +80,12 @@ import {
   moderatePaymentsChannel,
 } from "../src/lib/channel-moderation";
 import {
+  ensureDiscordAntiSpam,
+  handleSuspiciousNickChange,
+  moderateEveryoneMentions,
+  moderateScamSpamMessage,
+} from "../src/lib/anti-spam-moderation";
+import {
   adminAddCaptain,
   adminChangeCaptain,
   adminRemoveCaptain,
@@ -1895,6 +1901,7 @@ async function publishLot(channel: TextChannel, view: Awaited<ReturnType<typeof 
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.GuildMessageReactions,
     GatewayIntentBits.MessageContent,
@@ -4072,11 +4079,21 @@ client.on("error", (error) => {
 
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
+  if (await moderateEveryoneMentions(message)) return;
+  if (await moderateScamSpamMessage(message)) return;
   if (await offerPaymentTick(message)) return;
   if (await moderatePaymentsChannel(message)) return;
   if (await moderateCommandOnlyChannel(message)) return;
   await handlePrefixResult(message);
   await handleResultsScreenshot(message);
+});
+
+client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
+  try {
+    await handleSuspiciousNickChange(oldMember, newMember);
+  } catch (error) {
+    console.error("nick moderation", error);
+  }
 });
 
 client.on(Events.MessageReactionAdd, async (reaction, user) => {
@@ -4149,6 +4166,15 @@ client.once(Events.ClientReady, async () => {
       );
     } catch (error) {
       console.error(`channel access (${guild.name})`, error);
+    }
+    try {
+      const detail = await ensureDiscordAntiSpam(guild);
+      console.log(`Anti-spam offline-safe (${guild.name}): ${detail}`);
+    } catch (error) {
+      console.warn(
+        `Could not lock anti-spam (${guild.name}):`,
+        error instanceof Error ? error.message : error,
+      );
     }
     try {
       await syncGuildIcon(guild);

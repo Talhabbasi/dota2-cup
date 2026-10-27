@@ -1,3 +1,4 @@
+import { publicErrorMessage } from "@/lib/public-error";
 import { getWebAuctionView } from "@/lib/web-auction";
 
 export const dynamic = "force-dynamic";
@@ -15,6 +16,9 @@ export async function GET() {
     });
   } catch (error) {
     console.error("Auction stream unavailable", error);
-    return new Response("Auction unavailable. Refresh to retry.", { status: 503 });
+    return new Response(
+      publicErrorMessage(error, "Auction unavailable. Refresh to retry."),
+      { status: 503 },
+    );
   }
 }

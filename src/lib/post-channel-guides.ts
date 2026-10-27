@@ -1,5 +1,8 @@
 import { ChannelType, type Guild, type TextChannel } from "discord.js";
-import { paymentsChannelEmbed } from "./cup-announcements";
+import {
+  paymentsAnnouncementContent,
+  paymentsChannelEmbed,
+} from "./cup-announcements";
 import { paymentsChannelName } from "./registration-status";
 import {
   buildRulesEmbed,
@@ -45,11 +48,18 @@ async function postAndPin(
   title: string,
   force: boolean,
   embed: ReturnType<typeof buildRulesEmbed>,
+  options?: { content?: string; mentionEveryone?: boolean },
 ): Promise<GuidePostStatus> {
   if (!force && (await hasPinnedTitle(channel, botUserId, title))) {
     return "skipped";
   }
-  const sent = await channel.send({ embeds: [embed] });
+  const sent = await channel.send({
+    content: options?.content,
+    embeds: [embed],
+    allowedMentions: options?.mentionEveryone
+      ? { parse: ["everyone"] }
+      : { parse: [] },
+  });
   try {
     await sent.pin();
     return "posted";
@@ -101,6 +111,10 @@ export async function postChannelGuides(
       payEmbed.data.title ?? "",
       force,
       payEmbed,
+      {
+        content: paymentsAnnouncementContent({ mentionEveryone: true }),
+        mentionEveryone: true,
+      },
     );
     results.push({ channelName: paymentsName, status });
   }

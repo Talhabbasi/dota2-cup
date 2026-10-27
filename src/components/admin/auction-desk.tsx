@@ -28,7 +28,7 @@ export function AdminAuctionDesk({
   format: string;
   medals: readonly string[];
 }) {
-  const { view: live, accept, connected, secondsLeft, closed } =
+  const { view: live, accept, connected, problem, secondsLeft, closed } =
     useAuctionView(view);
   const acceptRef = useRef(accept);
   useEffect(() => {
@@ -104,7 +104,9 @@ export function AdminAuctionDesk({
       >
         {connected
           ? "Live updates connected — controls enabled."
-          : "Reconnecting — auction controls stay locked until updates resume."}
+          : problem
+            ? `Reconnecting — ${problem}`
+            : "Reconnecting — auction controls stay locked until updates resume."}
       </p>
 
       <div className="grid gap-4 xl:grid-cols-[1.2fr_0.9fr]">

@@ -71,6 +71,7 @@ export default async function AdminPlayersPage({
           discordId: p.discordId,
           discordName: p.discordName,
           steamName: p.steamName,
+          steam32: p.steam32,
           pubgName: p.pubgName,
           medal: p.medal,
           medalLabel:
@@ -78,6 +79,7 @@ export default async function AdminPlayersPage({
           teamName: p.team?.name ?? null,
           isCaptain: p.isCaptain,
           rosterRole: p.rosterRole,
+          createdAt: p.createdAt,
           updatedAt: p.updatedAt,
         }))}
         linkablePlayers={linkable.map((p) => ({

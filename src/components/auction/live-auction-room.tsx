@@ -93,9 +93,14 @@ export function LiveAuctionRoom({
       }
       setUncertain(null);
       if (json.view) accept(json.view);
-    } catch {
+    } catch (error) {
       setUncertain(payload);
-      setError("Connection interrupted. Check the result using the same bid request.");
+      const detail = error instanceof Error ? error.message.trim() : "";
+      setError(
+        detail && !/aborted/i.test(detail)
+          ? `Connection interrupted. ${detail}`
+          : "Connection interrupted. The bid request timed out — check the result using the same bid.",
+      );
     } finally {
       clearTimeout(timeout);
       submitting.current = false;
@@ -128,6 +133,7 @@ export function LiveAuctionRoom({
           </>
         }
         connected={connected}
+        problem={live.problem}
       />
 
       <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(220px,0.95fr)_minmax(0,1.35fr)_minmax(260px,0.9fr)] xl:items-stretch">
