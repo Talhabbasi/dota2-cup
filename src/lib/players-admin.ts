@@ -18,7 +18,7 @@ import { playerMustPay } from "./payments";
 import { liveRoster } from "./live-roster";
 import { parsePlayWindow } from "./play-window";
 import { prisma } from "./prisma";
-import { resolveSteamProfile } from "./steam";
+import { publicSteam32Set, resolveSteamProfile } from "./steam";
 import {
   parseRegistrationRole,
   parseRolesJson,
@@ -595,7 +595,10 @@ export async function listRegisteredPlayers() {
 /**
  * Season-scoped admin player list (uses SeasonPlayer roster for that cup).
  */
-export async function listPlayersForAdminSeason(seasonId: string) {
+export async function listPlayersForAdminSeason(
+  seasonId: string,
+  options?: { includeProfilePrivacy?: boolean },
+) {
   if (!seasonId || seasonId === "__none__") return [];
 
   const rows = await prisma.seasonPlayer.findMany({
@@ -629,12 +632,21 @@ export async function listPlayersForAdminSeason(seasonId: string) {
     },
   });
 
+  const publicSteam = options?.includeProfilePrivacy
+    ? await publicSteam32Set(
+        rows
+          .map((row) => row.player.steam32)
+          .filter((id): id is number => id != null),
+      )
+    : new Set<number>();
+
   return rows.map((row) => ({
     id: row.player.id,
     discordId: row.player.discordId,
     discordName: row.player.discordName,
     steamName: row.player.steamName,
     steam32: row.player.steam32,
+    profilePublic: row.player.steam32 != null && publicSteam.has(row.player.steam32),
     pubgName: row.player.pubgName,
     medal: row.medal || row.player.medal,
     rolesJson: row.rolesJson || row.player.rolesJson,

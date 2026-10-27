@@ -335,6 +335,56 @@ export async function verifySteamAccount(
   };
 }
 
+const privacyCache = new Map<number, { isPublic: boolean; at: number }>();
+const PRIVACY_CACHE_MS = 10 * 60 * 1000;
+
+async function steamCommunityIsPublic(steam32: number): Promise<boolean> {
+  const cached = privacyCache.get(steam32);
+  if (cached && Date.now() - cached.at < PRIVACY_CACHE_MS) return cached.isPublic;
+  try {
+    const res = await fetch(`${steamProfileUrl(steam32To64(steam32))}?xml=1`, {
+      headers: { "User-Agent": "MM-Dota-Cup/1.0 (+admin roster)" },
+      cache: "no-store",
+      signal: AbortSignal.timeout(8_000),
+    });
+    if (!res.ok) return false;
+    const xml = await res.text();
+    const privacy = xml
+      .match(/<privacyState>([^<]+)<\/privacyState>/i)?.[1]
+      ?.trim()
+      .toLowerCase();
+    const isPublic = privacy === "public";
+    privacyCache.set(steam32, { isPublic, at: Date.now() });
+    return isPublic;
+  } catch (error) {
+    console.error(`Steam privacy lookup failed for ${steam32}`, error);
+    return false;
+  }
+}
+
+/**
+ * Steam32 ids whose Steam community profile is public.
+ * Private and friends-only profiles are omitted, so admin tables can hide Dotabuff / OpenDota.
+ */
+export async function publicSteam32Set(steam32s: number[]): Promise<Set<number>> {
+  const unique = [
+    ...new Set(steam32s.filter((id) => Number.isInteger(id) && id > 0)),
+  ];
+  const open = new Set<number>();
+  if (unique.length === 0) return open;
+
+  const queue = [...unique];
+  const workers = Array.from({ length: Math.min(6, queue.length) }, async () => {
+    while (queue.length > 0) {
+      const id = queue.shift();
+      if (id == null) return;
+      if (await steamCommunityIsPublic(id)) open.add(id);
+    }
+  });
+  await Promise.all(workers);
+  return open;
+}
+
 export async function hasOpenDotaProfile(steam32: number): Promise<boolean> {
   try {
     const res = await fetch(`https://api.opendota.com/api/players/${steam32}`);

@@ -29,7 +29,7 @@ export default async function AdminPlayersPage({
     await resolveAdminSeasonView(sp.season);
 
   const [players, linkable, teams] = await Promise.all([
-    listPlayersForAdminSeason(view.id),
+    listPlayersForAdminSeason(view.id, { includeProfilePrivacy: true }),
     readOnly ? Promise.resolve([]) : listPlayersNotInLiveSeason(),
     adminListTeamsForPicker(view.id),
   ]);
@@ -72,6 +72,7 @@ export default async function AdminPlayersPage({
           discordName: p.discordName,
           steamName: p.steamName,
           steam32: p.steam32,
+          profilePublic: p.profilePublic,
           pubgName: p.pubgName,
           medal: p.medal,
           medalLabel:

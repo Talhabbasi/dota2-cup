@@ -30,6 +30,8 @@ export type AdminPlayerRow = {
   discordName: string;
   steamName: string;
   steam32: number | null;
+  /** Steam community profile is public, so Dotabuff and OpenDota can be linked. */
+  profilePublic: boolean;
   pubgName?: string | null;
   medal: string;
   medalLabel: string;
@@ -322,6 +324,35 @@ export function AdminPlayersBoard({
                 {p.steam32 ?? "—"}
               </span>
             ),
+          },
+          {
+            key: "sites",
+            header: "Sites",
+            cell: (p) =>
+              p.steam32 != null && p.profilePublic ? (
+                <span className="inline-flex gap-2">
+                  <a
+                    href={`https://www.opendota.com/players/${p.steam32}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-link"
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    OpenDota
+                  </a>
+                  <a
+                    href={`https://www.dotabuff.com/players/${p.steam32}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-link"
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    Dotabuff
+                  </a>
+                </span>
+              ) : (
+                "—"
+              ),
           },
           {
             key: "medal",
