@@ -557,7 +557,8 @@ function assertBudget(session:WebAuctionSession,team:WebTeam,amount:number,roste
   const needed=Math.max(0,roster.min-team.rosterCount-1);
   // Reserve the cheapest remaining eligible players, across all medal pools.
   const floors=[...otherFloors];
-  if(floors.some(price=>!Number.isSafeInteger(price) || price<1)) throw new AuctionError("A remaining player's base price is invalid. Contact the organizer.");
+  // Lots open at 0, so a remaining floor of 0 is valid. Only a negative or non-integer floor is bad data.
+  if(floors.some(price=>!Number.isSafeInteger(price) || price<0)) throw new AuctionError("A remaining player's base price is invalid. Contact the organizer.");
   floors.sort((a,b)=>a-b);
   const reserve=floors.slice(0,needed).reduce((sum,n)=>sum+n,0);
   if(floors.length<needed || team.purse<amount+reserve) throw new AuctionError(`${team.name} cannot afford ${amount} while keeping enough to fill ${roster.min} starters.`);

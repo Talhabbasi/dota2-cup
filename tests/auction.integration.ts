@@ -87,7 +87,7 @@ async function main() {
       check("highest accepted bid cannot be overwritten by a lower bid");
       await assert.rejects(auction.placeWebBid({ ...challengers[2], lotId: "old-lot", requestId: randomUUID(), amount: 2100 }), /no longer/);
       await assert.rejects(auction.placeWebBid({ ...challengers[2], requestId: randomUUID(), amount: 1.5 }), /whole-number/);
-      await assert.rejects(auction.placeWebBid({ ...challengers[2], requestId: randomUUID(), amount: 20000 }), /cannot afford/);
+      await assert.rejects(auction.placeWebBid({ ...challengers[2], requestId: randomUUID(), amount: 20001 }), /cannot afford/);
       check("stale player, fractional price and over-budget bids rejected");
       const current = await auction.getWebAuctionView();
       const paused = await auction.pauseWebAuction(control(current));
