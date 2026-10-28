@@ -174,6 +174,32 @@ export async function adminAddPlayerToTeam(input: {
  return result;
 }
 
+/** Give the sold price back and detach the lot so a released player is not still charged. */
+async function refundReleasedSale(db: AuctionDb, playerId: string, teamId: string) {
+  const team = await db.team.findUnique({
+    where: { id: teamId },
+    select: { seasonId: true },
+  });
+  if (!team?.seasonId) return 0;
+  const lots = await db.auctionLot.findMany({
+    where: { playerId, teamId, seasonId: team.seasonId, status: "sold" },
+    select: { id: true, soldPrice: true },
+  });
+  const refunded = lots.reduce((sum, lot) => sum + (lot.soldPrice ?? 0), 0);
+  if (lots.length === 0) return 0;
+  await db.auctionLot.updateMany({
+    where: { id: { in: lots.map((lot) => lot.id) } },
+    data: { status: "unsold", teamId: null, soldPrice: null },
+  });
+  if (refunded > 0) {
+    await db.team.update({
+      where: { id: teamId },
+      data: { purse: { increment: refunded } },
+    });
+  }
+  return refunded;
+}
+
 export async function adminRemovePlayerFromTeam(discordId: string) {
  const result = await withAuctionLock(async db => {
  await requireAuctionInactive(db);
@@ -189,9 +215,10 @@ export async function adminRemovePlayerFromTeam(discordId: string) {
 
   const teamName = player.team?.name ?? "their team";
   const teamId = player.teamId;
+  const refunded = await refundReleasedSale(db, player.id, teamId);
   await db.player.update({
     where: { id: player.id },
-    data: { teamId: null, rosterRole: null, teamJoinedAt: null },
+    data: { teamId: null, rosterRole: null, teamJoinedAt: null, auctionStatus: "UNSOLD" },
   });
   await rebalanceTeamRoster(teamId, db);
   await syncPlayerRosterToSeason(player.id, db);
@@ -205,6 +232,7 @@ export async function adminRemovePlayerFromTeam(discordId: string) {
     teamName,
     team: remaining,
     discordId: player.discordId,
+    refunded,
   };
 
  });

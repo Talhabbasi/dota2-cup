@@ -2825,8 +2825,12 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
           const removed = await adminRemovePlayerFromTeam(targetId);
           await tryStripMemberTeamRoles(interaction.guild, targetId);
           await tryProvisionTeamDiscord(interaction.guild, removed.team);
+          const returned =
+            removed.refunded > 0
+              ? ` Returned **${removed.refunded.toLocaleString("en-US")}** points to **${removed.teamName}**.`
+              : "";
           await interaction.editReply(
-            `Removed **${removed.name}** from **${removed.teamName}**. Their team Discord role and private chat access are gone (registration kept).`,
+            `Removed **${removed.name}** from **${removed.teamName}**.${returned} Their team Discord role and private chat access are gone (registration kept).`,
           );
           return;
         }

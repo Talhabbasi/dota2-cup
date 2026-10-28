@@ -310,9 +310,14 @@ try {
   const session = await requireAdmin();
     const discordId = String(formData.get("discordId") ?? "");
     const name = await who(discordId);
-    await adminRemovePlayerFromTeam(discordId);
-    await note(session, "team.remove_player", `Removed ${name} from team`, {
+    const removed = await adminRemovePlayerFromTeam(discordId);
+    const returned =
+      removed.refunded > 0
+        ? ` and returned ${removed.refunded.toLocaleString("en-US")} points`
+        : "";
+    await note(session, "team.remove_player", `Removed ${name} from team${returned}`, {
       discordId,
+      refunded: removed.refunded,
     });
     revalidateAdmin();
     } catch (error) {
