@@ -6251,3 +6251,23 @@ html.dark[data-game="pubg"] {
 .auction-timer-urgent {
   animation: auction-timer-urgent-pulse 0.9s ease-in-out infinite;
 }
+
+@keyframes auction-popper-burst {
+  0% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(var(--pop-x, 40px), -180px, 0) rotate(160deg) scale(0.6);
+  }
+}
+
+.auction-popper {
+  --pop-x: 36px;
+  animation: auction-popper-burst 1.15s ease-out both;
+}
+
+.auction-popper:nth-child(odd) {
+  --pop-x: -48px;
+}

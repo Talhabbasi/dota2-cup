@@ -3,7 +3,6 @@ import { LiveAuctionBoard } from "@/components/live-auction-board";
 import { getCupFeatureSettings } from "@/lib/cup-features";
 import { getWebAuctionViewOrEmpty } from "@/lib/web-auction";
 import { livePageMeta } from "@/lib/seo";
-import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
@@ -39,26 +38,7 @@ export default async function AuctionLivePage() {
 
   return (
     <div className="page auction-wide auction-live-page">
-      <PageHeader
-        eyebrow="Transfer market"
-        title="Live auction"
-        subtitle={
-          <>
-            IPL-style player auction for the cup.{" "}
-            <Link href="/auction/captain" className="text-link">
-              Captain desk
-            </Link>{" "}
-            ·{" "}
-            <Link href="/auction/results" className="text-link">
-              Results
-            </Link>{" "}
-            ·{" "}
-            <Link href="/auction/queue" className="text-link">
-              Queue
-            </Link>
-          </>
-        }
-      />
+      <PageHeader eyebrow="Transfer market" title="Live auction" />
       <LiveAuctionBoard initial={view} />
     </div>
   );

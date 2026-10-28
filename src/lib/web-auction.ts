@@ -16,6 +16,7 @@ export const AUCTION_PLAYER_STATUS = {
 type WebPlayer = {
   id: string;
   steamName: string;
+  discordName?: string | null;
   pubgName?: string | null;
   medal: string;
   rolesJson: string;
@@ -94,7 +95,7 @@ export type WebAuctionView = {
   currentBid: number;
   currentPlayer: WebPlayer | null;
   lotId: string | null;
-  highBidder: { id: string; name: string } | null;
+  highBidder: { id: string; name: string; captainName: string | null } | null;
   remainingInPool: number;
   awaitingDecision: boolean;
   event: WebAuctionSession["event"];
@@ -131,7 +132,30 @@ function parseSession(row: { sessionJson: string | null } | null): WebAuctionSes
 }
 
 async function readSession(db: AuctionDb = prisma) {
-  return parseSession(await db.auctionState.findUnique({ where: { id: "singleton" } }));
+  const session = parseSession(await db.auctionState.findUnique({ where: { id: "singleton" } }));
+  // Team name, captain, purse, and roster change outside the auction. Always read them
+  // from the database so a saved pool cannot keep showing the previous captain.
+  if (session?.seasonId) {
+    session.teams = (await loadTeams(db, session.seasonId, session.game)).teams;
+    await refreshPlayerNames(db, session);
+  }
+  return session;
+}
+
+async function refreshPlayerNames(db: AuctionDb, session: WebAuctionSession) {
+  const ids = Object.keys(session.players);
+  if (ids.length === 0) return;
+  const rows = await db.player.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, steamName: true, discordName: true, pubgName: true },
+  });
+  for (const row of rows) {
+    const player = session.players[row.id];
+    if (!player) continue;
+    player.steamName = row.steamName;
+    player.discordName = row.discordName;
+    player.pubgName = row.pubgName;
+  }
 }
 
 function expired(session: WebAuctionSession, now = Date.now()) {
@@ -184,7 +208,7 @@ function viewFrom(session: WebAuctionSession | null): WebAuctionView {
     currentBid: session?.currentBid ?? 0,
     currentPlayer: session?.currentPlayerId ? session.players[session.currentPlayerId] ?? null : null,
     lotId: session?.lotId ?? null,
-    highBidder: bidder ? { id: bidder.id, name: bidder.name } : null,
+    highBidder: bidder ? { id: bidder.id, name: bidder.name, captainName: bidder.players?.find((p) => p.captain)?.name ?? null } : null,
     remainingInPool: session?.queue.length ?? 0,
     awaitingDecision: session ? session.awaitingDecision || expired(session, now) : false,
     event: session?.event ?? "idle",
@@ -416,6 +440,7 @@ export async function startWebAuction(rankInput: string) {
       players:Object.fromEntries(eligible.map(m=>[m.playerId,{
         id:m.playerId,
         steamName:m.player.steamName,
+        discordName:m.player.discordName,
         pubgName:m.player.pubgName,
         medal:m.medal ?? m.player.medal,
         rolesJson:season.game === "PUBG" ? "[]" : (m.rolesJson ?? m.player.rolesJson),
@@ -576,7 +601,7 @@ async function settle(kind:"sold"|"unsold",lotId?:string|null,revision?:number) 
     const session=await activeSession(db,config);
     requireLot(session,lotId);
     if(revision !== undefined && revision !== session.revision) throw new AuctionError("The auction changed. Review the latest bid before confirming.");
-    if(kind === "sold" && !session.awaitingDecision && !expired(session)) throw new AuctionError("Wait for the bidding clock to close before confirming Sold.");
+    if(kind === "sold" && !session.currentBidderTeamId) throw new AuctionError("No high bidder yet. Mark unsold if this player should stay in the pool.");
     if(kind === "unsold" && session.currentBidderTeamId && !session.awaitingDecision && !expired(session)) throw new AuctionError("Wait for the bidding clock to close before passing a bid player.");
     if(!session.floors) await refreshTeams(db,session);
     const playerId=session.currentPlayerId!;

@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 
 export function TeamBudgetCard({
   name,
+  players = [],
   purse,
   rosterCount,
   startingPurse = STARTING_PURSE,
@@ -15,6 +16,7 @@ export function TeamBudgetCard({
   className,
 }: {
   name: string;
+  players?: { id: string; name: string; captain: boolean }[];
   purse: number;
   rosterCount: number;
   startingPurse?: number;
@@ -38,7 +40,7 @@ export function TeamBudgetCard({
       )}
     >
       <div className="flex items-start justify-between gap-2">
-        <TeamBadge name={label} size="md" wrapName className="min-w-0 flex-1" />
+        <TeamBadge name={label} size="md" className="min-w-0 flex-1" />
         {leading ? (
           <span className="shrink-0 rounded bg-primary/20 px-1.5 py-0.5 text-[0.62rem] font-semibold tracking-wide text-primary uppercase">
             Leading
@@ -73,11 +75,23 @@ export function TeamBudgetCard({
       </div>
 
       <p className="m-0 text-[0.72rem] text-muted-foreground">
-        Players purchased{" "}
+        Players{" "}
         <span className="font-mono font-semibold text-foreground">
           {rosterCount}/{MAX_ROSTER}
         </span>
       </p>
+      {players.length > 0 ? (
+        <ul className="m-0 list-none space-y-1 p-0">
+          {players.map((player) => (
+            <li key={player.id} className="truncate text-[0.75rem] text-foreground">
+              {player.name}
+              {player.captain ? (
+                <span className="text-muted-foreground"> · Captain</span>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      ) : null}
     </EsportsCard>
   );
 }
@@ -93,6 +107,7 @@ export function TeamBudgetOverview({
     name: string;
     purse: number;
     rosterCount: number;
+    players?: { id: string; name: string; captain: boolean }[];
   }[];
   leadingTeamId?: string | null;
   startingPurse?: number;
@@ -129,6 +144,7 @@ export function TeamBudgetOverview({
             <li key={team.id} className="min-w-0">
               <TeamBudgetCard
                 name={team.name}
+                players={team.players}
                 purse={team.purse}
                 rosterCount={team.rosterCount}
                 startingPurse={startingPurse}
@@ -153,6 +169,7 @@ export function TeamBudgetList({
     name: string;
     purse: number;
     rosterCount: number;
+    players?: { id: string; name: string; captain: boolean }[];
   }[];
   leadingTeamId?: string | null;
   className?: string;

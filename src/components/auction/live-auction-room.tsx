@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import { AuctionActivity } from "@/components/auction/auction-activity";
+import { AuctionSaleCelebration } from "@/components/auction/auction-sale-celebration";
 import { AuctionHeader } from "@/components/auction/auction-layout";
 import { AuctionLotStage } from "@/components/auction/auction-lot-stage";
 import { BidHistory } from "@/components/auction/bid-history";
@@ -114,24 +114,9 @@ export function LiveAuctionRoom({
 
   return (
     <div className="grid min-w-0 gap-5 overflow-x-hidden">
+      <AuctionSaleCelebration sale={view.lastSale} />
       <AuctionHeader
         title="Live auction"
-        subtitle={
-          <>
-            Season 2 player auction. Captains bid from the{" "}
-            <Link href="/auction/captain" className="text-link">
-              captain desk
-            </Link>
-            .{" "}
-            <Link href="/auction/results" className="text-link">
-              Results
-            </Link>{" "}
-            ·{" "}
-            <Link href="/auction/queue" className="text-link">
-              Queue
-            </Link>
-          </>
-        }
         connected={connected}
         problem={live.problem}
       />

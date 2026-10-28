@@ -21,6 +21,7 @@ import { cn } from "@/lib/utils";
 type CurrentAuctionPlayer = {
   id: string;
   steamName: string;
+  discordName?: string | null;
   pubgName?: string | null;
   medal: string;
   rolesJson: string;
@@ -194,14 +195,19 @@ export function AuctionLotStage({
             />
           </div>
 
+          <p className="mt-4 mb-0 text-center text-[0.68rem] tracking-[0.14em] text-muted-foreground uppercase">
+            {view.game === "PUBG" ? "In-game name" : "Dota name"}
+          </p>
           <h2
             key={`name-${player.id}`}
-            className="mt-4 mb-0 text-center font-display text-xl font-bold leading-snug break-words text-foreground sm:text-2xl"
+            className="mt-1 mb-0 text-center font-display text-xl font-bold leading-snug break-words text-foreground sm:text-2xl"
           >
             {name}
           </h2>
 
           <div className="mt-3 space-y-0">
+            <StatRow label="Discord" value={player.discordName?.trim() || "—"} />
+            <StatRow label="Steam" value={player.steamName?.trim() || "—"} />
             <div className="flex items-center justify-between gap-3 border-b border-white/6 py-2">
               <span className="text-[0.68rem] tracking-wide text-muted-foreground uppercase">
                 Rank
@@ -295,6 +301,11 @@ export function AuctionLotStage({
                     ? displayTeamName(view.highBidder.name)
                     : "Awaiting opening bid"}
                 </p>
+                {view.highBidder?.captainName ? (
+                  <p className="mt-0.5 mb-0 text-xs text-muted-foreground">
+                    Captain {view.highBidder.captainName}
+                  </p>
+                ) : null}
               </div>
 
               <div

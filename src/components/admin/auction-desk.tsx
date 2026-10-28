@@ -7,7 +7,7 @@ import {
   AuctionStatistics,
   BidHistory,
   CurrentPlayerCard,
-  TeamBudgetList,
+  TeamBudgetOverview,
 } from "@/components/auction";
 import { useBidHistory } from "@/components/auction/use-bid-history";
 import { useAuctionView } from "@/components/use-auction-view";
@@ -132,14 +132,14 @@ export function AdminAuctionDesk({
 
       <AuctionStatistics {...stats} />
 
-      <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+      <div className="grid gap-4 lg:grid-cols-2">
         <AuctionPlayerQueue current={currentQueue} upcoming={upcomingQueue} />
         <BidHistory bids={bids} />
-        <TeamBudgetList
-          teams={live.teamBalances}
-          leadingTeamId={live.highBidder?.id}
-        />
       </div>
+      <TeamBudgetOverview
+        teams={live.teamBalances}
+        leadingTeamId={live.highBidder?.id}
+      />
     </div>
   );
 }

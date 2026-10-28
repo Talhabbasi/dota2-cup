@@ -94,9 +94,8 @@ async function main() {
       await assert.rejects(auction.placeWebBid({ ...challengers[2], requestId: randomUUID(), amount: 2100 }), /paused/);
       await auction.resumeWebAuction(control(paused));
       await assert.rejects(auction.pauseWebAuction(control(current)), /changed/);
-      await assert.rejects(auction.confirmWebSold(current.lotId), /clock/);
       await assert.rejects(setActiveSeason(season.id), /Finish the auction/);
-      check("pause, stale admin controls, early sale and season change protected");
+      check("pause, stale admin controls and season change protected");
       await assert.rejects(auction.placeWebBid({ discordId: "fixture-person-" + (count * 5 + 1), lotId: current.lotId!, requestId: randomUUID(), amount: 2100 }), /captains/);
       check("a Discord account that is not a captain cannot bid");
       await setDeadline(200);

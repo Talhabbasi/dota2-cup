@@ -166,7 +166,7 @@ export function AuctionControls({
           <AdminActionForm
             action={actionWebAuctionSold}
             successMessage="Sold"
-            confirmMessage="Confirm sale to the current high bidder?"
+            confirmMessage="Sell this player to the current high bidder now and bring up the next player?"
             refresh="background"
             onResult={onResult}
           >
