@@ -2,14 +2,16 @@
  * Align Discord cup roles with the database using the bot token over REST.
  * The live site can do this without a logged-in gateway bot.
  *
- * Managed tags: Registered, Captain, play-window, and Team · {name}.
+ * Managed tags: Registered, Captain, Paid, Unpaid, play-window, and Team · {name}.
  * Other server roles (Admin, and anything else) are left alone.
  */
 
 import { isDummyDiscordId, publicPlayerWhere } from "./dummy";
+import { paidRoleName, unpaidRoleName } from "./payment-roles";
 import { noteFailedResponse } from "./public-error";
 import { PLAY_WINDOW_ROLE_NAMES, playWindowOrBoth } from "./play-window";
 import { prisma } from "./prisma";
+import { isRosterSub } from "./roles";
 import { getLiveSeason } from "./seasons";
 
 const API = "https://discord.com/api/v10";
@@ -23,6 +25,8 @@ type DesiredCupRoles = {
   evening: boolean;
   late: boolean;
   teamName: string | null;
+  /** Starters and captains owe the fee. Substitutes get neither payment role. */
+  payment: "paid" | "unpaid" | null;
 };
 
 const EMPTY_DESIRED: DesiredCupRoles = {
@@ -31,6 +35,7 @@ const EMPTY_DESIRED: DesiredCupRoles = {
   evening: false,
   late: false,
   teamName: null,
+  payment: null,
 };
 
 function captainRoleName() {
@@ -84,6 +89,8 @@ function roleNames() {
   return {
     registered: registeredRoleName(),
     captain: captainRoleName(),
+    paid: paidRoleName(),
+    unpaid: unpaidRoleName(),
     evening: PLAY_WINDOW_ROLE_NAMES.evening,
     late: PLAY_WINDOW_ROLE_NAMES.late,
   };
@@ -93,8 +100,34 @@ function isManagedCupRole(name: string) {
   const names = roleNames();
   const lower = name.toLowerCase();
   if (lower.startsWith(TEAM_ROLE_PREFIX.toLowerCase())) return true;
-  return [names.registered, names.captain, names.evening, names.late].some(
-    (label) => label.toLowerCase() === lower,
+  return [
+    names.registered,
+    names.captain,
+    names.paid,
+    names.unpaid,
+    names.evening,
+    names.late,
+  ].some((label) => label.toLowerCase() === lower);
+}
+
+function roleColor(name: string) {
+  const lower = name.toLowerCase();
+  if (lower.startsWith(TEAM_ROLE_PREFIX.toLowerCase())) return 0x5865f2;
+  if (lower === captainRoleName().toLowerCase()) return 0xb07d1f;
+  if (lower === paidRoleName().toLowerCase()) return 0x57f287;
+  if (lower === unpaidRoleName().toLowerCase()) return 0xed4245;
+  if (name === PLAY_WINDOW_ROLE_NAMES.late) return 0x4a6fa5;
+  if (name === PLAY_WINDOW_ROLE_NAMES.evening) return 0xc9a227;
+  return 0x3ba55d;
+}
+
+function roleHoist(name: string) {
+  const lower = name.toLowerCase();
+  if (lower === paidRoleName().toLowerCase() || lower === unpaidRoleName().toLowerCase()) {
+    return false;
+  }
+  return (
+    name !== PLAY_WINDOW_ROLE_NAMES.evening && name !== PLAY_WINDOW_ROLE_NAMES.late
   );
 }
 
@@ -108,6 +141,8 @@ export function planCupRoleEdits(input: {
   const wantedNames: string[] = [];
   if (input.desired.registered) wantedNames.push(names.registered);
   if (input.desired.captain) wantedNames.push(names.captain);
+  if (input.desired.payment === "paid") wantedNames.push(names.paid);
+  if (input.desired.payment === "unpaid") wantedNames.push(names.unpaid);
   if (input.desired.evening) wantedNames.push(names.evening);
   if (input.desired.late) wantedNames.push(names.late);
   if (input.desired.teamName) wantedNames.push(teamRoleName(input.desired.teamName));
@@ -167,6 +202,8 @@ async function desiredForDiscord(discordId: string): Promise<DesiredCupRoles> {
     },
     select: {
       isCaptain: true,
+      rosterRole: true,
+      paidAt: true,
       playWindow: true,
       team: { select: { name: true } },
       player: { select: { playWindow: true } },
@@ -174,12 +211,14 @@ async function desiredForDiscord(discordId: string): Promise<DesiredCupRoles> {
   });
   if (!row) return EMPTY_DESIRED;
   const window = playWindowOrBoth(row.playWindow ?? row.player.playWindow);
+  const owesFee = !isRosterSub(row.rosterRole);
   return {
     registered: true,
     captain: row.isCaptain,
     evening: window === "evening" || window === "both",
     late: window === "late" || window === "both",
     teamName: row.team?.name ?? null,
+    payment: owesFee ? (row.paidAt ? "paid" : "unpaid") : null,
   };
 }
 
@@ -225,23 +264,7 @@ async function syncOne(
     desired,
   });
   for (const name of plan.missingNames) {
-    const created = await ensureRole(
-      guildId,
-      name,
-      name.toLowerCase().startsWith(TEAM_ROLE_PREFIX.toLowerCase())
-        ? 0x5865f2
-        : name.toLowerCase() === captainRoleName().toLowerCase()
-          ? 0xb07d1f
-          : name === PLAY_WINDOW_ROLE_NAMES.late
-            ? 0x4a6fa5
-            : name === PLAY_WINDOW_ROLE_NAMES.evening
-              ? 0xc9a227
-              : 0x3ba55d,
-      name === PLAY_WINDOW_ROLE_NAMES.evening ||
-        name === PLAY_WINDOW_ROLE_NAMES.late
-        ? false
-        : true,
-    );
+    const created = await ensureRole(guildId, name, roleColor(name), roleHoist(name));
     if (created) current = [...current, created];
   }
   if (plan.missingNames.length > 0) {

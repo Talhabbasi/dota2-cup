@@ -1,5 +1,6 @@
 import { prisma } from "./prisma";
 import { isRosterSub } from "./roles";
+import { pushDiscordRoleSync } from "./discord-role-sync-rest";
 import {
   getLiveSeason,
   requireCurrentSeason,
@@ -88,12 +89,14 @@ export async function recordPlayerPayment(input: {
   const membership = await syncSeasonPlayer(player.id);
   const rosterRole = membership?.rosterRole ?? player.rosterRole;
   if (!playerMustPay(rosterRole)) {
+    await pushDiscordRoleSync([input.discordId]);
     return { player, skipped: true as const, reason: "sub" as const, alreadyPaid: false };
   }
 
   const amount = input.amount ?? entryFeePkr();
   const alreadyPaid = Boolean(membership?.paidAt ?? player.paidAt);
   if (alreadyPaid) {
+    await pushDiscordRoleSync([input.discordId]);
     return { player, skipped: false as const, reason: null, alreadyPaid: true };
   }
 
@@ -136,6 +139,7 @@ export async function recordPlayerPayment(input: {
     },
   });
 
+  await pushDiscordRoleSync([input.discordId]);
   return { player: updated, skipped: false as const, reason: null, alreadyPaid: false };
 }
 
@@ -176,6 +180,7 @@ export async function adminClearPaid(
   });
   const wasPaid = Boolean(membership?.paidAt ?? player.paidAt);
   if (!wasPaid) {
+    await pushDiscordRoleSync([discordId]);
     return { player, cleared: false as const };
   }
 
@@ -203,6 +208,7 @@ export async function adminClearPaid(
   });
 
   const updated = await mirrorSeasonPaymentToPlayer(player.id, null, 0);
+  await pushDiscordRoleSync([discordId]);
   return { player: updated, cleared: true as const };
 }
 

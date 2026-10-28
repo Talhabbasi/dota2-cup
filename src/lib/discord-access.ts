@@ -38,6 +38,8 @@ import {
   type PlayWindow,
 } from "./play-window";
 import { publicPlayerWhere } from "./dummy";
+import { paidRoleName, unpaidRoleName } from "./payment-roles";
+import { playerMustPay } from "./payments";
 import { prisma } from "./prisma";
 import { getLiveSeason } from "./seasons";
 import { BOT_NAME, CUP_NAME } from "@/lib/brand";
@@ -81,6 +83,36 @@ export async function ensureCaptainRole(guild: Guild): Promise<Role> {
         `Server Settings → Roles → enable **Manage Roles** on **${BOT_NAME}**, ` +
         `and drag the bot role **above** ${name}. Or create a role named **${name}** yourself.`,
     );
+  }
+}
+
+async function ensurePaymentRole(
+  guild: Guild,
+  kind: "paid" | "unpaid",
+): Promise<Role | null> {
+  await guild.roles.fetch();
+  const name = kind === "paid" ? paidRoleName() : unpaidRoleName();
+  const existing = findRole(guild, name);
+  if (existing) {
+    if (!existing.mentionable) {
+      await existing.setMentionable(true, `${CUP_NAME} ${name} mention`).catch(() => undefined);
+    }
+    return existing;
+  }
+  try {
+    return await guild.roles.create({
+      name,
+      hoist: false,
+      mentionable: true,
+      colors: { primaryColor: kind === "paid" ? 0x57f287 : 0xed4245 },
+      reason: `${CUP_NAME} ${name} role`,
+    });
+  } catch (error) {
+    console.warn(
+      `Could not create ${name} Discord role:`,
+      error instanceof Error ? error.message : error,
+    );
+    return findRole(guild, name);
   }
 }
 
@@ -371,8 +403,8 @@ export async function syncCaptainRolesFromDb(guild: Guild) {
 
 /**
  * Discord cup tags follow the live season only (fast batched pass):
- * - Season 2 members keep Registered (+ weekend window)
- * - Everyone else loses Registered / weekend / team / Captain leftovers
+ * - Season members keep Registered, Paid or Unpaid, and their weekend window
+ * - Everyone else loses Registered / Paid / Unpaid / weekend / team / Captain leftovers
  */
 export async function syncLiveSeasonDiscordRoles(guild: Guild) {
   await guild.roles.fetch();
@@ -391,6 +423,8 @@ export async function syncLiveSeasonDiscordRoles(guild: Guild) {
   const lateRole = await ensurePlayWindowRole(guild, "late").catch(() =>
     findRole(guild, PLAY_WINDOW_ROLE_NAMES.late),
   );
+  const paidRole = await ensurePaymentRole(guild, "paid");
+  const unpaidRole = await ensurePaymentRole(guild, "unpaid");
 
   const live = await getLiveSeason();
   const liveRows = live
@@ -398,6 +432,8 @@ export async function syncLiveSeasonDiscordRoles(guild: Guild) {
         where: { seasonId: live.id, player: publicPlayerWhere },
         select: {
           isCaptain: true,
+          rosterRole: true,
+          paidAt: true,
           playWindow: true,
           player: { select: { discordId: true, playWindow: true } },
         },
@@ -410,6 +446,8 @@ export async function syncLiveSeasonDiscordRoles(guild: Guild) {
       {
         window: playWindowOrBoth(row.playWindow ?? row.player.playWindow),
         isCaptain: row.isCaptain,
+        owesFee: playerMustPay(row.rosterRole),
+        paid: Boolean(row.paidAt),
       },
     ]),
   );
@@ -436,6 +474,8 @@ export async function syncLiveSeasonDiscordRoles(guild: Guild) {
           role.id === captainRole?.id ||
           role.id === eveningRole?.id ||
           role.id === lateRole?.id ||
+          role.id === paidRole?.id ||
+          role.id === unpaidRole?.id ||
           role.name.toLowerCase().startsWith("team · "),
       );
       if (junk.size === 0) return;
@@ -475,6 +515,16 @@ export async function syncLiveSeasonDiscordRoles(guild: Guild) {
       if (!wantLate && member.roles.cache.has(lateRole.id)) {
         toRemove.push(lateRole);
       }
+    }
+    const wantPaid = live.owesFee && live.paid;
+    const wantUnpaid = live.owesFee && !live.paid;
+    if (paidRole) {
+      if (wantPaid && !member.roles.cache.has(paidRole.id)) toAdd.push(paidRole);
+      if (!wantPaid && member.roles.cache.has(paidRole.id)) toRemove.push(paidRole);
+    }
+    if (unpaidRole) {
+      if (wantUnpaid && !member.roles.cache.has(unpaidRole.id)) toAdd.push(unpaidRole);
+      if (!wantUnpaid && member.roles.cache.has(unpaidRole.id)) toRemove.push(unpaidRole);
     }
 
     if (toRemove.length > 0) {
@@ -672,6 +722,27 @@ export async function tryClearPlayWindowRoles(
   }
 }
 
+async function tryClearPaymentRoles(guild: Guild | null, discordId: string) {
+  if (!guild) return;
+  try {
+    const member = await guild.members
+      .fetch(discordId.split(":")[0])
+      .catch(() => null);
+    if (!member) return;
+    for (const name of [paidRoleName(), unpaidRoleName()]) {
+      const role = findRole(guild, name);
+      if (role && member.roles.cache.has(role.id)) {
+        await member.roles.remove(role, "Removed from cup");
+      }
+    }
+  } catch (error) {
+    console.warn(
+      "Could not clear payment Discord roles:",
+      error instanceof Error ? error.message : error,
+    );
+  }
+}
+
 /** Drop registered / weekend / team roles (player delete). */
 export async function tryRevokeCupPlayerAccess(
   guild: Guild | null,
@@ -679,6 +750,7 @@ export async function tryRevokeCupPlayerAccess(
 ) {
   await trySetMemberRegisteredRole(guild, discordId, false);
   await tryClearPlayWindowRoles(guild, discordId);
+  await tryClearPaymentRoles(guild, discordId);
   try {
     await stripMemberTeamRoles(guild, discordId);
   } catch (error) {
