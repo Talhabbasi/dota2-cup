@@ -329,7 +329,7 @@ export function AuctionLotStage({
           </div>
 
           {canBid && teamId ? (
-            <div className="mt-auto grid gap-2.5">
+            <div className="grid gap-2.5">
               {uncertain ? (
                 <Button
                   type="button"
@@ -409,7 +409,7 @@ export function AuctionLotStage({
               ) : null}
             </div>
           ) : (
-            <p className="mt-auto m-0 rounded-lg border border-white/8 bg-black/20 px-3 py-2.5 text-center text-xs text-muted-foreground">
+            <p className="m-0 rounded-lg border border-white/8 bg-black/20 px-3 py-2.5 text-center text-xs text-muted-foreground">
               {view.status === "paused"
                 ? "Auction paused by the organizer."
                 : timerUp || closed

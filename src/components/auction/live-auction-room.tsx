@@ -121,7 +121,7 @@ export function LiveAuctionRoom({
         problem={live.problem}
       />
 
-      <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(220px,0.95fr)_minmax(0,1.35fr)_minmax(260px,0.9fr)] xl:items-stretch">
+      <div className="grid min-w-0 items-start gap-4 xl:grid-cols-[minmax(220px,0.95fr)_minmax(0,1.35fr)_minmax(260px,0.9fr)]">
         <AuctionLotStage
           view={view}
           player={view.currentPlayer}
@@ -142,7 +142,7 @@ export function LiveAuctionRoom({
         />
 
         <aside className="flex min-w-0 flex-col gap-4">
-          <BidHistory bids={bids} className="min-h-[16rem] flex-1" />
+          <BidHistory bids={bids} />
           <AuctionActivity view={view} latestBid={bids[0] ?? null} />
         </aside>
       </div>

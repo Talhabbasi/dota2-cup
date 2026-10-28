@@ -97,7 +97,7 @@ export function BidHistory({
           {emptyLabel}
         </p>
       ) : (
-        <ul className="m-0 max-h-[22rem] list-none overflow-y-auto p-0 xl:max-h-none xl:flex-1">
+        <ul className="m-0 max-h-[22rem] min-h-0 list-none overflow-y-auto overscroll-contain p-0">
           <AnimatePresence initial={false} mode="popLayout">
             {bids.map((bid) => (
               <BidHistoryItem key={bid.id} bid={bid} />
