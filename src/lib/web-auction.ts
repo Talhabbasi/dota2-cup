@@ -77,6 +77,8 @@ export type WebAuctionSession = {
   currentBid: number;
   currentBidderTeamId: string | null;
   endsAtMs: number | null;
+  /** Hammer length for this pool. Bids reset to this. 10 or 30; older sessions default to 30. */
+  clockSeconds?: number;
   awaitingDecision: boolean;
   event: "idle" | "lot" | "bid" | "sold" | "unsold" | "done";
   players: Record<string, WebPlayer>;
@@ -109,9 +111,14 @@ export type WebAuctionView = {
   channelId: string | null;
   messageId: string | null;
   sandbox: false;
+  clockSeconds: number;
 };
 
 export type AuctionControl = { lotId: string; revision: number };
+
+export function auctionClockSeconds(session: { clockSeconds?: number } | null | undefined) {
+  return session?.clockSeconds === 10 ? 10 : BID_CLOCK_SECONDS;
+}
 export type BidInput = {
   discordId: string;
   amount?: number;
@@ -222,6 +229,7 @@ function viewFrom(session: WebAuctionSession | null): WebAuctionView {
     channelId: session?.channelId ?? null,
     messageId: session?.messageId ?? null,
     sandbox: false,
+    clockSeconds: auctionClockSeconds(session),
   };
 }
 
@@ -474,6 +482,25 @@ export function resetWebTimer(control?: AuctionControl) { return controlAuction(
 export function pauseWebAuction(control?: AuctionControl) { return controlAuction("pause",control); }
 export function resumeWebAuction(control?: AuctionControl) { return controlAuction("resume",control); }
 
+/** Set the hammer to 30 or 10 seconds and restart it for the open lot. */
+export async function setWebAuctionClock(seconds: number, control?: AuctionControl) {
+  if (seconds !== 10 && seconds !== 30) {
+    throw new AuctionError("Clock must be 10 or 30 seconds.", 400);
+  }
+  const config = await liveConfig();
+  return withAuctionLock(async (db) => {
+    const session = await activeSession(db, config);
+    requireControl(session, control);
+    if (session.status !== "running") throw new AuctionError("Auction is not running.");
+    session.clockSeconds = seconds;
+    session.endsAtMs = Date.now() + seconds * 1000;
+    session.awaitingDecision = false;
+    session.event = "bid";
+    await writeSession(db, session);
+    return viewFrom(session);
+  });
+}
+
 async function controlAuction(action:"timer"|"pause"|"resume",control?:AuctionControl) {
   const config=await liveConfig();
   return withAuctionLock(async db=>{
@@ -493,7 +520,7 @@ async function controlAuction(action:"timer"|"pause"|"resume",control?:AuctionCo
         session.endsAtMs=null;
         session.status="paused";
       } else {
-        session.endsAtMs=now+BID_CLOCK_SECONDS*1000;
+        session.endsAtMs=now+auctionClockSeconds(session)*1000;
         session.awaitingDecision=false;
       }
     }
@@ -553,7 +580,7 @@ export async function placeWebBid(input:BidInput) {
     await db.bid.create({data:{id:bidId,lotId:session.lotId!,playerId:session.currentPlayerId!,teamId:bidderTeamId,amount}});
     session.currentBid=amount;
     session.currentBidderTeamId=bidderTeamId;
-    session.endsAtMs=Date.now()+BID_CLOCK_SECONDS*1000;
+    session.endsAtMs=Date.now()+auctionClockSeconds(session)*1000;
     session.event="bid";
     await writeSession(db,session);
     return viewFrom(session);
@@ -610,7 +637,7 @@ async function floorsFor(db:AuctionDb,session:WebAuctionSession):Promise<number[
 }
 
 function assertBudget(session:WebAuctionSession,team:WebTeam,amount:number,roster:{min:number;max:number},otherFloors:number[]) {
-  if(team.rosterCount>=roster.max) throw new AuctionError(`${team.name} already has ${roster.max} players.`);
+  if(team.rosterCount>=roster.min) throw new AuctionError(`${team.name} already has ${roster.min} players, so that captain cannot bid.`);
   const needed=Math.max(0,roster.min-team.rosterCount-1);
   // Reserve the cheapest remaining eligible players, across all medal pools.
   const floors=[...otherFloors];
@@ -665,7 +692,7 @@ async function settle(kind:"sold"|"unsold",lotId?:string|null,revision?:number) 
     const next=session.queue.shift();
     if(next) {
       await openLot(db,session,next);
-      session.endsAtMs=Date.now()+BID_CLOCK_SECONDS*1000;
+      session.endsAtMs=Date.now()+auctionClockSeconds(session)*1000;
     } else {
       session.status="idle";session.lotId=null;session.currentPlayerId=null;
       session.currentBid=0;session.currentBidderTeamId=null;session.endsAtMs=null;

@@ -13,7 +13,7 @@ import {
   primarySecondaryRoles,
   type AuctionUiStatus,
 } from "@/lib/auction-ui";
-import { BID_INCREMENT, labelForMedal } from "@/lib/constants";
+import { MIN_ROSTER, BID_INCREMENT, labelForMedal } from "@/lib/constants";
 import { CUP_NAME } from "@/lib/brand";
 import type { WebAuctionView } from "@/lib/web-auction";
 import { cn } from "@/lib/utils";
@@ -111,6 +111,10 @@ export function AuctionLotStage({
             : "Waiting"
     : "Waiting";
 
+  const myRoster = teamId
+    ? (view.teamBalances.find((team) => team.id === teamId)?.rosterCount ?? 0)
+    : 0;
+  const rosterFull = Boolean(canBid && myRoster >= MIN_ROSTER);
   const biddingLocked =
     !canBid ||
     !connected ||
@@ -120,7 +124,8 @@ export function AuctionLotStage({
     timerUp ||
     closed ||
     pending ||
-    youAreHigh;
+    youAreHigh ||
+    rosterFull;
 
   function amountForStep(step: number) {
     const opening = !view.highBidder && step === BID_INCREMENT;
@@ -139,6 +144,7 @@ export function AuctionLotStage({
   else if (!connected) bidHint = "Reconnecting — bidding paused";
   else if (view.status === "paused" || timerPaused) bidHint = "Auction paused";
   else if (timerUp || closed) bidHint = "Bidding is closed";
+  else if (rosterFull) bidHint = `Roster is full at ${MIN_ROSTER}. You cannot bid.`;
   else if (youAreHigh) bidHint = "You hold the highest bid";
   else if (insufficient) bidHint = "Insufficient team budget";
   else if (teamPurse != null) {
@@ -343,6 +349,10 @@ export function AuctionLotStage({
               ) : youAreHigh ? (
                 <div className="flex h-12 items-center justify-center rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 text-center text-sm font-semibold text-amber-200">
                   You hold the high bid
+                </div>
+              ) : rosterFull ? (
+                <div className="flex h-12 items-center justify-center rounded-lg border border-white/15 bg-black/30 px-4 text-center text-sm font-semibold text-muted-foreground">
+                  Roster is full at {MIN_ROSTER}. You cannot bid.
                 </div>
               ) : (
                 <>

@@ -1346,6 +1346,17 @@ try {
   }
 }
 
+export async function actionWebAuctionClock(formData: FormData) {
+  try {
+    await requireAdmin();
+    const { setWebAuctionClock } = await import("@/lib/web-auction");
+    const seconds = Number(formData.get("seconds"));
+    return setWebAuctionClock(seconds, auctionControl(formData));
+  } catch (error) {
+    return failAction("Set auction clock", error);
+  }
+}
+
 export async function actionWebAuctionResetTimer(formData: FormData) {
 try {
   await requireAdmin();
@@ -1390,6 +1401,39 @@ try {
     return introduceNextWebPlayer(auctionControl(formData));
     } catch (error) {
     return failAction("Advance auction", error);
+  }
+}
+
+export async function actionAutoAssignPreview(seed: number) {
+  try {
+    await requireAdmin();
+    const { previewAutoAssign } = await import("@/lib/auto-assign");
+    const proposal = await previewAutoAssign(seed);
+    return { ok: true as const, proposal };
+  } catch (error) {
+    return failAction("Preview auto-assign", error);
+  }
+}
+
+export async function actionAutoAssignCommit(
+  placements: { playerId: string; teamId: string }[],
+) {
+  try {
+    const session = await requireAdmin();
+    const { commitAutoAssign } = await import("@/lib/auto-assign");
+    const saved = await commitAutoAssign(placements);
+    revalidateAdmin();
+    after(() =>
+      note(
+        session,
+        "auction.auto_assign",
+        `Auto-assigned ${saved.count} paid players to teams`,
+        { count: saved.count, teams: saved.teamNames },
+      ),
+    );
+    return { ok: true as const, count: saved.count };
+  } catch (error) {
+    return failAction("Save auto-assign", error);
   }
 }
 

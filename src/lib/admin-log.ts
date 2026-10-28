@@ -43,6 +43,7 @@ export const ADMIN_ACTION_LABELS: Record<string, string> = {
   "playoff.post": "Posted playoffs to Discord",
   "playoff.clear": "Cleared playoff fixtures",
   "auction.sold_price": "Set auction price",
+  "auction.auto_assign": "Auto-assigned remaining players",
   "cup.switches": "Cup switches",
   "payment.mark": "Marked paid",
   "payment.clear": "Cleared payment",

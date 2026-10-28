@@ -6,11 +6,14 @@ import { adminListSoldLots } from "@/lib/match-admin";
 import { pageMeta } from "@/lib/seo";
 import { AdminAuctionBoard } from "@/components/admin/auction-board";
 import { AdminAuctionDesk } from "@/components/admin/auction-desk";
+import { AutoAssignPanel } from "@/components/admin/auto-assign-panel";
 import { AdminCard, AdminSection } from "@/components/admin/ui";
 import { getWebAuctionView } from "@/lib/web-auction";
+import { loadAutoAssignOverview } from "@/lib/auto-assign";
 import { getLiveSeason } from "@/lib/seasons";
 import { prisma } from "@/lib/prisma";
 import { medalsForGame } from "@/lib/constants";
+import { TOURNAMENT_FORMAT } from "@/lib/season-constants";
 import { canEnterAuctionPool } from "@/lib/auction-payment";
 import { getCupFeatureSettings } from "@/lib/cup-features";
 import { AUCTION_PLAYER_STATUS } from "@/lib/web-auction";
@@ -62,6 +65,10 @@ export default async function AdminAuctionPage({
   const format = viewingLive
     ? (season?.tournamentFormat ?? "AUCTION_BASED")
     : "AUCTION_BASED";
+  const autoAssign =
+    viewingLive && format === TOURNAMENT_FORMAT.AUCTION_BASED
+      ? await loadAutoAssignOverview().catch(() => null)
+      : null;
 
   return (
     <div className="page">
@@ -105,6 +112,13 @@ export default async function AdminAuctionPage({
         </AdminSection>
       </AdminCard>
 
+      {autoAssign ? (
+        <AdminCard className="mb-6">
+          <AdminSection title="Auto assign remaining players">
+            <AutoAssignPanel overview={autoAssign} />
+          </AdminSection>
+        </AdminCard>
+      ) : null}
 
       <AdminCard className="mb-6">
         <AdminSection title="Unsigned player pool">

@@ -10,6 +10,7 @@ import {
   actionWebAuctionSold,
   actionWebAuctionStart,
   actionWebAuctionTimer,
+  actionWebAuctionClock,
 } from "@/app/admin/actions";
 import {
   AdminActionForm,
@@ -104,6 +105,30 @@ export function AuctionControls({
             {fields}
             <AdminSubmitButton variant="secondary" className="w-full text-xs">
               Start timer
+            </AdminSubmitButton>
+          </AdminActionForm>
+          <AdminActionForm
+            action={actionWebAuctionClock}
+            successMessage="30 second clock"
+            refresh="none"
+            onResult={onResult}
+          >
+            {fields}
+            <input type="hidden" name="seconds" value="30" />
+            <AdminSubmitButton variant="secondary" className="w-full text-xs">
+              30s clock
+            </AdminSubmitButton>
+          </AdminActionForm>
+          <AdminActionForm
+            action={actionWebAuctionClock}
+            successMessage="10 second clock"
+            refresh="none"
+            onResult={onResult}
+          >
+            {fields}
+            <input type="hidden" name="seconds" value="10" />
+            <AdminSubmitButton variant="secondary" className="w-full text-xs">
+              10s clock
             </AdminSubmitButton>
           </AdminActionForm>
           <AdminActionForm
