@@ -242,18 +242,44 @@ async function renameTeamRole(
   );
 }
 
+async function editMemberRole(
+  method: "PUT" | "DELETE",
+  guildId: string,
+  discordId: string,
+  roleId: string,
+) {
+  const res = await discord(
+    method,
+    `/guilds/${guildId}/members/${discordId}/roles/${roleId}`,
+  );
+  if (!res) return "Discord bot is not configured on the site.";
+  if (res.ok) return null;
+  if (res.status === 403) {
+    return "Discord refused the role change. Move the bot's role above Paid and Unpaid, then try again.";
+  }
+  return "Discord role update failed.";
+}
+
 async function syncOne(
   guildId: string,
   discordId: string,
   roles: DiscordRole[],
-) {
+  missing: "skip" | "error",
+): Promise<{ roles: DiscordRole[]; error: string | null }> {
   const id = snowflake(discordId);
-  if (!/^\d{17,20}$/.test(id) || isDummyDiscordId(discordId)) return roles;
+  if (!/^\d{17,20}$/.test(id) || isDummyDiscordId(discordId)) {
+    return { roles, error: null };
+  }
 
   const memberRes = await discord("GET", `/guilds/${guildId}/members/${id}`);
-  if (!memberRes) return roles;
-  if (memberRes.status === 404) return roles;
-  if (!memberRes.ok) return roles;
+  if (!memberRes) return { roles, error: "Discord bot is not configured on the site." };
+  if (memberRes.status === 404) {
+    return {
+      roles,
+      error: missing === "error" ? "That player is not in the Discord server." : null,
+    };
+  }
+  if (!memberRes.ok) return { roles, error: "Could not read that player's Discord roles." };
   const member = (await memberRes.json()) as { roles?: string[] };
   const desired = await desiredForDiscord(discordId);
 
@@ -274,17 +300,22 @@ async function syncOne(
       desired,
     });
   }
+  if (plan.missingNames.length > 0) {
+    return {
+      roles: current,
+      error: `Could not create the Discord role ${plan.missingNames[0]}.`,
+    };
+  }
 
   for (const roleId of plan.remove) {
-    await discord(
-      "DELETE",
-      `/guilds/${guildId}/members/${id}/roles/${roleId}`,
-    );
+    const error = await editMemberRole("DELETE", guildId, id, roleId);
+    if (error) return { roles: current, error };
   }
   for (const roleId of plan.add) {
-    await discord("PUT", `/guilds/${guildId}/members/${id}/roles/${roleId}`);
+    const error = await editMemberRole("PUT", guildId, id, roleId);
+    if (error) return { roles: current, error };
   }
-  return current;
+  return { roles: current, error: null };
 }
 
 async function mapPool<T>(
@@ -306,6 +337,10 @@ async function mapPool<T>(
   await Promise.all(workers);
 }
 
+export type DiscordRoleSyncResult =
+  | { ok: true }
+  | { ok: false; reason: string };
+
 /**
  * Push cup roles for these Discord accounts, or for every real player when
  * `discordIds` is omitted (season switch).
@@ -313,12 +348,15 @@ async function mapPool<T>(
 export async function pushDiscordRoleSync(
   discordIds?: string[],
   options?: { renameTeam?: { from: string; to: string } },
-) {
+): Promise<DiscordRoleSyncResult> {
   const guildId = process.env.DISCORD_GUILD_ID?.trim();
-  if (!process.env.DISCORD_TOKEN?.trim() || !guildId) return;
+  if (!process.env.DISCORD_TOKEN?.trim() || !guildId) {
+    return { ok: false, reason: "Discord bot is not configured on the site." };
+  }
 
   try {
     let ids = discordIds?.map((id) => id.trim()).filter(Boolean);
+    const strict = Boolean(ids);
     if (!ids) {
       const players = await prisma.player.findMany({
         where: publicPlayerWhere,
@@ -327,9 +365,12 @@ export async function pushDiscordRoleSync(
       ids = players.map((player) => player.discordId);
     }
     ids = [...new Set(ids)];
-    if (ids.length === 0 && !options?.renameTeam) return;
+    if (ids.length === 0 && !options?.renameTeam) return { ok: true };
 
     let roles = await listRoles(guildId);
+    if (roles.length === 0) {
+      return { ok: false, reason: "Could not read Discord roles." };
+    }
     if (options?.renameTeam) {
       roles = await renameTeamRole(
         guildId,
@@ -341,13 +382,22 @@ export async function pushDiscordRoleSync(
 
     // One member at a time so a newly created Team role is visible to the next player.
     let cursor = roles;
+    let failure: string | null = null;
     await mapPool(ids, 1, async (discordId) => {
-      cursor = await syncOne(guildId, discordId, cursor);
+      const result = await syncOne(
+        guildId,
+        discordId,
+        cursor,
+        strict ? "error" : "skip",
+      );
+      cursor = result.roles;
+      if (result.error && !failure) failure = result.error;
     });
+    if (failure) return { ok: false, reason: failure };
+    return { ok: true };
   } catch (error) {
-    console.warn(
-      "Discord role sync:",
-      error instanceof Error ? error.message : error,
-    );
+    const reason = error instanceof Error ? error.message : "Discord role sync failed.";
+    console.warn("Discord role sync:", reason);
+    return { ok: false, reason };
   }
 }

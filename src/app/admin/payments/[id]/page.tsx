@@ -105,8 +105,8 @@ export default async function AdminPaymentDetailPage({
               </p>
               <AdminConfirmForm
                 action={actionClearPaid}
-                message={`Clear payment for ${player.steamName} and post that in #${paymentsChannel}?`}
-                successMessage={`Payment cleared and posted in #${paymentsChannel}`}
+                message={`Clear payment for ${player.steamName}, post that in #${paymentsChannel}, and set their Discord role back to Unpaid?`}
+                successMessage={`Payment cleared, posted in #${paymentsChannel}, and Discord role set to Unpaid`}
               >
                 <input type="hidden" name="discordId" value={player.discordId} />
                 <input type="hidden" name="seasonId" value={view.id} />
@@ -130,8 +130,8 @@ export default async function AdminPaymentDetailPage({
               </p>
               <AdminConfirmForm
                 action={actionMarkPaid}
-                message={`Mark ${player.steamName} as paid (Rs ${amount.toLocaleString("en-PK")}) and post it in #${paymentsChannel}?`}
-                successMessage={`Marked paid and posted in #${paymentsChannel}`}
+                message={`Mark ${player.steamName} as paid (Rs ${amount.toLocaleString("en-PK")}), post it in #${paymentsChannel}, and switch their Discord role from Unpaid to Paid?`}
+                successMessage={`Marked paid, posted in #${paymentsChannel}, and Discord role set to Paid`}
               >
                 <input type="hidden" name="discordId" value={player.discordId} />
                 <input type="hidden" name="seasonId" value={view.id} />

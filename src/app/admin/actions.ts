@@ -710,15 +710,23 @@ try {
     const seasonId = String(formData.get("seasonId") ?? "");
     const result = await adminMarkPaid(discordId, "web-admin", seasonId);
     const name = result.player.steamName;
+    if (!result.roles.ok) {
+      revalidateAdmin();
+      return {
+        ok: false as const,
+        saved: true as const,
+        error: `Payment saved for ${name}, but the Discord role was not updated: ${result.roles.reason}`,
+      };
+    }
     if (result.skipped) {
-      await note(session, "payment.mark", `${name} is a substitute — no fee`, {
+      await note(session, "payment.mark", `${name} is a substitute — no fee. Discord role cleared.`, {
         discordId,
       });
       revalidateAdmin();
       return;
     }
     if (result.alreadyPaid) {
-      await note(session, "payment.mark", `${name} was already paid`, { discordId });
+      await note(session, "payment.mark", `${name} was already paid. Discord role set to Paid.`, { discordId });
       revalidateAdmin();
       return;
     }
@@ -753,8 +761,16 @@ try {
     const seasonId = String(formData.get("seasonId") ?? "");
     const result = await adminClearPaid(discordId, seasonId);
     const name = result.player.steamName;
+    if (!result.roles.ok) {
+      revalidateAdmin();
+      return {
+        ok: false as const,
+        saved: true as const,
+        error: `Payment saved for ${name}, but the Discord role was not updated: ${result.roles.reason}`,
+      };
+    }
     if (!result.cleared) {
-      await note(session, "payment.clear", `${name} was not paid`, { discordId });
+      await note(session, "payment.clear", `${name} was not paid. Discord role set to Unpaid.`, { discordId });
       revalidateAdmin();
       return;
     }

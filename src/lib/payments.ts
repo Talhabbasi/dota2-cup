@@ -89,15 +89,15 @@ export async function recordPlayerPayment(input: {
   const membership = await syncSeasonPlayer(player.id);
   const rosterRole = membership?.rosterRole ?? player.rosterRole;
   if (!playerMustPay(rosterRole)) {
-    await pushDiscordRoleSync([input.discordId]);
-    return { player, skipped: true as const, reason: "sub" as const, alreadyPaid: false };
+    const roles = await pushDiscordRoleSync([input.discordId]);
+    return { player, skipped: true as const, reason: "sub" as const, alreadyPaid: false, roles };
   }
 
   const amount = input.amount ?? entryFeePkr();
   const alreadyPaid = Boolean(membership?.paidAt ?? player.paidAt);
   if (alreadyPaid) {
-    await pushDiscordRoleSync([input.discordId]);
-    return { player, skipped: false as const, reason: null, alreadyPaid: true };
+    const roles = await pushDiscordRoleSync([input.discordId]);
+    return { player, skipped: false as const, reason: null, alreadyPaid: true, roles };
   }
 
   const now = new Date();
@@ -139,8 +139,8 @@ export async function recordPlayerPayment(input: {
     },
   });
 
-  await pushDiscordRoleSync([input.discordId]);
-  return { player: updated, skipped: false as const, reason: null, alreadyPaid: false };
+  const roles = await pushDiscordRoleSync([input.discordId]);
+  return { player: updated, skipped: false as const, reason: null, alreadyPaid: false, roles };
 }
 
 async function assertLivePaymentSeason(seasonId?: string | null) {
@@ -180,8 +180,8 @@ export async function adminClearPaid(
   });
   const wasPaid = Boolean(membership?.paidAt ?? player.paidAt);
   if (!wasPaid) {
-    await pushDiscordRoleSync([discordId]);
-    return { player, cleared: false as const };
+    const roles = await pushDiscordRoleSync([discordId]);
+    return { player, cleared: false as const, roles };
   }
 
   await prisma.seasonPlayer.upsert({
@@ -208,8 +208,8 @@ export async function adminClearPaid(
   });
 
   const updated = await mirrorSeasonPaymentToPlayer(player.id, null, 0);
-  await pushDiscordRoleSync([discordId]);
-  return { player: updated, cleared: true as const };
+  const roles = await pushDiscordRoleSync([discordId]);
+  return { player: updated, cleared: true as const, roles };
 }
 
 export type AdminPaymentPlayerRow = {
