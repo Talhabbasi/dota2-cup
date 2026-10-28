@@ -181,7 +181,7 @@ export function AuctionLotStage({
   return (
     <>
       {/* LEFT — player profile */}
-      <aside className={cn(shell, "flex flex-col")}>
+      <aside className={cn(shell, "flex h-full flex-col")}>
         {header}
         <div className="flex flex-1 flex-col p-4 sm:p-5">
           <div key={player.id} className="auction-player-enter mx-auto">
@@ -232,7 +232,7 @@ export function AuctionLotStage({
       </aside>
 
       {/* CENTER — live bidding */}
-      <section className={cn(shell, "flex flex-col")}>
+      <section className={cn(shell, "flex h-full min-h-0 flex-col overflow-y-auto")}>
         <header className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 bg-black/25 px-4 py-2.5">
           <p className="m-0 font-display text-sm tracking-[0.1em] text-primary uppercase">
             Live bidding

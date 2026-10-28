@@ -23,11 +23,13 @@ export function AuctionPlayerQueue({
   upcoming,
   completed,
   className,
+  listClassName,
 }: {
   current?: QueuePlayer | null;
   upcoming: QueuePlayer[];
   completed?: QueuePlayer[];
   className?: string;
+  listClassName?: string;
 }) {
   return (
     <div className={cn("grid gap-4", className)}>
@@ -54,7 +56,12 @@ export function AuctionPlayerQueue({
             No players waiting in the pool.
           </p>
         ) : (
-          <ol className="m-0 list-none divide-y divide-white/5 p-0">
+          <ol
+            className={cn(
+              "m-0 list-none divide-y divide-white/5 overflow-y-auto overscroll-contain p-0",
+              listClassName,
+            )}
+          >
             {upcoming.map((player, index) => (
               <li key={player.id} className="px-4 py-3">
                 <QueueRow player={player} position={index + 1} />

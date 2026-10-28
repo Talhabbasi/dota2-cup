@@ -109,8 +109,9 @@ export function AdminAuctionDesk({
             : "Reconnecting — auction controls stay locked until updates resume."}
       </p>
 
-      <div className="grid gap-4 xl:grid-cols-[1.2fr_0.9fr]">
+      <div className="grid items-stretch gap-4 xl:grid-cols-[1.2fr_0.9fr]">
         <CurrentPlayerCard
+          className="h-full"
           player={live.currentPlayer}
           game={live.game}
           medalLabel={live.medalLabel}
@@ -123,6 +124,7 @@ export function AdminAuctionDesk({
           timerPaused={live.status === "paused"}
         />
         <AuctionControls
+          className="h-full"
           view={live}
           medals={medals}
           connected={connected}
@@ -132,9 +134,20 @@ export function AdminAuctionDesk({
 
       <AuctionStatistics {...stats} />
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <AuctionPlayerQueue current={currentQueue} upcoming={upcomingQueue} />
-        <BidHistory bids={bids} />
+      <div className="grid items-stretch gap-4 lg:grid-cols-2">
+        <AuctionPlayerQueue
+          className="min-w-0"
+          current={currentQueue}
+          upcoming={upcomingQueue}
+          listClassName="max-h-[32rem]"
+        />
+        <div className="relative min-w-0 lg:h-full">
+          <BidHistory
+            bids={bids}
+            fill="lg"
+            className="h-full lg:absolute lg:inset-0"
+          />
+        </div>
       </div>
       <TeamBudgetOverview
         teams={live.teamBalances}

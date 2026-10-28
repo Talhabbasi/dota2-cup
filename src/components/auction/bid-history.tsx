@@ -66,10 +66,13 @@ export function BidHistoryItem({
 export function BidHistory({
   bids,
   className,
+  fill,
   emptyLabel = "No raises yet. Live bids appear here as captains raise.",
 }: {
   bids: AuctionBidHistoryItem[];
   className?: string;
+  /** Drop the fixed cap from this breakpoint up and scroll inside the matched card. */
+  fill?: "lg" | "xl";
   emptyLabel?: string;
 }) {
   return (
@@ -97,7 +100,13 @@ export function BidHistory({
           {emptyLabel}
         </p>
       ) : (
-        <ul className="m-0 max-h-[22rem] min-h-0 list-none overflow-y-auto overscroll-contain p-0">
+        <ul
+          className={cn(
+            "m-0 max-h-[22rem] min-h-0 flex-1 list-none overflow-y-auto overscroll-contain p-0",
+            fill === "lg" && "lg:max-h-none",
+            fill === "xl" && "xl:max-h-none",
+          )}
+        >
           <AnimatePresence initial={false} mode="popLayout">
             {bids.map((bid) => (
               <BidHistoryItem key={bid.id} bid={bid} />
