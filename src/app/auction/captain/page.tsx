@@ -1,3 +1,4 @@
+import { AuctionPayWall, auctionViewerBlock } from "@/components/auction-pay-wall";
 import { PageHeader } from "@/components/common";
 import { CaptainAuctionClient } from "@/components/captain-auction-client";
 import { authSession } from "@/lib/auth";
@@ -18,6 +19,11 @@ export function generateMetadata() {
 }
 
 export default async function CaptainAuctionPage() {
+  const block = await auctionViewerBlock();
+  if (block.blocked && block.message) {
+    return <AuctionPayWall message={block.message} />;
+  }
+
   const session = await authSession();
   const [view, discordTeamId] = await Promise.all([
     getWebAuctionViewOrEmpty(),

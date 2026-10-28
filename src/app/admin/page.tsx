@@ -26,13 +26,17 @@ import { getLiveSeason } from "@/lib/seasons";
 import { isPubgSeason } from "@/lib/games";
 import { pageMeta } from "@/lib/seo";
 import { CUP_NAME } from "@/lib/brand";
-import { actionUpdateCupSwitches } from "@/app/admin/actions";
+import {
+  actionSetUnpaidAuctionAllowed,
+  actionUpdateCupSwitches,
+} from "@/app/admin/actions";
 import {
   AdminField,
   AdminStatus,
   adminControlClass,
 } from "@/components/admin/ui";
 import {
+  AdminActionForm,
   AdminConfirmForm,
   AdminSubmitButton,
 } from "@/components/admin/form-controls";
@@ -295,6 +299,54 @@ export default async function AdminPage({
             </h2>
             <AdminStatus tone="gold">live</AdminStatus>
           </div>
+          <AdminActionForm
+            key={settings.unpaidAuctionAllowed ? "unpaid-on" : "unpaid-off"}
+            action={actionSetUnpaidAuctionAllowed}
+            successMessage={
+              settings.unpaidAuctionAllowed
+                ? "Unpaid players are blocked from the auction"
+                : "Unpaid players can join the auction"
+            }
+            className="mb-4"
+          >
+            <input
+              type="hidden"
+              name="unpaidAuctionAllowed"
+              value={settings.unpaidAuctionAllowed ? "off" : "on"}
+            />
+            <button
+              type="submit"
+              role="switch"
+              aria-checked={settings.unpaidAuctionAllowed}
+              className="flex w-full items-center gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-3 text-left transition hover:border-[#487fff]/35"
+            >
+              <span
+                className={cn(
+                  "relative h-6 w-11 shrink-0 rounded-full transition",
+                  settings.unpaidAuctionAllowed
+                    ? "bg-emerald-500"
+                    : "bg-white/15",
+                )}
+              >
+                <span
+                  className={cn(
+                    "absolute top-0.5 size-5 rounded-full bg-white transition",
+                    settings.unpaidAuctionAllowed ? "left-5" : "left-0.5",
+                  )}
+                />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-sm font-semibold text-foreground">
+                  Unpaid players in auction
+                </span>
+                <span className="block text-xs text-muted-foreground">
+                  {settings.unpaidAuctionAllowed
+                    ? "On — unpaid players can open Auction and be listed. Captains can bid before they pay."
+                    : "Off — unpaid players cannot see Auction or join the list. An unpaid captain sees an entry-fee error instead of the desk."}
+                </span>
+              </span>
+            </button>
+          </AdminActionForm>
           <AdminConfirmForm
             key={[
               settings.auctionEnabled ? "a1" : "a0",

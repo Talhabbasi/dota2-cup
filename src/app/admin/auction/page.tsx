@@ -11,6 +11,8 @@ import { getWebAuctionView } from "@/lib/web-auction";
 import { getLiveSeason } from "@/lib/seasons";
 import { prisma } from "@/lib/prisma";
 import { medalsForGame } from "@/lib/constants";
+import { canEnterAuctionPool } from "@/lib/auction-payment";
+import { getCupFeatureSettings } from "@/lib/cup-features";
 import { AUCTION_PLAYER_STATUS } from "@/lib/web-auction";
 
 export const dynamic = "force-dynamic";
@@ -27,15 +29,18 @@ export default async function AdminAuctionPage({
   await requireAdmin();
   const sp = await searchParams;
   const seasonView = await resolveAdminSeasonView(sp.season);
-  const [lots, view, season] = await Promise.all([
+  const [lots, view, season, features] = await Promise.all([
     adminListSoldLots(seasonView.view.id),
     getWebAuctionView(),
     getLiveSeason(),
+    getCupFeatureSettings(),
   ]);
 
   const poolRows = await prisma.seasonPlayer.findMany({
     where: { seasonId: seasonView.view.id, teamId: null },
     select: {
+      rosterRole: true,
+      paidAt: true,
       player: {
         select: {
           id: true,
@@ -49,7 +54,10 @@ export default async function AdminAuctionPage({
     orderBy: { player: { steamName: "asc" } },
     take: 80,
   });
-  const pool = poolRows.map((row) => row.player);
+  const pool = poolRows.map((row) => ({
+    ...row.player,
+    heldOut: !canEnterAuctionPool(row, features.unpaidAuctionAllowed),
+  }));
   const viewingLive = seasonView.view.isLive && season?.id === seasonView.view.id;
   const format = viewingLive
     ? (season?.tournamentFormat ?? "AUCTION_BASED")
@@ -114,8 +122,12 @@ export default async function AdminAuctionPage({
                     <span className="text-muted-foreground">({p.medal})</span>
                   </span>
                   <span className="font-mono text-xs text-muted-foreground">
-                    {p.auctionStatus || AUCTION_PLAYER_STATUS.UNSOLD}
-                    {p.basePrice != null ? ` · floor ${p.basePrice}` : ""}
+                    {p.heldOut
+                      ? "unpaid — not in auction"
+                      : p.auctionStatus || AUCTION_PLAYER_STATUS.UNSOLD}
+                    {!p.heldOut && p.basePrice != null
+                      ? ` · floor ${p.basePrice}`
+                      : ""}
                   </span>
                 </li>
               ))

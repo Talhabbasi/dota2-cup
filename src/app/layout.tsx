@@ -14,6 +14,7 @@ import {
   listPublicSeasons,
   liveSeasonLabel,
 } from "@/lib/seasons";
+import { auctionPayBlockForPlayer } from "@/lib/auction-payment";
 import { currentPlayer } from "@/lib/auth";
 import { isPlayerEnrolledInLiveSeason } from "@/lib/registration-status";
 import "./globals.css";
@@ -81,9 +82,10 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
     currentPlayer(),
     countCompletedSeasons(),
   ]);
-  const enrolledInLiveSeason = player
-    ? await isPlayerEnrolledInLiveSeason(player.id)
-    : false;
+  const [enrolledInLiveSeason, auctionPay] = await Promise.all([
+    player ? isPlayerEnrolledInLiveSeason(player.id) : Promise.resolve(false),
+    auctionPayBlockForPlayer(player?.id),
+  ]);
   const game = isPubgSeason(live) ? "PUBG" : "DOTA";
   const seasonLabel = live
     ? liveSeasonLabel(live)
@@ -106,7 +108,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
             showRegister={!enrolledInLiveSeason}
             showSeasons={completedCount > 0}
             auctionHref={
-              !enrolledInLiveSeason
+              !enrolledInLiveSeason || auctionPay.blocked
                 ? null
                 : player?.isCaptain
                   ? "/auction/captain"

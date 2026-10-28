@@ -38,7 +38,7 @@ async function main() {
   async function fixture(count: number) {
     await prisma.$executeRawUnsafe('TRUNCATE TABLE "Season", "Player", "AuctionState", "CupSettings" CASCADE');
     const season = await prisma.season.create({ data: { number: 1, name: "Isolated test", isActive: true, status: "live", teamCount: count } });
-    await prisma.cupSettings.create({ data: { id: "singleton", currentSeasonId: season.id, auctionEnabled: true } });
+    await prisma.cupSettings.create({ data: { id: "singleton", currentSeasonId: season.id, auctionEnabled: true, unpaidAuctionAllowed: true } });
     const players = [];
     for (let i = 0; i < count * 5 + 2; i++) {
       const p = await prisma.player.create({ data: { discordId: `fixture-person-${i}`, discordName: `Captain ${i}`, steam32: 500000 + i, steamName: `Player ${String(i).padStart(3, "0")}`, medal: "archon", rolesJson: '["flex"]' } });

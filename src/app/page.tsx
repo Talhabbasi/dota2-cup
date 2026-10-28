@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { Suspense } from "react";
+import { auctionPayBlockForPlayer } from "@/lib/auction-payment";
+import { currentPlayer } from "@/lib/auth";
 import { MatchCard } from "@/components/match-card";
 import { EsportsCard } from "@/components/common";
 import { HomeHero } from "@/components/home-hero";
@@ -29,7 +31,22 @@ import { PUBG_CUP_NAME } from "@/lib/brand";
 
 export const revalidate = 30;
 
-function AuctionEntry() {
+async function AuctionEntry() {
+  const { player } = await currentPlayer();
+  const block = await auctionPayBlockForPlayer(player?.id);
+  if (block.blocked && block.message) {
+    return (
+      <section className="mt-8">
+        <div className="section-head row">
+          <h2>Auction</h2>
+        </div>
+        <p className="mb-0 text-sm text-rose-200" role="alert">
+          {block.message}
+        </p>
+      </section>
+    );
+  }
+
   return (
     <section className="mt-8">
       <div className="section-head row">
@@ -105,7 +122,9 @@ export default async function Home() {
             </div>
           </div>
         </header>
-        <AuctionEntry />
+        <Suspense>
+          <AuctionEntry />
+        </Suspense>
         <section className="mt-8">
           <div className="section-head row">
             <h2>Points</h2>
@@ -197,7 +216,9 @@ export default async function Home() {
         <Suspense>
           <LoginErrorBanner />
         </Suspense>
-        <AuctionEntry />
+        <Suspense>
+          <AuctionEntry />
+        </Suspense>
 
         {siteMode === "upcoming" ? (
           <section className="mb-8" aria-label="Between seasons">

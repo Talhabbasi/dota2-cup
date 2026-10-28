@@ -1,3 +1,4 @@
+import { AuctionPayWall, auctionViewerBlock } from "@/components/auction-pay-wall";
 import { PageHeader } from "@/components/common";
 import { LiveAuctionBoard } from "@/components/live-auction-board";
 import { getCupFeatureSettings } from "@/lib/cup-features";
@@ -32,6 +33,11 @@ export default async function AuctionLivePage() {
         </div>
       </div>
     );
+  }
+
+  const block = await auctionViewerBlock();
+  if (block.blocked && block.message) {
+    return <AuctionPayWall message={block.message} />;
   }
 
   const view = await getWebAuctionViewOrEmpty();

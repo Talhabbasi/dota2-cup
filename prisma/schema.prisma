@@ -165,6 +165,8 @@ model CupSettings {
   currentSeasonId      String?
   currentSeason        Season?  @relation(fields: [currentSeasonId], references: [id], onDelete: SetNull)
   auctionEnabled       Boolean  @default(true)
+  /// When false, players who still owe the entry fee cannot open Auction or enter the pool.
+  unpaidAuctionAllowed Boolean  @default(false)
   /// Highest medal allowed to register. Null = no max. Same keys as MEDALS.
   maxMedalToApply      String?
   completeTeamRequired Boolean  @default(true)

@@ -1,3 +1,4 @@
+import { AuctionPayWall, auctionViewerBlock } from "@/components/auction-pay-wall";
 import { PageHeader } from "@/components/common";
 import {
   AuctionResultsClient,
@@ -17,7 +18,7 @@ import { labelForMedal } from "@/lib/constants";
 import { livePageMeta } from "@/lib/seo";
 import Link from "next/link";
 
-export const revalidate = 30;
+export const dynamic = "force-dynamic";
 
 export function generateMetadata() {
   return livePageMeta(
@@ -44,6 +45,11 @@ export default async function AuctionResultsPage() {
         </div>
       </div>
     );
+  }
+
+  const block = await auctionViewerBlock();
+  if (block.blocked && block.message) {
+    return <AuctionPayWall message={block.message} />;
   }
 
   const [seasons, teams, current] = await Promise.all([

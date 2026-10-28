@@ -4,8 +4,10 @@ import { prisma } from "./prisma";
 import { isDummyDiscordId } from "./dummy";
 import { resolveDiscordAvatarUrl } from "./discord-avatar";
 import { AuctionError, withAuctionLock, requireAuctionSeason, type AuctionDb } from "./auction-lock";
+import { canEnterAuctionPool } from "./auction-payment";
 import { rosterRules } from "./games";
 import { liveRoster } from "./live-roster";
+import { playerMustPay } from "./payments";
 
 export const AUCTION_PLAYER_STATUS = {
   UNSOLD: "UNSOLD",
@@ -239,14 +241,17 @@ async function writeSession(db: AuctionDb, session: WebAuctionSession) {
 
 type LiveConfig = {
   season: Awaited<ReturnType<typeof requireAuctionSeason>>;
-  settings: { auctionEnabled: boolean } | null;
+  settings: { auctionEnabled: boolean; unpaidAuctionAllowed: boolean } | null;
 };
 
 /** Season and cup settings do not change mid-pool, so read them before taking the lock. */
 async function liveConfig(): Promise<LiveConfig> {
   const [season, settings] = await Promise.all([
     requireAuctionSeason(prisma),
-    prisma.cupSettings.findUnique({ where: { id: "singleton" }, select: { auctionEnabled: true } }),
+    prisma.cupSettings.findUnique({
+      where: { id: "singleton" },
+      select: { auctionEnabled: true, unpaidAuctionAllowed: true },
+    }),
   ]);
   return { season, settings };
 }
@@ -412,17 +417,22 @@ export async function startWebAuction(rankInput: string) {
     prisma.seasonPlayer.findMany({ where:{seasonId:season.id, teamId:null, isCaptain:false}, include:{player:true}, orderBy:{player:{steamName:"asc"}} }),
   ]);
   const teamList = Object.values(teams);
-  const pool = members.filter(m => !isDummyDiscordId(m.player.discordId));
+  const allowUnpaid = settings?.unpaidAuctionAllowed === true;
+  const signed = members.filter(m => !isDummyDiscordId(m.player.discordId));
   // Opening bids are always 0; keep a zero floor so purse reserve does not block participation by rank.
   const priceOf = () => 0;
-  const eligible = allRanks
-    ? [...pool]
-    : pool.filter(m => (m.medal ?? m.player.medal).toLowerCase() === medal);
+  const inRank = (m: (typeof signed)[number]) =>
+    (m.medal ?? m.player.medal).toLowerCase() === medal;
+  const rankPool = allRanks ? signed : signed.filter(inRank);
+  const eligible = rankPool.filter((m) => canEnterAuctionPool(m, allowUnpaid));
+  const floorPool = signed.filter((m) => canEnterAuctionPool(m, allowUnpaid));
   if (!eligible.length) {
     throw new AuctionError(
-      allRanks
-        ? "No unsigned players registered in this season."
-        : `No unsigned ${labelForMedal(medal!)} players registered in this season.`,
+      rankPool.length > 0 && !allowUnpaid
+        ? "No paid unsigned players in this pool. Mark them paid, or allow unpaid players from the admin dashboard."
+        : allRanks
+          ? "No unsigned players registered in this season."
+          : `No unsigned ${labelForMedal(medal!)} players registered in this season.`,
     );
   }
   if (teamList.length !== season.teamCount) throw new AuctionError(`Create all ${season.teamCount} teams before starting.`);
@@ -447,7 +457,7 @@ export async function startWebAuction(rankInput: string) {
         basePrice:priceOf(),
         imageUrl:resolveDiscordAvatarUrl(m.player.discordId, m.player.discordAvatarUrl),
       }])),
-      floors:Object.fromEntries(pool.map(m=>[m.playerId,priceOf()])),
+      floors:Object.fromEntries(floorPool.map(m=>[m.playerId,priceOf()])),
       teams, lastSale:null, channelId:null, messageId:null,
     };
     // Floors may be 0 (open-at-zero auction) so every captain can participate.
@@ -507,10 +517,13 @@ export async function placeWebBid(input:BidInput) {
     prisma.bid.findUnique({where:{id:bidId}}),
     liveRoster(),
     readSession(),
-    prisma.seasonPlayer.findFirst({where:{season:{isActive:true},isCaptain:true,player:{OR:[{discordId:input.discordId},{discordId:{startsWith:`${input.discordId}:`}}]}},select:{teamId:true,seasonId:true}}),
+    prisma.seasonPlayer.findFirst({where:{season:{isActive:true},isCaptain:true,player:{OR:[{discordId:input.discordId},{discordId:{startsWith:`${input.discordId}:`}}]}},select:{teamId:true,seasonId:true,rosterRole:true,paidAt:true}}),
   ]);
   const teamId=captain?.seasonId === season.id ? captain.teamId : null;
   if(!teamId) throw new AuctionError("Only this season's captains can bid.",403);
+  if (settings?.unpaidAuctionAllowed !== true && captain && playerMustPay(captain.rosterRole) && !captain.paidAt) {
+    throw new AuctionError("You haven't paid the entry fee, so you cannot bid.", 403);
+  }
   if(previous) {
     if(previous.teamId !== teamId || previous.lotId !== input.lotId || (input.amount !== undefined && previous.amount !== input.amount)) throw new AuctionError("This request identifier has already been used.");
     return viewFrom(snapshot);
@@ -562,8 +575,27 @@ function bidAmount(session:WebAuctionSession,teamId:string,input:BidInput) {
 
 type UnsignedMember = { playerId:string; medal:string|null; player:{ discordId:string; medal:string; basePrice:number|null } };
 
-function unsignedPool(db:AuctionDb,seasonId:string):Promise<UnsignedMember[]> {
-  return db.seasonPlayer.findMany({where:{seasonId,teamId:null,isCaptain:false},select:{playerId:true,medal:true,player:{select:{discordId:true,medal:true,basePrice:true}}}});
+async function unsignedPool(db:AuctionDb,seasonId:string):Promise<UnsignedMember[]> {
+  const [rows, settings] = await Promise.all([
+    db.seasonPlayer.findMany({
+      where: { seasonId, teamId: null, isCaptain: false },
+      select: {
+        playerId: true,
+        medal: true,
+        rosterRole: true,
+        paidAt: true,
+        player: { select: { discordId: true, medal: true, basePrice: true } },
+      },
+    }),
+    db.cupSettings.findUnique({
+      where: { id: "singleton" },
+      select: { unpaidAuctionAllowed: true },
+    }),
+  ]);
+  const allowUnpaid = settings?.unpaidAuctionAllowed === true;
+  return rows
+    .filter((row) => canEnterAuctionPool(row, allowUnpaid))
+    .map(({ playerId, medal, player }) => ({ playerId, medal, player }));
 }
 
 /** Base prices of the other unsigned players this auction could still fill a roster with. */

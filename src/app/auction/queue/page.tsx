@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AuctionPayWall, auctionViewerBlock } from "@/components/auction-pay-wall";
 import { PageHeader } from "@/components/common";
 import { AuctionQueueClient } from "@/components/auction/auction-queue-client";
 import { getWebAuctionViewOrEmpty } from "@/lib/web-auction";
@@ -15,6 +16,11 @@ export function generateMetadata() {
 }
 
 export default async function AuctionQueuePage() {
+  const block = await auctionViewerBlock();
+  if (block.blocked && block.message) {
+    return <AuctionPayWall message={block.message} />;
+  }
+
   const view = await getWebAuctionViewOrEmpty();
 
   return (

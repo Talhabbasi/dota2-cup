@@ -673,6 +673,36 @@ try {
   }
 }
 
+export async function actionSetUnpaidAuctionAllowed(formData: FormData) {
+  try {
+    const session = await requireAdmin();
+    const raw = String(formData.get("unpaidAuctionAllowed") ?? "");
+    if (raw !== "on" && raw !== "off") {
+      return failAction(
+        "Auction payment switch",
+        new Error("Choose on or off."),
+      );
+    }
+    const unpaidAuctionAllowed = raw === "on";
+    await updateCupFeatureSettings({ unpaidAuctionAllowed });
+    await note(
+      session,
+      "cup.switches",
+      unpaidAuctionAllowed
+        ? "Unpaid players can join the auction"
+        : "Unpaid players are blocked from the auction",
+      { unpaidAuctionAllowed },
+    );
+    revalidateAdmin();
+    revalidatePath("/auction");
+    revalidatePath("/auction/captain");
+    revalidatePath("/auction/queue");
+    revalidatePath("/auction/results");
+  } catch (error) {
+    return failAction("Auction payment switch", error);
+  }
+}
+
 export async function actionMarkPaid(formData: FormData) {
 try {
   const session = await requireAdmin();

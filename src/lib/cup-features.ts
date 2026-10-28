@@ -4,6 +4,8 @@ import { MEDALS, type Medal } from "./constants";
 
 export type CupFeatureSettings = {
   auctionEnabled: boolean;
+  /** When true, players who have not paid can still watch and be auctioned. */
+  unpaidAuctionAllowed: boolean;
   maxMedalToApply: Medal | null;
   completeTeamRequired: boolean;
   predictionsEnabled: boolean;
@@ -11,6 +13,7 @@ export type CupFeatureSettings = {
 
 const DEFAULTS: CupFeatureSettings = {
   auctionEnabled: true,
+  unpaidAuctionAllowed: false,
   maxMedalToApply: null,
   completeTeamRequired: true,
   predictionsEnabled: true,
@@ -22,6 +25,8 @@ export async function getCupFeatureSettings(): Promise<CupFeatureSettings> {
   const max = row.maxMedalToApply?.toLowerCase() ?? null;
   return {
     auctionEnabled: row.auctionEnabled ?? DEFAULTS.auctionEnabled,
+    unpaidAuctionAllowed:
+      row.unpaidAuctionAllowed ?? DEFAULTS.unpaidAuctionAllowed,
     maxMedalToApply:
       max && (MEDALS as readonly string[]).includes(max)
         ? (max as Medal)
@@ -35,18 +40,23 @@ export async function getCupFeatureSettings(): Promise<CupFeatureSettings> {
 
 export async function updateCupFeatureSettings(input: {
   auctionEnabled?: boolean;
+  unpaidAuctionAllowed?: boolean;
   maxMedalToApply?: Medal | null;
   completeTeamRequired?: boolean;
   predictionsEnabled?: boolean;
 }) {
   const data: {
     auctionEnabled?: boolean;
+    unpaidAuctionAllowed?: boolean;
     maxMedalToApply?: string | null;
     completeTeamRequired?: boolean;
     predictionsEnabled?: boolean;
   } = {};
   if (input.auctionEnabled !== undefined) {
     data.auctionEnabled = input.auctionEnabled;
+  }
+  if (input.unpaidAuctionAllowed !== undefined) {
+    data.unpaidAuctionAllowed = input.unpaidAuctionAllowed;
   }
   if (input.maxMedalToApply !== undefined) {
     data.maxMedalToApply = input.maxMedalToApply;
@@ -63,6 +73,8 @@ export async function updateCupFeatureSettings(input: {
     create: {
       id: "singleton",
       auctionEnabled: input.auctionEnabled ?? DEFAULTS.auctionEnabled,
+      unpaidAuctionAllowed:
+        input.unpaidAuctionAllowed ?? DEFAULTS.unpaidAuctionAllowed,
       maxMedalToApply: input.maxMedalToApply ?? null,
       completeTeamRequired:
         input.completeTeamRequired ?? DEFAULTS.completeTeamRequired,
