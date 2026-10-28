@@ -80,7 +80,7 @@ export default async function SchedulePage({
         startedAt: view.startedAt,
         phase: view.phase,
       })
-    : "Group A Saturday, Group B Sunday, then weekend playoffs. Kickoffs follow fixtures booked in admin (PKT).";
+    : "Group A and Group B start together, then weekend playoffs. Kickoffs follow fixtures booked in admin (PKT).";
 
   return (
     <div className="page schedule-page">

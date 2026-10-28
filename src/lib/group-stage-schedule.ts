@@ -9,12 +9,10 @@ import {
   createScheduledMatch,
   upcomingWeekendDates,
 } from "./schedule-crud";
-import { getLivePlayoffFormat, roundRobinPairs } from "./playoff-format";
+import { getLivePlayoffFormat, roundRobinRounds } from "./playoff-format";
 
-/** Kickoff hours PKT starting 22:00, one match per hour (wraps past midnight). */
-function hoursForMatchCount(count: number): string[] {
-  return Array.from({ length: count }, (_, i) => String((22 + i) % 24));
-}
+/** One group round per hour, 10:00 PM through 6:00 AM PKT. */
+const GROUP_NIGHT_HOURS = ["22", "23", "0", "1", "2", "3", "4", "5", "6"];
 
 function matchNightYmd(date: Date | string) {
   const offsetH = scheduleUtcOffsetHours();
@@ -43,6 +41,8 @@ export type GroupStandingRow = {
 export type BookedGroupMatch = {
   group: "A" | "B";
   matchNumber: number;
+  /** 1-based. Group A and Group B matches in the same round share a kickoff. */
+  round: number;
   teamA: string;
   teamB: string;
   scheduledAt: Date;
@@ -84,10 +84,12 @@ export async function bookGroupStageRoundRobin(input?: {
     );
   }
 
-  const pairsA = roundRobinPairs(groupA);
-  const pairsB = roundRobinPairs(groupB);
-  const hoursA = hoursForMatchCount(pairsA.length);
-  const hoursB = hoursForMatchCount(pairsB.length);
+  const roundsA = roundRobinRounds(groupA);
+  const roundsB = roundRobinRounds(groupB);
+  assertFullRoundRobin(groupA, roundsA, "Group A");
+  assertFullRoundRobin(groupB, roundsB, "Group B");
+  const roundCount = Math.max(roundsA.length, roundsB.length);
+  const slots = kickoffSlots(saturday, sunday, roundCount);
 
   const pending = await prisma.scheduledFixture.count({
     where: { status: "scheduled", kind: "group", ...season },
@@ -103,45 +105,141 @@ export async function bookGroupStageRoundRobin(input?: {
     });
   }
 
+  const planned: {
+    group: "A" | "B";
+    round: number;
+    matchNumber: number;
+    teamA: string;
+    teamB: string;
+    date: string;
+    hour: string;
+  }[] = [];
+  const numbers = { A: 0, B: 0 };
+  for (let round = 0; round < roundCount; round++) {
+    const slot = slots[round];
+    if (!slot) throw new Error("Missing a kickoff slot for this group round.");
+    for (const group of ["A", "B"] as const) {
+      const pairs = group === "A" ? roundsA[round] : roundsB[round];
+      for (const [teamA, teamB] of pairs ?? []) {
+        numbers[group] += 1;
+        planned.push({
+          group,
+          round: round + 1,
+          matchNumber: numbers[group],
+          teamA,
+          teamB,
+          date: slot.date,
+          hour: slot.hour,
+        });
+      }
+    }
+  }
+
   const booked: BookedGroupMatch[] = [];
-
-  for (let i = 0; i < pairsA.length; i++) {
-    const [teamA, teamB] = pairsA[i];
-    const fixture = await createScheduledMatch({
-      teamA,
-      teamB,
-      date: saturday,
-      time: hoursA[i],
-      kind: "group",
-    });
-    booked.push({
-      group: "A",
-      matchNumber: i + 1,
-      teamA: fixture.radiantTeam.name,
-      teamB: fixture.direTeam.name,
-      scheduledAt: fixture.scheduledAt,
-    });
+  const createdIds: string[] = [];
+  try {
+    for (const row of planned) {
+      const fixture = await createScheduledMatch({
+        teamA: row.teamA,
+        teamB: row.teamB,
+        date: row.date,
+        time: row.hour,
+        kind: "group",
+      });
+      createdIds.push(fixture.id);
+      booked.push({
+        group: row.group,
+        matchNumber: row.matchNumber,
+        round: row.round,
+        teamA: fixture.radiantTeam.name,
+        teamB: fixture.direTeam.name,
+        scheduledAt: fixture.scheduledAt,
+      });
+    }
+  } catch (error) {
+    if (createdIds.length > 0) {
+      await prisma.scheduledFixture.deleteMany({
+        where: { id: { in: createdIds } },
+      });
+    }
+    throw error;
   }
 
-  for (let i = 0; i < pairsB.length; i++) {
-    const [teamA, teamB] = pairsB[i];
-    const fixture = await createScheduledMatch({
-      teamA,
-      teamB,
-      date: sunday,
-      time: hoursB[i],
-      kind: "group",
-    });
-    booked.push({
-      group: "B",
-      matchNumber: i + 1,
-      teamA: fixture.radiantTeam.name,
-      teamB: fixture.direTeam.name,
-      scheduledAt: fixture.scheduledAt,
-    });
-  }
+  const nights = [
+    ...new Set(booked.map((match) => matchNightYmd(match.scheduledAt))),
+  ];
+  return {
+    saturday: nights[0] ?? saturday,
+    sunday: nights[1] ?? sunday,
+    fixtures: booked,
+  };
+}
 
-  return { saturday, sunday, fixtures: booked };
+function addDaysYmd(ymd: string, days: number) {
+  const [year, month, day] = ymd.split("-").map(Number);
+  const next = new Date(Date.UTC(year, month - 1, day + days));
+  const yyyy = next.getUTCFullYear();
+  const mm = String(next.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(next.getUTCDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+/** Saturday first, then Sunday, then the following weekends, 9 rounds per night. */
+function kickoffSlots(saturday: string, sunday: string, roundCount: number) {
+  const slots: { date: string; hour: string }[] = [];
+  for (let week = 0; slots.length < roundCount; week++) {
+    if (week > 6) {
+      throw new Error("Not enough weekend nights to fit every group round.");
+    }
+    for (const date of [
+      addDaysYmd(saturday, week * 7),
+      addDaysYmd(sunday, week * 7),
+    ]) {
+      for (const hour of GROUP_NIGHT_HOURS) {
+        slots.push({ date, hour });
+        if (slots.length >= roundCount) return slots;
+      }
+    }
+  }
+  return slots;
+}
+
+function assertFullRoundRobin(
+  names: string[],
+  rounds: [string, string][][],
+  label: string,
+) {
+  const expected = (names.length * (names.length - 1)) / 2;
+  const seen = new Set<string>();
+  const games = new Map(names.map((name) => [name, 0]));
+  for (const round of rounds) {
+    const playing = new Set<string>();
+    for (const [a, b] of round) {
+      if (playing.has(a) || playing.has(b)) {
+        throw new Error(`${label} scheduled ${a} or ${b} twice in one round.`);
+      }
+      playing.add(a);
+      playing.add(b);
+      const key = [a, b].sort().join("\0");
+      if (seen.has(key)) throw new Error(`${label} repeats ${a} vs ${b}.`);
+      seen.add(key);
+      games.set(a, (games.get(a) ?? 0) + 1);
+      games.set(b, (games.get(b) ?? 0) + 1);
+    }
+  }
+  if (seen.size !== expected) {
+    throw new Error(
+      `${label} booked ${seen.size} matches, expected ${expected}.`,
+    );
+  }
+  for (const name of names) {
+    const played = games.get(name) ?? 0;
+    if (played !== names.length - 1) {
+      throw new Error(
+        `${label}: ${name} plays ${played} games, expected ${names.length - 1}.`,
+      );
+    }
+  }
 }
 
 export const getGroupStandings = unstable_cache(
@@ -215,14 +313,28 @@ export async function groupStageComplete() {
   );
 }
 
-function formatDayBlock(title: string, matches: BookedGroupMatch[]) {
-  const lines = [title, ""];
-  for (const match of matches) {
-    lines.push(
-      `Match ${match.matchNumber} — **${match.teamA}** vs **${match.teamB}** — ${formatScheduleWhen(match.scheduledAt)} — Bo1`,
-    );
+export function groupStageRoundBlocks(fixtures: BookedGroupMatch[]) {
+  const byTime = new Map<number, BookedGroupMatch[]>();
+  for (const match of fixtures) {
+    const key = asDate(match.scheduledAt).getTime();
+    const list = byTime.get(key) ?? [];
+    list.push(match);
+    byTime.set(key, list);
   }
-  return lines.join("\n");
+  return [...byTime.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([time, matches], index) => {
+      const lines = [...matches]
+        .sort(
+          (a, b) =>
+            a.group.localeCompare(b.group) || a.matchNumber - b.matchNumber,
+        )
+        .map(
+          (match) =>
+            `Group ${match.group} — **${match.teamA}** vs **${match.teamB}**`,
+        );
+      return `**Round ${index + 1}** — ${formatScheduleWhen(new Date(time))}\n${lines.join("\n")}`;
+    });
 }
 
 export function formatGroupStageDiscord(result: {
@@ -230,13 +342,11 @@ export function formatGroupStageDiscord(result: {
   sunday: string;
   fixtures: BookedGroupMatch[];
 }) {
-  const groupA = result.fixtures.filter((row) => row.group === "A");
-  const groupB = result.fixtures.filter((row) => row.group === "B");
   const site = cupPublicUrl();
   return [
-    formatDayBlock(`**DAY 1 — SATURDAY ${result.saturday} — GROUP A**`, groupA),
+    "Group A and Group B start together. Bo1. Each team plays every other team in its group once.",
     "",
-    formatDayBlock(`**DAY 2 — SUNDAY ${result.sunday} — GROUP B**`, groupB),
+    ...groupStageRoundBlocks(result.fixtures),
     "",
     `Also on the website: **${site}/schedule**`,
   ].join("\n");
@@ -270,16 +380,27 @@ export async function bookedGroupStageFromDb() {
     return {
       group,
       matchNumber,
+      round: 0,
       teamA: fixture.radiantTeam.name,
       teamB: fixture.direTeam.name,
       scheduledAt: fixture.scheduledAt,
     };
   });
 
-  const groupA = mapped.filter((row) => row.group === "A");
-  const groupB = mapped.filter((row) => row.group === "B");
-  const saturday = groupA[0] ? matchNightYmd(groupA[0].scheduledAt) : "";
-  const sunday = groupB[0] ? matchNightYmd(groupB[0].scheduledAt) : "";
+  const times = [...new Set(mapped.map((match) => match.scheduledAt.getTime()))].sort(
+    (a, b) => a - b,
+  );
+  const roundOf = new Map(times.map((time, index) => [time, index + 1]));
+  for (const match of mapped) {
+    match.round = roundOf.get(match.scheduledAt.getTime()) ?? 1;
+  }
 
-  return { saturday, sunday, fixtures: mapped };
+  const nights = [
+    ...new Set(mapped.map((match) => matchNightYmd(match.scheduledAt))),
+  ];
+  return {
+    saturday: nights[0] ?? "",
+    sunday: nights[1] ?? "",
+    fixtures: mapped,
+  };
 }

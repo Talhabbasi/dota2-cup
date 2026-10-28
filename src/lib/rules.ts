@@ -103,7 +103,7 @@ export const CUP_RULES = {
     {
       name: "Schedule & weekends",
       body: [
-        "Teams split into **2 equal groups** from the season team count (Admin → Seasons). Classic is **8 → 2×4**; **10 → 2×5**. Admin: `/playoff groups` then `/schedule groups` (Group A Saturday, Group B Sunday).",
+        "Teams split into **2 equal groups** from the season team count (Admin → Seasons). Classic is **8 → 2×4**; **10 → 2×5**. Admin: `/playoff groups` then `/schedule groups` (Group A and Group B start together).",
         "Group stage: **single round-robin** — each team plays every other team in its group once (Bo1).",
         "Fixtures are posted in **#matches** (registered players only) and on the website Schedule page.",
         "When both groups are done, **last place in each group is eliminated**.",
@@ -265,10 +265,10 @@ export function getChannelGuides(): { channelName: ChannelGuideName; embed: Embe
         "#matches — Group-stage fixtures",
         "Registered players only. The round-robin grid lives here.",
         [
-          "Group A plays Saturday, Group B plays Sunday. Every group match is **Bo1**.",
+          "Group A and Group B start at the same time. Every group match is **Bo1**.",
           "Round-robin: each team plays every other team in its group once.",
           "After groups: last place out. **8 teams:** 3rd waits for a crossover loser. **10 teams:** A3 vs B4 / B3 vs A4 play into lower, then face upper losers. Then double-elim. Grand Final **Bo3**.",
-          "Kickoffs: group stage **10:00 PM–4:00 AM PKT**; playoffs **Saturday/Sunday 10:00 AM–3:00 AM PKT**.",
+          "Kickoffs: both groups share each round from **10:00 PM PKT**; playoffs **Saturday/Sunday 10:00 AM–3:00 AM PKT**.",
           "Same fixtures on the website **Schedule** and **Playoffs** pages.",
           "Admin: `/schedule groups` to book the grid, `/playoff open` after groups, `/schedule edit` to move a match.",
           "After you play, post `!result <match id>` in **#results**.",

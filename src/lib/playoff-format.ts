@@ -58,3 +58,34 @@ export function roundRobinPairs<T>(teams: T[]): [T, T][] {
   }
   return pairs;
 }
+
+/**
+ * Circle-method rounds for any group size.
+ * Even groups: every team plays every round.
+ * Odd groups: one bye per round, and that bye rotates so each team sits once.
+ */
+export function roundRobinRounds<T>(teams: T[]): [T, T][][] {
+  if (teams.length < 2) return [];
+  const list: (T | null)[] = [...teams];
+  if (list.length % 2 === 1) list.push(null);
+  const count = list.length;
+  const half = count / 2;
+  const fixed = list[0];
+  let rotating = list.slice(1);
+  const rounds: [T, T][][] = [];
+
+  for (let round = 0; round < count - 1; round++) {
+    const row = [fixed, ...rotating];
+    const pairs: [T, T][] = [];
+    for (let i = 0; i < half; i++) {
+      const a = row[i];
+      const b = row[count - 1 - i];
+      if (a != null && b != null) pairs.push([a, b]);
+    }
+    rounds.push(pairs);
+    const last = rotating[rotating.length - 1];
+    rotating = [last, ...rotating.slice(0, -1)];
+  }
+
+  return rounds;
+}

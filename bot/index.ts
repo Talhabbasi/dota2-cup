@@ -1052,17 +1052,17 @@ const commands = [
     .addSubcommand((s) =>
       s
         .setName("groups")
-        .setDescription("Admin: book Group A Saturday + Group B Sunday round-robin")
+        .setDescription("Admin: book Group A and Group B at the same kickoffs")
         .addStringOption((o) =>
           o
             .setName("saturday")
-            .setDescription("Group A date YYYY-MM-DD (default: next Saturday)")
+            .setDescription("First night YYYY-MM-DD (default: next Saturday)")
             .setAutocomplete(true),
         )
         .addStringOption((o) =>
           o
             .setName("sunday")
-            .setDescription("Group B date YYYY-MM-DD (default: next Sunday)")
+            .setDescription("Extra night if Saturday fills up (default: next Sunday)")
             .setAutocomplete(true),
         )
         .addBooleanOption((o) =>

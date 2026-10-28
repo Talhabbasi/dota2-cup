@@ -144,17 +144,20 @@ export function AdminPlayoffsDesk({
               2. Group schedule
             </h3>
             <p className="mb-4 text-xs text-muted-foreground">
-              Round-robin from current groups (A Saturday, B Sunday). Posts to
-              Discord #matches. Same as{" "}
+              Both groups start together, one round per hour from 10:00 PM PKT.
+              Every team plays every other team in its group once. An odd group
+              sits one team per round, and that bye rotates. Saturday holds the
+              rounds; Sunday is only used if the group is too big for one night.
+              Posts to Discord #matches. Same as{" "}
               <code className="text-foreground">/schedule groups</code>.
             </p>
             <AdminActionForm
               action={actionBookGroupStage}
               successMessage="Group stage booked"
-              confirmMessage="Book the full group round-robin and post it to Discord #matches?"
+              confirmMessage="Book every group match, with Group A and Group B starting together, and post it to Discord #matches?"
               className="grid gap-3 sm:grid-cols-2"
             >
-              <AdminField label="Saturday (Group A)">
+              <AdminField label="Saturday (first night)">
                 <select
                   name="saturday"
                   className={adminControlClass}
@@ -167,7 +170,7 @@ export function AdminPlayoffsDesk({
                   ))}
                 </select>
               </AdminField>
-              <AdminField label="Sunday (Group B)">
+              <AdminField label="Sunday (extra night)">
                 <select
                   name="sunday"
                   className={adminControlClass}

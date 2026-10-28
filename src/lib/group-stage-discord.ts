@@ -6,10 +6,10 @@ import {
 import { cupSiteUrl } from "./channel-moderation";
 import { ensureMatchesChannel } from "./cup-announcements";
 import {
+  groupStageRoundBlocks,
   type BookedGroupMatch,
 } from "./group-stage-schedule";
 import { lockRegisteredPlayerChannels } from "./payments-channel-access";
-import { formatScheduleWhen } from "./schedule";
 
 const GOLD = 0xb07d1f;
 
@@ -20,22 +20,28 @@ export function groupStageScheduleEmbeds(result: {
   sunday: string;
   fixtures: BookedGroupMatch[];
 }) {
-  const groupA = result.fixtures.filter((row) => row.group === "A");
-  const groupB = result.fixtures.filter((row) => row.group === "B");
   const site = cupSiteUrl();
-
-  const dayEmbed = (title: string, matches: BookedGroupMatch[]) =>
-    new EmbedBuilder()
-      .setColor(GOLD)
-      .setTitle(title)
-      .setDescription(
-        matches
-          .map(
-            (match) =>
-              `**Match ${match.matchNumber}** — ${match.teamA} vs ${match.teamB}\n${formatScheduleWhen(match.scheduledAt)} · Bo1`,
-          )
-          .join("\n\n"),
-      );
+  const blocks = groupStageRoundBlocks(result.fixtures);
+  const roundEmbeds: EmbedBuilder[] = [];
+  let chunk: string[] = [];
+  let size = 0;
+  const flush = (index: number) => {
+    if (chunk.length === 0) return;
+    roundEmbeds.push(
+      new EmbedBuilder()
+        .setColor(GOLD)
+        .setTitle(index === 0 ? "Rounds — both groups" : "Rounds — continued")
+        .setDescription(chunk.join("\n\n")),
+    );
+    chunk = [];
+    size = 0;
+  };
+  for (const block of blocks) {
+    if (size + block.length + 2 > 3900) flush(roundEmbeds.length);
+    chunk.push(block);
+    size += block.length + 2;
+  }
+  flush(roundEmbeds.length);
 
   return [
     new EmbedBuilder()
@@ -44,14 +50,13 @@ export function groupStageScheduleEmbeds(result: {
       .setDescription(
         [
           "Teams · 2 equal groups · single round-robin · **Bo1**.",
-          "Group A is Saturday; Group B is Sunday. Each team plays every other team in its group once.",
-          "Kickoff slots: 10:00 PM → 4:00 AM PKT (1 hour between games).",
+          "Group A and Group B start at the same time. Each team plays every other team in its group once.",
+          "One round per hour from 10:00 PM PKT. An odd group sits one team per round, and that bye rotates.",
           "",
           `Full grid: **${site}/schedule**`,
         ].join("\n"),
       ),
-    dayEmbed(`Day 1 — Saturday ${result.saturday} — Group A`, groupA),
-    dayEmbed(`Day 2 — Sunday ${result.sunday} — Group B`, groupB),
+    ...roundEmbeds,
   ];
 }
 

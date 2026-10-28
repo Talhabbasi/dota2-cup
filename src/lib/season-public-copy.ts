@@ -104,7 +104,7 @@ export function seasonHeroLead(
 export function seasonScheduleSubtitle(input: SeasonCopyInput) {
   const perGroup = seasonGroupSize(input.teamCount);
   const teams = seasonTeamsLabel(input.teamCount);
-  return `Season ${input.number}: ${teams} · Group A Saturday, Group B Sunday (${perGroup} per group). Group nights and weekend playoffs in PKT — times follow booked fixtures in admin.`;
+  return `Season ${input.number}: ${teams} · ${perGroup} per group. Group A and Group B start together. Group nights and weekend playoffs in PKT — times follow booked fixtures in admin.`;
 }
 
 export function seasonPlayoffsSubtitle(input: SeasonCopyInput) {

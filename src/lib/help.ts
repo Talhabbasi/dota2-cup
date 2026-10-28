@@ -69,7 +69,7 @@ Screenshot in **#payments**, then an Admin clicks **✅**.
 Subs do **not** pay. Each team must be exactly **5000 PKR** (5 starters).
 
 **Admin — schedule & playoffs**
-\`/schedule groups\` — book Group A Saturday + Group B Sunday (posts in **#matches**)
+\`/schedule groups\` — book Group A and Group B at the same kickoffs (posts in **#matches**)
 \`/schedule add team_a: team_b: date:YYYY-MM-DD time:\` — Sat/Sun (group 10pm–6am · playoffs 10am–3am PKT)
 \`/schedule edit fixture:\` — change teams or kickoff
 \`/schedule remove fixture:\` — delete one booked match
@@ -110,7 +110,7 @@ export const HELP_GUIDE = `## How to run the cup
 
 **Auction night.** Admin runs one **rank** pool at a time in #auction (Immortal, then Divine, and so on). Same medal = same pool, regardless of role. Captains buy any players within budget — no position limits. Roster is 5 starters + 1 sub (captain counts as a starter). Practice in **#auction-test** (Admin only) — that channel never writes purses, rosters, or the website.
 
-**Playoffs.** Season team count from Admin (classic **8 = 2×4**, or **10 = 2×5**). Admin: \`/playoff groups\` then \`/schedule groups\` (Group A Saturday, Group B Sunday). When both groups finish, last place is eliminated and \`/playoff open\` (or the last \`!result\`) books Upper Round 1 (A1 vs B2, B1 vs A2). **8 teams:** each 3rd waits for a loser. **10 teams:** A3 vs B4 and B3 vs A4 play into lower, then face those losers. Playoff kickoffs are Saturday/Sunday **10:00 AM–3:00 AM PKT**. Grand Final is **Bo3**; every other series is **Bo1**. Change any booked match with \`/schedule edit\`. Kickoff times also show on the website **Schedule** / **Playoffs** pages and in **#matches**.
+**Playoffs.** Season team count from Admin (classic **8 = 2×4**, or **10 = 2×5**). Admin: \`/playoff groups\` then \`/schedule groups\` (Group A and Group B start together). When both groups finish, last place is eliminated and \`/playoff open\` (or the last \`!result\`) books Upper Round 1 (A1 vs B2, B1 vs A2). **8 teams:** each 3rd waits for a loser. **10 teams:** A3 vs B4 and B3 vs A4 play into lower, then face those losers. Playoff kickoffs are Saturday/Sunday **10:00 AM–3:00 AM PKT**. Grand Final is **Bo3**; every other series is **Bo1**. Change any booked match with \`/schedule edit\`. Kickoff times also show on the website **Schedule** / **Playoffs** pages and in **#matches**.
 
 **Reminders.** The bot pings captains in #general about **1 hour** before a scheduled match (configurable).
 
