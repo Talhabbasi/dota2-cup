@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
-import { MEDALS, PUBG_MEDALS } from "../src/lib/constants.ts";
+import { MEDALS, PUBG_MEDALS } from "../src/lib/constants";
 import {
   AUTO_ASSIGN_CAP,
   buildBalancedAssignment,
   rankScore,
   type BalancePlayer,
   type BalanceTeam,
-} from "../src/lib/auto-assign-balance.ts";
+} from "../src/lib/auto-assign-balance";
 
 let passed = 0;
 function check(name: string) {
