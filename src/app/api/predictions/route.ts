@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { currentPlayer } from "@/lib/auth";
 import { publicErrorMessage } from "@/lib/public-error";
-import { saveBracketPicks, saveMatchPredictions } from "@/lib/predictions";
+import {
+  predictionAccess,
+  saveBracketPicks,
+  saveMatchPredictions,
+} from "@/lib/predictions";
 
 type PredictionBody = {
   fixtureId?: string;
@@ -41,6 +45,10 @@ export async function POST(request: Request) {
       { error: "Register for the cup before you pick winners." },
       { status: 403 },
     );
+  }
+  const access = await predictionAccess(player.id);
+  if (!access.allowed) {
+    return NextResponse.json({ error: access.message }, { status: 403 });
   }
 
   const body = (await request.json().catch(() => ({}))) as PredictionBody;

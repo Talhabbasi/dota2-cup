@@ -1,5 +1,7 @@
 import { prisma } from "./prisma";
 import { getCupFeatureSettings } from "./cup-features";
+import { playerMustPay } from "./payments";
+import { formatEntryFee } from "./registration-status";
 import { publicFixtureWhere, publicPlayerWhere } from "./dummy";
 import { isPlayoffKind, playoffRoundLabel } from "./playoff";
 import {
@@ -32,6 +34,7 @@ import {
   currentSeasonFilter,
   currentSeasonId,
   getCurrentSeasonSafe,
+  getLiveSeason,
 } from "./seasons";
 
 export const PREDICTION_POINTS = 10;
@@ -172,6 +175,58 @@ export type PredictionLeaderRow = {
 
 const MAX_PREDICTION_BATCH = 40;
 
+export type PredictionAccess =
+  | { allowed: true }
+  | { allowed: false; reason: "unregistered" | "unpaid"; message: string };
+
+/**
+ * Picks require a live-season registration and a confirmed entry fee.
+ * Substitutes do not owe the fee, so a registered sub can still pick.
+ */
+export async function predictionAccess(
+  playerId: string | null | undefined,
+): Promise<PredictionAccess> {
+  if (!playerId) {
+    return {
+      allowed: false,
+      reason: "unregistered",
+      message: "Register for this cup before you pick winners.",
+    };
+  }
+  const season = await getLiveSeason();
+  if (!season) {
+    return {
+      allowed: false,
+      reason: "unregistered",
+      message: "Predictions open when a season is live.",
+    };
+  }
+  const membership = await prisma.seasonPlayer.findUnique({
+    where: { seasonId_playerId: { seasonId: season.id, playerId } },
+    select: { rosterRole: true, paidAt: true },
+  });
+  if (!membership) {
+    return {
+      allowed: false,
+      reason: "unregistered",
+      message: "Register for this cup before you pick winners.",
+    };
+  }
+  if (playerMustPay(membership.rosterRole) && !membership.paidAt) {
+    return {
+      allowed: false,
+      reason: "unpaid",
+      message: `Pay the ${formatEntryFee()} entry fee before you predict. Post the transfer screenshot in Discord #payments and wait until an admin confirms it.`,
+    };
+  }
+  return { allowed: true };
+}
+
+export async function assertCanPredict(playerId: string) {
+  const access = await predictionAccess(playerId);
+  if (!access.allowed) throw new Error(access.message);
+}
+
 export type PredictionPickInput = {
   fixtureId: string;
   teamId: string;
@@ -185,6 +240,7 @@ export async function saveMatchPredictions(
   if (!predictionsEnabled) {
     throw new Error("Predictions are locked by an organizer.");
   }
+  await assertCanPredict(playerId);
   const unique = new Map<string, string>();
   for (const pick of picks) {
     const fixtureId = pick.fixtureId?.trim();
@@ -286,6 +342,7 @@ export async function saveBracketPicks(
   if (!predictionsEnabled) {
     throw new Error("Predictions are locked by an organizer.");
   }
+  await assertCanPredict(playerId);
   const { complete, seeds } = await loadPlayoffSeeds();
   if (!complete || !seeds) {
     throw new Error(

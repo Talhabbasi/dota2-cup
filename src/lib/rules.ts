@@ -63,6 +63,7 @@ export const CUP_RULES = {
         "Pay on **SadaPay** — account **0301-3396885**, IBAN **PK16SADA0000003013396885**, title **Talha Abbasi**.",
         "Each team must collect **exactly 5000 PKR** (five starters — min and max).",
         "Post a clear transfer screenshot in **#payments**. An **Admin** clicks ✅ to confirm. You are not paid until then.",
+        "Website **Predictions** are only for registered players with a confirmed payment. Substitutes can predict without paying.",
         "Do not chat in **#payments** — screenshots only. Questions go in **#general**.",
       ],
     },

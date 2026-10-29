@@ -10,6 +10,7 @@ import {
   getInternationalPickem,
   getPredictionBoard,
   getPredictionLeaderboard,
+  predictionAccess,
 } from "@/lib/predictions";
 import { getCurrentSeasonSafe } from "@/lib/seasons";
 import { livePageMeta } from "@/lib/seo";
@@ -52,13 +53,14 @@ export default async function PredictionsPage() {
     );
   }
 
-  const [stages, board, pickem] = await Promise.all([
+  const [stages, board, pickem, access] = await Promise.all([
     getPredictionBoard(player?.id),
     getPredictionLeaderboard(player?.id),
     getInternationalPickem(player?.id),
+    predictionAccess(player?.id),
   ]);
   const picksUnlocked = features.predictionsEnabled;
-  const canPick = Boolean(player) && picksUnlocked;
+  const canPick = access.allowed && picksUnlocked;
   const signedIn = Boolean(session?.user?.discordId);
   const you = board.rows.find((row) => row.isYou) ?? null;
   const accuracy =
@@ -71,7 +73,7 @@ export default async function PredictionsPage() {
       <PageHeader
         eyebrow="Pick’em"
         title="Predictions"
-        subtitle={`Organizers open and close picks from admin. Group picks are ${PREDICTION_POINTS} points each. The International is a Dota 2 Pick’em tree — tap a winner to send them forward. Grand Final is ${FINAL_PREDICTION_POINTS} points.`}
+        subtitle={`Only registered players with a confirmed entry fee can pick. Substitutes can pick without paying. Group picks are ${PREDICTION_POINTS} points each. The International is a Dota 2 Pick’em tree — tap a winner to send them forward. Grand Final is ${FINAL_PREDICTION_POINTS} points.`}
         pills={[
           ...(season ? [{ label: `Season ${season.number}` }] : []),
           {
@@ -110,6 +112,16 @@ export default async function PredictionsPage() {
           </p>
         </EsportsCard>
       ) : null}
+      {!access.allowed && access.reason === "unpaid" ? (
+        <EsportsCard interactive={false} className="mb-6 border-amber-500/30 p-5">
+          <p className="m-0 text-[0.68rem] font-semibold tracking-[0.16em] text-amber-300 uppercase">
+            Payment required
+          </p>
+          <p className="mt-2 mb-0 text-sm text-muted-foreground">
+            {access.message}
+          </p>
+        </EsportsCard>
+      ) : null}
       {you ? (
         <EsportsCard interactive={false} className="mb-6 p-5">
           <p className="m-0 text-[0.68rem] font-semibold tracking-[0.16em] text-primary uppercase">
@@ -141,6 +153,16 @@ export default async function PredictionsPage() {
           <p className="mt-2 mb-0 text-sm text-muted-foreground">
             Points and accuracy unlock here when every group-stage match is
             scored. Keep picking — your votes are saved.
+          </p>
+        </EsportsCard>
+      ) : player && !access.allowed && access.reason === "unregistered" ? (
+        <EsportsCard interactive={false} className="mb-6 p-5">
+          <p className="m-0 text-sm text-muted-foreground">
+            {access.message}{" "}
+            <Link href="/register" className="text-link">
+              Register
+            </Link>{" "}
+            to lock in winners and climb the points board.
           </p>
         </EsportsCard>
       ) : player ? null : signedIn ? (
