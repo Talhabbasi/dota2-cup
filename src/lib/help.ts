@@ -69,7 +69,7 @@ Screenshot in **#payments**, then an Admin clicks **✅**.
 Subs do **not** pay. Each team must be exactly **5000 PKR** (5 starters).
 
 **Admin — schedule & playoffs**
-\`/schedule groups\` — book Group A and Group B at the same kickoffs (posts in **#matches**)
+\`/schedule groups\` — book Group A and Group B at the same kickoffs, from 8:00 PM PKT (posts in **#matches**)
 \`/schedule add team_a: team_b: date:YYYY-MM-DD time:\` — Sat/Sun (group 10pm–6am · playoffs 10am–3am PKT)
 \`/schedule edit fixture:\` — change teams or kickoff
 \`/schedule remove fixture:\` — delete one booked match

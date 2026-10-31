@@ -51,7 +51,7 @@ export function groupStageScheduleEmbeds(result: {
         [
           "Teams · 2 equal groups · single round-robin · **Bo1**.",
           "Group A and Group B start at the same time. Each team plays every other team in its group once.",
-          "One round per hour from 10:00 PM PKT. An odd group sits one team per round, and that bye rotates.",
+          "One Group A match and one Group B match at each kickoff, from the time you book (default 8:00 PM PKT).",
           "",
           `Full grid: **${site}/schedule**`,
         ].join("\n"),

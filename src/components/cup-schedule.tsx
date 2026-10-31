@@ -178,7 +178,7 @@ function NightSection({
 function nightWindowHint(fixtures: ScheduleFixtureView[]) {
   return fixtures.some((fixture) => isPlayoffKind(fixture.kind))
     ? "10:00 AM–3:00 AM PKT"
-    : "10:00 PM–6:00 AM PKT";
+    : "8:00 PM–6:00 AM PKT";
 }
 
 export function CupScheduleBoard({

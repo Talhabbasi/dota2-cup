@@ -185,7 +185,7 @@ export function isPlayoffWindowHour(hour: number) {
 }
 
 export function isGroupNightHour(hour: number) {
-  return hour >= 22 || (hour >= 0 && hour <= 6);
+  return hour >= 20 || (hour >= 0 && hour <= 6);
 }
 
 /** Saturday/Sunday 10:00 AM–11:59 PM, plus Sunday/Monday 12:00–3:00 AM. */
@@ -213,7 +213,7 @@ function assertScheduleWindow(kind: string, hour: number, scheduledAt: Date) {
     return;
   }
   if (!isGroupNightHour(hour)) {
-    throw new Error("Group matches must start 10:00 PM through 6:00 AM PKT.");
+    throw new Error("Group matches must start 8:00 PM through 6:00 AM PKT.");
   }
 }
 

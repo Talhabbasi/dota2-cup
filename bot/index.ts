@@ -1065,6 +1065,21 @@ const commands = [
             .setDescription("Extra night if Saturday fills up (default: next Sunday)")
             .setAutocomplete(true),
         )
+        .addStringOption((o) =>
+          o
+            .setName("start")
+            .setDescription("First kickoff for matches still to play (default 8:00 PM PKT)")
+            .addChoices(
+              { name: "8:00 PM PKT", value: "20" },
+              { name: "9:00 PM PKT", value: "21" },
+              { name: "10:00 PM PKT", value: "22" },
+              { name: "11:00 PM PKT", value: "23" },
+              { name: "12:00 AM PKT", value: "0" },
+              { name: "1:00 AM PKT", value: "1" },
+              { name: "2:00 AM PKT", value: "2" },
+              { name: "3:00 AM PKT", value: "3" },
+            ),
+        )
         .addBooleanOption((o) =>
           o
             .setName("force")
@@ -3282,6 +3297,7 @@ async function handleSlash(interaction: ChatInputCommandInteraction) {
           saturday: interaction.options.getString("saturday") ?? undefined,
           sunday: interaction.options.getString("sunday") ?? undefined,
           force: interaction.options.getBoolean("force") ?? false,
+          startHour: Number(interaction.options.getString("start") ?? "20"),
         });
         void notifySiteRefresh();
         let posted = "";

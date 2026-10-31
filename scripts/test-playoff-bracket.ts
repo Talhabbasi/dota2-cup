@@ -249,7 +249,8 @@ assert(parseMatchNightHour("15") === 15, "3pm should parse");
 assert(parseMatchNightHour("3") === 3, "3am should parse");
 assert(isPlayoffWindowHour(10) && isPlayoffWindowHour(22) && isPlayoffWindowHour(3), "Playoff window includes 10am, 10pm, 3am");
 assert(!isPlayoffWindowHour(4), "4am is outside the playoff window");
-assert(isGroupNightHour(4) && isGroupNightHour(22), "Group stage still allows 10pm–6am");
+assert(isGroupNightHour(4) && isGroupNightHour(20) && isGroupNightHour(22), "Group stage allows 8pm–6am");
+assert(!isGroupNightHour(19), "7pm is outside the group window");
 
 const saturday = parseWeekendDate("2026-09-26");
 assert(saturday.dow === 6, "2026-09-26 is a Saturday");

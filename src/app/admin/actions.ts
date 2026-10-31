@@ -1604,10 +1604,16 @@ try {
 export async function actionBookGroupStage(formData: FormData) {
 try {
   const session = await requireAdmin();
+    const startRaw = String(formData.get("startHour") ?? "20").trim();
+    const startHour = Number(startRaw);
+    if (!Number.isInteger(startHour)) {
+      throw new Error("Pick the time the remaining matches should start.");
+    }
     const result = await bookGroupStageRoundRobin({
       saturday: String(formData.get("saturday") ?? "") || undefined,
       sunday: String(formData.get("sunday") ?? "") || undefined,
       force: formData.get("force") === "1",
+      startHour,
     });
     const discord = await postGroupStageToMatchesRest(result);
     const discordNote = discord.ok ? discord.detail : `Discord: ${discord.reason}`;

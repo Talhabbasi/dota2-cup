@@ -7,13 +7,16 @@ import { currentSeasonFilter } from "./seasons";
 import { PUBLIC_PAGE_TAG, PUBLIC_REVALIDATE_SECONDS } from "./cache-tags";
 import {
   createScheduledMatch,
+  kickoffFromMatchNight,
+  parseMatchNightHour,
+  parseWeekendDate,
   upcomingWeekendDates,
 } from "./schedule-crud";
 import { getLivePlayoffFormat, roundRobinRounds } from "./playoff-format";
 import { groupFixtureWinnerId } from "./season-data";
 
-/** One group round per hour, 10:00 PM through 6:00 AM PKT. */
-const GROUP_NIGHT_HOURS = ["22", "23", "0", "1", "2", "3", "4", "5", "6"];
+/** One Group A match and one Group B match per hour, 8:00 PM through 6:00 AM PKT. */
+const GROUP_NIGHT_HOURS = [20, 21, 22, 23, 0, 1, 2, 3, 4, 5, 6];
 
 function matchNightYmd(date: Date | string) {
   const offsetH = scheduleUtcOffsetHours();
@@ -63,6 +66,8 @@ export async function bookGroupStageRoundRobin(input?: {
   saturday?: string;
   sunday?: string;
   force?: boolean;
+  /** First kickoff hour in PKT. Default 8:00 PM. Finished matches are left alone. */
+  startHour?: number;
 }) {
   const dates = defaultGroupDates();
   const saturday = input?.saturday?.trim() || dates.saturday;
@@ -85,27 +90,65 @@ export async function bookGroupStageRoundRobin(input?: {
     );
   }
 
+  const startHour = input?.startHour ?? 20;
+  if (!GROUP_NIGHT_HOURS.includes(startHour)) {
+    throw new Error("Group matches start 8:00 PM through 6:00 AM PKT.");
+  }
+
   const roundsA = roundRobinRounds(groupA);
   const roundsB = roundRobinRounds(groupB);
   assertFullRoundRobin(groupA, roundsA, "Group A");
   assertFullRoundRobin(groupB, roundsB, "Group B");
   const roundCount = Math.max(roundsA.length, roundsB.length);
-  const slots = kickoffSlots(saturday, sunday, roundCount);
 
-  const pending = await prisma.scheduledFixture.count({
-    where: { status: "scheduled", kind: "group", ...season },
+  const completed = await prisma.scheduledFixture.findMany({
+    where: { status: "completed", kind: "group", ...season },
+    select: {
+      radiantTeam: { select: { name: true } },
+      direTeam: { select: { name: true } },
+    },
   });
-  if (pending > 0 && !input?.force) {
+  const played = new Set(
+    completed.map((row) => pairKey(row.radiantTeam.name, row.direTeam.name)),
+  );
+
+  const pendingRows = await prisma.scheduledFixture.findMany({
+    where: { status: "scheduled", kind: "group", ...season },
+    select: {
+      id: true,
+      radiantTeam: { select: { name: true } },
+      direTeam: { select: { name: true } },
+    },
+  });
+  if (pendingRows.length > 0 && !input?.force) {
     throw new Error(
-      `${pending} group matches are already booked. Pass force to replace them, or edit a single fixture.`,
+      `${pendingRows.length} group matches are already booked. Pass force to replace them, or edit a single fixture.`,
     );
   }
-  if (input?.force) {
-    await prisma.scheduledFixture.deleteMany({
-      where: { status: "scheduled", kind: "group", ...season },
-    });
+  const pendingByPair = new Map(
+    pendingRows.map((row) => [
+      pairKey(row.radiantTeam.name, row.direTeam.name),
+      row.id,
+    ]),
+  );
+
+  const openA: { round: number; teamA: string; teamB: string }[] = [];
+  const openB: { round: number; teamA: string; teamB: string }[] = [];
+  for (let round = 0; round < roundCount; round++) {
+    for (const [teamA, teamB] of roundsA[round] ?? []) {
+      if (!played.has(pairKey(teamA, teamB))) {
+        openA.push({ round: round + 1, teamA, teamB });
+      }
+    }
+    for (const [teamA, teamB] of roundsB[round] ?? []) {
+      if (!played.has(pairKey(teamA, teamB))) {
+        openB.push({ round: round + 1, teamA, teamB });
+      }
+    }
   }
 
+  const slotCount = Math.max(openA.length, openB.length);
+  const slots = kickoffSlots(saturday, sunday, slotCount, startHour);
   const planned: {
     group: "A" | "B";
     round: number;
@@ -115,39 +158,62 @@ export async function bookGroupStageRoundRobin(input?: {
     date: string;
     hour: string;
   }[] = [];
-  const numbers = { A: 0, B: 0 };
-  for (let round = 0; round < roundCount; round++) {
-    const slot = slots[round];
+  for (let index = 0; index < slotCount; index++) {
+    const slot = slots[index];
     if (!slot) throw new Error("Missing a kickoff slot for this group round.");
-    for (const group of ["A", "B"] as const) {
-      const pairs = group === "A" ? roundsA[round] : roundsB[round];
-      for (const [teamA, teamB] of pairs ?? []) {
-        numbers[group] += 1;
-        planned.push({
-          group,
-          round: round + 1,
-          matchNumber: numbers[group],
-          teamA,
-          teamB,
-          date: slot.date,
-          hour: slot.hour,
-        });
-      }
+    const pairA = openA[index];
+    const pairB = openB[index];
+    if (pairA) {
+      planned.push({
+        group: "A",
+        round: pairA.round,
+        matchNumber: index + 1,
+        teamA: pairA.teamA,
+        teamB: pairA.teamB,
+        date: slot.date,
+        hour: slot.hour,
+      });
+    }
+    if (pairB) {
+      planned.push({
+        group: "B",
+        round: pairB.round,
+        matchNumber: index + 1,
+        teamA: pairB.teamA,
+        teamB: pairB.teamB,
+        date: slot.date,
+        hour: slot.hour,
+      });
     }
   }
 
   const booked: BookedGroupMatch[] = [];
   const createdIds: string[] = [];
+  const keptIds = new Set<string>();
   try {
     for (const row of planned) {
-      const fixture = await createScheduledMatch({
-        teamA: row.teamA,
-        teamB: row.teamB,
-        date: row.date,
-        time: row.hour,
-        kind: "group",
-      });
-      createdIds.push(fixture.id);
+      const existingId = pendingByPair.get(pairKey(row.teamA, row.teamB));
+      const night = parseWeekendDate(row.date);
+      const hour = parseMatchNightHour(row.hour);
+      const scheduledAt = kickoffFromMatchNight(night, hour);
+      const fixture = existingId
+        ? await prisma.scheduledFixture.update({
+            where: { id: existingId },
+            data: { scheduledAt },
+            include: {
+              radiantTeam: { select: { name: true } },
+              direTeam: { select: { name: true } },
+            },
+          })
+        : await createScheduledMatch({
+            teamA: row.teamA,
+            teamB: row.teamB,
+            date: row.date,
+            time: row.hour,
+            kind: "group",
+          });
+      if (existingId) keptIds.add(existingId);
+      else createdIds.push(fixture.id);
       booked.push({
         group: row.group,
         matchNumber: row.matchNumber,
@@ -156,6 +222,12 @@ export async function bookGroupStageRoundRobin(input?: {
         teamB: fixture.direTeam.name,
         scheduledAt: fixture.scheduledAt,
       });
+    }
+    const stale = pendingRows
+      .map((row) => row.id)
+      .filter((id) => !keptIds.has(id));
+    if (stale.length > 0) {
+      await prisma.scheduledFixture.deleteMany({ where: { id: { in: stale } } });
     }
   } catch (error) {
     if (createdIds.length > 0) {
@@ -185,9 +257,21 @@ function addDaysYmd(ymd: string, days: number) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-/** Saturday first, then Sunday, then the following weekends, 9 rounds per night. */
-function kickoffSlots(saturday: string, sunday: string, roundCount: number) {
+function pairKey(teamA: string, teamB: string) {
+  return [teamA, teamB].sort().join("|");
+}
+
+/** First night, then the extra night, starting at the chosen hour. One slot is one parallel A+B kickoff. */
+function kickoffSlots(
+  saturday: string,
+  sunday: string,
+  roundCount: number,
+  startHour: number,
+) {
+  const start = GROUP_NIGHT_HOURS.indexOf(startHour);
+  const hours = GROUP_NIGHT_HOURS.slice(start).map(String);
   const slots: { date: string; hour: string }[] = [];
+  if (roundCount === 0) return slots;
   for (let week = 0; slots.length < roundCount; week++) {
     if (week > 6) {
       throw new Error("Not enough weekend nights to fit every group round.");
@@ -196,7 +280,7 @@ function kickoffSlots(saturday: string, sunday: string, roundCount: number) {
       addDaysYmd(saturday, week * 7),
       addDaysYmd(sunday, week * 7),
     ]) {
-      for (const hour of GROUP_NIGHT_HOURS) {
+      for (const hour of hours) {
         slots.push({ date, hour });
         if (slots.length >= roundCount) return slots;
       }

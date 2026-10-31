@@ -918,26 +918,15 @@ export async function applyParsedScoreboard(
       ? "dire"
       : "radiant");
 
-  // Keep the scheduled franchises. The screenshot's top team is not always
-  // the fixture's radiant, and OCR team names often miss ("frant1c", "SHEEROO").
+  // Dota scoreboard: top five are Radiant (green), bottom five are Dire (red).
+  // Keep those sides. Only the franchise labels move when the scheduled slot
+  // order is the other way around ("frant1c", "SHEEROO" often miss by name).
   let orientedRadiant = radiantTeam;
   let orientedDire = direTeam;
-  let orientedWinnerSide: "radiant" | "dire" = winnerSide;
-  let flipSides = false;
+  const orientedWinnerSide: "radiant" | "dire" = winnerSide;
+  const flipSides = false;
   if (fixtureRadiant && fixtureDire) {
-    orientedRadiant = fixtureRadiant;
-    orientedDire = fixtureDire;
-    if (radiantTeam && direTeam) {
-      const ocrIds = new Set([radiantTeam.id, direTeam.id]);
-      if (
-        ocrIds.has(fixtureRadiant.id) &&
-        ocrIds.has(fixtureDire.id) &&
-        radiantTeam.id !== fixtureRadiant.id
-      ) {
-        flipSides = true;
-      }
-    }
-    const stay = countRosterLinks(
+    const topIsScheduledRadiant = countRosterLinks(
       parsed.players,
       false,
       roster,
@@ -945,18 +934,20 @@ export async function applyParsedScoreboard(
       fixtureDire.id,
       standInAliases,
     );
-    const flipped = countRosterLinks(
+    const topIsScheduledDire = countRosterLinks(
       parsed.players,
-      true,
+      false,
       roster,
-      fixtureRadiant.id,
       fixtureDire.id,
+      fixtureRadiant.id,
       standInAliases,
     );
-    if (flipped > stay) flipSides = true;
-    else if (stay > flipped) flipSides = false;
-    if (flipSides) {
-      orientedWinnerSide = winnerSide === "radiant" ? "dire" : "radiant";
+    if (topIsScheduledDire > topIsScheduledRadiant) {
+      orientedRadiant = fixtureDire;
+      orientedDire = fixtureRadiant;
+    } else {
+      orientedRadiant = fixtureRadiant;
+      orientedDire = fixtureDire;
     }
   }
 
@@ -1005,19 +996,17 @@ export async function applyParsedScoreboard(
 
   const radiantTeamId = orientedRadiant?.id ?? existing?.radiantTeamId ?? null;
   const direTeamId = orientedDire?.id ?? existing?.direTeamId ?? null;
-  const winnerTeamId =
+  const shotWinnerId =
     orientedWinnerSide === "dire" ? direTeamId : radiantTeamId;
   const lockResult = Boolean(
     pinnedMatch && (pinnedMatch.winnerTeamId || pinnedMatch.radiantWin != null),
   );
-  const radiantScore =
-    (flipSides ? parsed.direScore : parsed.radiantScore) ??
-    existing?.radiantScore ??
-    null;
-  const direScore =
-    (flipSides ? parsed.radiantScore : parsed.direScore) ??
-    existing?.direScore ??
-    null;
+  const winnerTeamId =
+    lockResult && pinnedMatch?.winnerTeamId
+      ? pinnedMatch.winnerTeamId
+      : shotWinnerId;
+  const radiantScore = parsed.radiantScore ?? existing?.radiantScore ?? null;
+  const direScore = parsed.direScore ?? existing?.direScore ?? null;
 
   const data = {
     openDotaId: pinnedMatch
@@ -1026,12 +1015,12 @@ export async function applyParsedScoreboard(
         existing?.openDotaId ||
         (sourceId ? `shot-${sourceId}` : `shot-${Date.now()}`),
     duration: parsed.durationSeconds ?? existing?.duration ?? null,
-    radiantWin: lockResult
-      ? pinnedMatch!.radiantWin
+    radiantWin: winnerTeamId != null && radiantTeamId != null
+      ? winnerTeamId === radiantTeamId
       : orientedWinnerSide === "radiant",
-    radiantTeamId: lockResult ? pinnedMatch!.radiantTeamId : radiantTeamId,
-    direTeamId: lockResult ? pinnedMatch!.direTeamId : direTeamId,
-    winnerTeamId: lockResult ? pinnedMatch!.winnerTeamId : winnerTeamId,
+    radiantTeamId,
+    direTeamId,
+    winnerTeamId,
     screenshotPath: screenshotPath ?? existing?.screenshotPath ?? null,
     radiantScore,
     direScore,

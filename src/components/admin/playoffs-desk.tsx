@@ -47,8 +47,6 @@ export function AdminPlayoffsDesk({
   weekendDates: { name: string; value: string }[];
   readOnly?: boolean;
 }) {
-  const saturdays = weekendDates.filter((d) => d.name.startsWith("Saturday"));
-  const sundays = weekendDates.filter((d) => d.name.startsWith("Sunday"));
   const allTeams = [
     ...view.groupA.map((t) => ({ ...t, group: "A" as const })),
     ...view.groupB.map((t) => ({ ...t, group: "B" as const })),
@@ -144,40 +142,58 @@ export function AdminPlayoffsDesk({
               2. Group schedule
             </h3>
             <p className="mb-4 text-xs text-muted-foreground">
-              Both groups start together, one round per hour from 10:00 PM PKT.
-              Every team plays every other team in its group once. An odd group
-              sits one team per round, and that bye rotates. Saturday holds the
-              rounds; Sunday is only used if the group is too big for one night.
-              Posts to Discord #matches. Same as{" "}
+              Finished matches stay on their date. Matches still to play start
+              at the time you pick, one Group A game and one Group B game at
+              the same kickoff. Default is 8:00 PM PKT. Posts to Discord
+              #matches. Same as{" "}
               <code className="text-foreground">/schedule groups</code>.
             </p>
             <AdminActionForm
               action={actionBookGroupStage}
               successMessage="Group stage booked"
-              confirmMessage="Book every group match, with Group A and Group B starting together, and post it to Discord #matches?"
+              confirmMessage="Book the remaining group matches from the time you picked? Finished matches stay. Group A and Group B play at the same time. This also posts to Discord #matches."
               className="grid gap-3 sm:grid-cols-2"
             >
-              <AdminField label="Saturday (first night)">
+              <AdminField label="Start time (PKT)">
+                <select
+                  name="startHour"
+                  className={adminControlClass}
+                  defaultValue="20"
+                >
+                  <option value="20">8:00 PM</option>
+                  <option value="21">9:00 PM</option>
+                  <option value="22">10:00 PM</option>
+                  <option value="23">11:00 PM</option>
+                  <option value="0">12:00 AM</option>
+                  <option value="1">1:00 AM</option>
+                  <option value="2">2:00 AM</option>
+                  <option value="3">3:00 AM</option>
+                  <option value="4">4:00 AM</option>
+                  <option value="5">5:00 AM</option>
+                  <option value="6">6:00 AM</option>
+                </select>
+              </AdminField>
+              <AdminField label="First night">
                 <select
                   name="saturday"
                   className={adminControlClass}
-                  defaultValue={saturdays[0]?.value ?? ""}
+                  defaultValue={weekendDates[0]?.value ?? ""}
                 >
-                  {saturdays.map((d) => (
+                  {weekendDates.map((d) => (
                     <option key={d.value} value={d.value}>
                       {d.name}
                     </option>
                   ))}
                 </select>
               </AdminField>
-              <AdminField label="Sunday (extra night)">
+              <AdminField label="Extra night">
                 <select
                   name="sunday"
                   className={adminControlClass}
-                  defaultValue={sundays[0]?.value ?? ""}
+                  defaultValue={weekendDates[1]?.value ?? ""}
                 >
-                  {sundays.map((d) => (
-                    <option key={d.value} value={d.value}>
+                  {weekendDates.map((d) => (
+                    <option key={`extra-${d.value}`} value={d.value}>
                       {d.name}
                     </option>
                   ))}
@@ -185,7 +201,7 @@ export function AdminPlayoffsDesk({
               </AdminField>
               <label className="flex items-center gap-2 text-sm text-muted-foreground sm:col-span-2">
                 <input type="checkbox" name="force" value="1" className="size-4" />
-                Replace existing pending group fixtures
+                Replace pending fixtures. Finished matches stay on their date.
               </label>
               <AdminSubmitButton className="sm:col-span-2" disabled={!groupsReady}>
                 Book group stage
