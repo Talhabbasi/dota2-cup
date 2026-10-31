@@ -192,7 +192,7 @@ export async function adminSetMatchTeams(input: {
         ? input.direTeamId
         : null;
 
-  return prisma.match.update({
+  const updated = await prisma.match.update({
     where: { id: match.id },
     data: {
       radiantTeamId: input.radiantTeamId,
@@ -204,6 +204,38 @@ export async function adminSetMatchTeams(input: {
           : input.winnerSide === "radiant",
     },
   });
+
+  if (
+    winnerTeamId &&
+    (winnerTeamId === input.radiantTeamId || winnerTeamId === input.direTeamId)
+  ) {
+    const fixture = await prisma.scheduledFixture.findFirst({
+      where: { matchId: match.id },
+      select: {
+        id: true,
+        bestOf: true,
+        radiantTeamId: true,
+        direTeamId: true,
+      },
+    });
+    if (
+      fixture &&
+      (fixture.bestOf || 1) <= 1 &&
+      (winnerTeamId === fixture.radiantTeamId ||
+        winnerTeamId === fixture.direTeamId)
+    ) {
+      await prisma.scheduledFixture.update({
+        where: { id: fixture.id },
+        data: {
+          radiantWins: winnerTeamId === fixture.radiantTeamId ? 1 : 0,
+          direWins: winnerTeamId === fixture.direTeamId ? 1 : 0,
+          status: "completed",
+        },
+      });
+    }
+  }
+
+  return updated;
 }
 
 export async function adminGetMatch(matchId: string) {

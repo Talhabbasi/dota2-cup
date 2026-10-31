@@ -10,6 +10,7 @@ import {
   upcomingWeekendDates,
 } from "./schedule-crud";
 import { getLivePlayoffFormat, roundRobinRounds } from "./playoff-format";
+import { groupFixtureWinnerId } from "./season-data";
 
 /** One group round per hour, 10:00 PM through 6:00 AM PKT. */
 const GROUP_NIGHT_HOURS = ["22", "23", "0", "1", "2", "3", "4", "5", "6"];
@@ -270,10 +271,7 @@ export const getGroupStandings = unstable_cache(
       const dire = rows.get(fixture.direTeamId);
       if (!radiant || !dire) continue;
 
-      let winnerId: string | null = null;
-      if (fixture.radiantWins > fixture.direWins) winnerId = fixture.radiantTeamId;
-      else if (fixture.direWins > fixture.radiantWins) winnerId = fixture.direTeamId;
-      else if (fixture.match?.winnerTeamId) winnerId = fixture.match.winnerTeamId;
+      const winnerId = groupFixtureWinnerId(fixture);
       if (!winnerId) continue;
 
       radiant.played += 1;

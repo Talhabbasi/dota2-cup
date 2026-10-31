@@ -173,6 +173,23 @@ export async function loadMatchesForSeason(seasonId: string) {
   });
 }
 
+/** Match winner wins over the fixture series score, so an admin result edit updates the table. */
+export function groupFixtureWinnerId(fixture: {
+  radiantTeamId: string;
+  direTeamId: string;
+  radiantWins: number;
+  direWins: number;
+  match?: { winnerTeamId: string | null } | null;
+}): string | null {
+  const fromMatch = fixture.match?.winnerTeamId ?? null;
+  if (fromMatch === fixture.radiantTeamId || fromMatch === fixture.direTeamId) {
+    return fromMatch;
+  }
+  if (fixture.radiantWins > fixture.direWins) return fixture.radiantTeamId;
+  if (fixture.direWins > fixture.radiantWins) return fixture.direTeamId;
+  return null;
+}
+
 export async function loadGroupStandingsForSeason(
   seasonId: string,
   groupKey: "A" | "B",
@@ -203,10 +220,7 @@ export async function loadGroupStandingsForSeason(
     const dire = rows.get(fixture.direTeamId);
     if (!radiant || !dire) continue;
 
-    let winnerId: string | null = null;
-    if (fixture.radiantWins > fixture.direWins) winnerId = fixture.radiantTeamId;
-    else if (fixture.direWins > fixture.radiantWins) winnerId = fixture.direTeamId;
-    else if (fixture.match?.winnerTeamId) winnerId = fixture.match.winnerTeamId;
+    const winnerId = groupFixtureWinnerId(fixture);
     if (!winnerId) continue;
 
     radiant.played += 1;
