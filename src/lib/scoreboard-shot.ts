@@ -700,6 +700,38 @@ function resolveTeam(
   );
 }
 
+function countRosterLinks(
+  players: { name: string; nameCore?: string; side: "radiant" | "dire" }[],
+  flip: boolean,
+  roster: RosterPlayer[],
+  radiantId: string,
+  direId: string,
+  standInAliases: Set<string>,
+) {
+  const used = new Set<string>();
+  let hits = 0;
+  for (const row of players) {
+    if (standInAliases.has(norm(row.name))) continue;
+    const side = flip
+      ? row.side === "radiant"
+        ? "dire"
+        : "radiant"
+      : row.side;
+    const teamId = side === "dire" ? direId : radiantId;
+    const mapped = resolvePlayer(
+      row.nameCore?.trim() || row.name,
+      roster,
+      teamId,
+      used,
+    );
+    if (mapped) {
+      used.add(mapped.id);
+      hits += 1;
+    }
+  }
+  return hits;
+}
+
 export async function discordMessageAlreadyIngested(messageId: string) {
   const key = `shot-${messageId}`;
   const found = await prisma.match.findFirst({
@@ -776,11 +808,10 @@ export async function applyParsedScoreboard(
   }
 
   const roster: RosterPlayer[] = seasonPlayers.flatMap((row) => {
-    if (row.player.steam32 == null) return [];
     return [{
     id: row.player.id,
     steamName: row.player.steamName,
-    steam32: row.player.steam32,
+    steam32: row.player.steam32 ?? 0,
     discordName: row.player.discordName,
     teamId: row.teamId,
     labels: playerLabels({
@@ -887,29 +918,46 @@ export async function applyParsedScoreboard(
       ? "dire"
       : "radiant");
 
-  // If OCR sides are swapped vs the fixture, keep fixture orientation and flip
-  // winner, scores, and each seat so K/D/A links to the correct roster.
+  // Keep the scheduled franchises. The screenshot's top team is not always
+  // the fixture's radiant, and OCR team names often miss ("frant1c", "SHEEROO").
   let orientedRadiant = radiantTeam;
   let orientedDire = direTeam;
   let orientedWinnerSide: "radiant" | "dire" = winnerSide;
   let flipSides = false;
-  if (fixtureRadiant && fixtureDire && radiantTeam && direTeam) {
-    const ocrIds = new Set([radiantTeam.id, direTeam.id]);
-    if (ocrIds.has(fixtureRadiant.id) && ocrIds.has(fixtureDire.id)) {
-      const ocrRadiantIsFixtureRadiant = radiantTeam.id === fixtureRadiant.id;
-      orientedRadiant = fixtureRadiant;
-      orientedDire = fixtureDire;
-      if (!ocrRadiantIsFixtureRadiant) {
-        orientedWinnerSide = winnerSide === "radiant" ? "dire" : "radiant";
-        flipSides = true;
-      }
-    } else {
-      orientedRadiant = fixtureRadiant;
-      orientedDire = fixtureDire;
-    }
-  } else if (fixtureRadiant && fixtureDire) {
+  if (fixtureRadiant && fixtureDire) {
     orientedRadiant = fixtureRadiant;
     orientedDire = fixtureDire;
+    if (radiantTeam && direTeam) {
+      const ocrIds = new Set([radiantTeam.id, direTeam.id]);
+      if (
+        ocrIds.has(fixtureRadiant.id) &&
+        ocrIds.has(fixtureDire.id) &&
+        radiantTeam.id !== fixtureRadiant.id
+      ) {
+        flipSides = true;
+      }
+    }
+    const stay = countRosterLinks(
+      parsed.players,
+      false,
+      roster,
+      fixtureRadiant.id,
+      fixtureDire.id,
+      standInAliases,
+    );
+    const flipped = countRosterLinks(
+      parsed.players,
+      true,
+      roster,
+      fixtureRadiant.id,
+      fixtureDire.id,
+      standInAliases,
+    );
+    if (flipped > stay) flipSides = true;
+    else if (stay > flipped) flipSides = false;
+    if (flipSides) {
+      orientedWinnerSide = winnerSide === "radiant" ? "dire" : "radiant";
+    }
   }
 
   const usedIds = new Set<string>();
@@ -1031,6 +1079,133 @@ export async function applyParsedScoreboard(
   }
 
   return { match, created: !existing };
+}
+
+/**
+ * Put each scoreboard seat on the franchise that player actually belongs to.
+ * A roster player on the wrong side was showing as a stand-in (UT on Team Stoic).
+ */
+export async function alignMatchRosterSides(matchId: string) {
+  const match = await prisma.match.findUnique({
+    where: { id: matchId },
+    include: {
+      players: true,
+      radiantTeam: { select: { id: true, name: true } },
+      direTeam: { select: { id: true, name: true } },
+    },
+  });
+  if (!match?.seasonId || !match.radiantTeam || !match.direTeam) {
+    return { flipped: false, linked: 0, stay: 0, flippedHits: 0 };
+  }
+  if (match.players.length < 8) {
+    return { flipped: false, linked: 0, stay: 0, flippedHits: 0 };
+  }
+
+  const [seasonPlayers, aliasRows, standInAliases] = await Promise.all([
+    prisma.seasonPlayer.findMany({
+      where: { seasonId: match.seasonId },
+      select: {
+        teamId: true,
+        player: {
+          select: {
+            id: true,
+            steamName: true,
+            discordName: true,
+            steam32: true,
+          },
+        },
+      },
+    }),
+    prisma.playerAlias.findMany({ select: { playerId: true, alias: true } }),
+    listStandInAliasSet(),
+  ]);
+  const aliasesByPlayer = new Map<string, string[]>();
+  for (const row of aliasRows) {
+    const list = aliasesByPlayer.get(row.playerId) ?? [];
+    list.push(row.alias);
+    aliasesByPlayer.set(row.playerId, list);
+  }
+  const roster: RosterPlayer[] = seasonPlayers.flatMap((row) => [
+    {
+      id: row.player.id,
+      steamName: row.player.steamName,
+      steam32: row.player.steam32 ?? 0,
+      discordName: row.player.discordName,
+      teamId: row.teamId,
+      labels: playerLabels({
+        steamName: row.player.steamName,
+        discordName: row.player.discordName,
+        aliases: aliasesByPlayer.get(row.player.id),
+      }),
+    },
+  ]);
+
+  const seats = match.players.map((seat) => ({
+    name: seat.boardName,
+    side: (seat.side === "dire" ? "dire" : "radiant") as "radiant" | "dire",
+  }));
+  const stay = countRosterLinks(
+    seats,
+    false,
+    roster,
+    match.radiantTeam.id,
+    match.direTeam.id,
+    standInAliases,
+  );
+  const flippedHits = countRosterLinks(
+    seats,
+    true,
+    roster,
+    match.radiantTeam.id,
+    match.direTeam.id,
+    standInAliases,
+  );
+  const flipped = flippedHits > stay;
+
+  if (flipped) {
+    await prisma.$transaction(
+      async (tx) => {
+        for (const seat of match.players) {
+          await tx.matchPlayer.update({
+            where: { id: seat.id },
+            data: { side: seat.side === "radiant" ? "dire" : "radiant" },
+          });
+        }
+        await tx.match.update({
+          where: { id: match.id },
+          data: {
+            radiantScore: match.direScore,
+            direScore: match.radiantScore,
+          },
+        });
+      },
+      { timeout: 20_000 },
+    );
+  }
+
+  const fresh = await prisma.matchPlayer.findMany({ where: { matchId } });
+  const used = new Set<string>();
+  let linked = 0;
+  for (const seat of fresh) {
+    if (seat.asStandIn || standInAliases.has(norm(seat.boardName))) continue;
+    const teamId =
+      seat.side === "dire" ? match.direTeam.id : match.radiantTeam.id;
+    const mapped = resolvePlayer(seat.boardName, roster, teamId, used);
+    if (!mapped) continue;
+    used.add(mapped.id);
+    linked += 1;
+    if (seat.playerId === mapped.id && !seat.unknown) continue;
+    await prisma.matchPlayer.update({
+      where: { id: seat.id },
+      data: {
+        player: { connect: { id: mapped.id } },
+        steam32: mapped.steam32 || seat.steam32,
+        unknown: false,
+      },
+    });
+  }
+
+  return { flipped, linked, stay, flippedHits };
 }
 
 export async function listScoreboardKnownNames(limit = 80): Promise<string[]> {
