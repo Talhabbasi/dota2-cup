@@ -129,14 +129,17 @@ export default async function AdminFixtureDetailPage({
         ]}
       />
 
+      {canEdit ? (
+        <AdminScoreboardUpload
+          fixtureId={fixture.id}
+          teamA={teamA}
+          teamB={teamB}
+          alreadyPlayed={!isPending}
+        />
+      ) : null}
+
       {isPending && canEdit ? (
         <>
-          <AdminScoreboardUpload
-            fixtureId={fixture.id}
-            teamA={teamA}
-            teamB={teamB}
-          />
-
           <AdminCard tone="accent" className="mb-6">
             <AdminSection title="Option B · No screenshot (win / walkover)">
               <p className="m-0 mb-3 text-sm text-muted-foreground">
@@ -239,7 +242,8 @@ export default async function AdminFixtureDetailPage({
                 >
                   Open match editor
                 </a>{" "}
-                (fix OCR names / stand-ins)
+                to link any unmatched names. Upload the scoreboard above if
+                player K/D/A is still empty.
               </p>
             ) : null}
           </AdminSection>

@@ -23,10 +23,13 @@ export function AdminScoreboardUpload({
   fixtureId,
   teamA,
   teamB,
+  alreadyPlayed = false,
 }: {
   fixtureId: string;
   teamA: string;
   teamB: string;
+  /** Winner is already saved. This upload only fills player K/D/A. */
+  alreadyPlayed?: boolean;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
   const [pending, startTransition] = useTransition();
@@ -66,7 +69,11 @@ export function AdminScoreboardUpload({
           return;
         }
         setPhase("done");
-        toast.success("Scoreboard saved · winner from screenshot");
+        toast.success(
+          alreadyPlayed
+            ? "Player K/D/A saved"
+            : "Scoreboard saved · winner from screenshot",
+        );
         formRef.current?.reset();
         setFileName(null);
         setError(null);
@@ -92,11 +99,23 @@ export function AdminScoreboardUpload({
 
   return (
     <AdminCard tone="accent" className="mb-6">
-      <AdminSection title="Option A · Upload scoreboard">
+      <AdminSection
+        title={alreadyPlayed ? "Add player K/D/A" : "Option A · Upload scoreboard"}
+      >
         <p className="m-0 text-sm text-muted-foreground">
-          Upload the SCOREBOARD tab for <strong>{teamA}</strong> vs{" "}
-          <strong>{teamB}</strong>. OCR reads the winner — you do not need to
-          tap win/lose after this.
+          {alreadyPlayed ? (
+            <>
+              Upload the SCOREBOARD tab for <strong>{teamA}</strong> vs{" "}
+              <strong>{teamB}</strong>. Player K/D/A is saved on this match.
+              The winner stays as recorded.
+            </>
+          ) : (
+            <>
+              Upload the SCOREBOARD tab for <strong>{teamA}</strong> vs{" "}
+              <strong>{teamB}</strong>. This saves each player&apos;s K/D/A and
+              the winner — you do not need to tap win/lose after this.
+            </>
+          )}
         </p>
         <form
           ref={formRef}

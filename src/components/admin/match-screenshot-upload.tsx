@@ -45,6 +45,7 @@ export function AdminMatchScreenshotUpload({ matchId }: { matchId: string }) {
         data.set("matchId", matchId);
         data.set("screenshot", file);
         setPhase("upload");
+        window.setTimeout(() => setPhase("ocr"), 700);
         const result = await actionAttachMatchScreenshot(data);
         if (!result.ok) {
           setError(result.error);
@@ -53,7 +54,12 @@ export function AdminMatchScreenshotUpload({ matchId }: { matchId: string }) {
           return;
         }
         setPhase("done");
-        toast.success("Screenshot saved to S3");
+        const pendingLinks = result.seats - result.linked;
+        toast.success(
+          pendingLinks > 0
+            ? `K/D/A saved · ${result.linked}/${result.seats} players linked`
+            : `K/D/A saved · ${result.seats} players linked`,
+        );
         form.reset();
         setError(null);
         router.refresh();
@@ -94,13 +100,13 @@ export function AdminMatchScreenshotUpload({ matchId }: { matchId: string }) {
           disabled={pending}
           className={cn(adminBtnClass, adminBtnPrimaryClass)}
         >
-          {pending ? "Working…" : "Save to S3"}
+          {pending ? "Working…" : "Read scoreboard"}
         </button>
       </form>
       <AdminUploadProgress
         key={runId}
         active={busy && phase !== "idle"}
-        phase={phase === "ocr" ? "upload" : phase}
+        phase={phase}
       />
       {error ? (
         <p

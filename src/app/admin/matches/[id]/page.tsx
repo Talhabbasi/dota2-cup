@@ -101,11 +101,19 @@ export default async function AdminMatchDetailPage({
             </p>
           ) : (
             <p className="mb-4 text-sm text-muted-foreground">
-              No screenshot yet. Upload a SCOREBOARD image — it is saved to S3
-              first, then linked here.
+              No screenshot yet. Upload the SCOREBOARD tab — the image is saved,
+              then each player&apos;s K/D/A is read onto this match.
             </p>
           )}
-          {canEdit ? <AdminMatchScreenshotUpload matchId={match.id} /> : null}
+          {canEdit ? (
+            <>
+              <p className="mb-3 text-sm text-muted-foreground">
+                Upload the SCOREBOARD tab to save each player&apos;s K/D/A on
+                this match. Teams and the winner stay as they are.
+              </p>
+              <AdminMatchScreenshotUpload matchId={match.id} />
+            </>
+          ) : null}
         </AdminSection>
       </AdminCard>
 
@@ -231,6 +239,9 @@ export default async function AdminMatchDetailPage({
                       </AdminStatus>
                       <span className="text-xs text-muted-foreground">
                         {seat.hero}
+                      </span>
+                      <span className="font-mono text-xs tabular-nums text-foreground">
+                        {seat.kills}/{seat.deaths}/{seat.assists}
                       </span>
                     </div>
                     {canEdit ? (

@@ -810,7 +810,7 @@ export type ScoreboardUploadResult =
   | { ok: false; error: string };
 
 export type MatchScreenshotUploadResult =
-  | { ok: true }
+  | { ok: true; seats: number; linked: number }
   | { ok: false; error: string };
 
 function actionErrorMessage(error: unknown, fallback: string): string {
@@ -834,12 +834,18 @@ export async function actionIngestScoreboardScreenshot(
     }
     const fixture = await prisma.scheduledFixture.findUnique({
       where: { id: fixtureId },
-      select: { id: true, status: true },
+      select: { id: true, status: true, matchId: true },
     });
-    if (!fixture || fixture.status !== "scheduled") {
+    if (!fixture) {
+      return { ok: false, error: "That fixture is missing." };
+    }
+    if (fixture.status !== "scheduled" && fixture.status !== "completed") {
+      return { ok: false, error: "That fixture cannot take a scoreboard." };
+    }
+    if (fixture.status === "completed" && !fixture.matchId) {
       return {
         ok: false,
-        error: "That fixture is missing or already completed.",
+        error: "That result has no match yet. Upload the scoreboard before marking a winner.",
       };
     }
     const file = formData.get("screenshot");
@@ -895,6 +901,7 @@ export async function actionIngestScoreboardScreenshot(
         sourceId: `admin-${fixtureId.slice(0, 8)}-${Date.now()}`,
         knownNames,
         fixtureId,
+        matchId: fixture.matchId,
       });
     } catch (error) {
       console.error("Scoreboard OCR ingest failed:", error);
@@ -937,7 +944,7 @@ export async function actionIngestScoreboardScreenshot(
   }
 }
 
-/** Upload image to S3 and set Match.screenshotPath (no re-OCR). */
+/** Upload image to S3, then OCR the scoreboard onto this match's player seats. */
 export async function actionAttachMatchScreenshot(
   formData: FormData,
 ): Promise<MatchScreenshotUploadResult> {
@@ -986,25 +993,52 @@ export async function actionAttachMatchScreenshot(
       };
     }
 
-    await prisma.match.update({
-      where: { id: matchId },
-      data: { screenshotPath: uploaded.screenshotPath },
-    });
-    const teams = await prisma.match.findUnique({
-      where: { id: matchId },
-      select: {
-        radiantTeam: { select: { name: true } },
-        direTeam: { select: { name: true } },
-      },
-    });
-    const label = `${teams?.radiantTeam?.name ?? "Radiant"} vs ${teams?.direTeam?.name ?? "Dire"}`;
-    await note(session, "match.attach_screenshot", `Attached screenshot: ${label}`, {
-      matchId,
-    });
-    revalidateAdmin();
-    revalidatePath(`/matches/${matchId}`);
-    revalidatePath(`/admin/matches/${matchId}`);
-    return { ok: true };
+    let knownNames: string[] = [];
+    try {
+      knownNames = await listScoreboardKnownNames();
+    } catch {
+      knownNames = [];
+    }
+
+    try {
+      const result = await ingestScoreboardScreenshot({
+        buffer: uploaded.buffer,
+        mime: uploaded.mime,
+        screenshotPath: uploaded.screenshotPath,
+        sourceId: `match-${matchId.slice(0, 8)}-${Date.now()}`,
+        knownNames,
+        matchId,
+      });
+      const seats = result.match.players.length;
+      const linked = result.match.players.filter((row) => row.playerId).length;
+      const a = result.match.radiantTeam?.name ?? "Radiant";
+      const b = result.match.direTeam?.name ?? "Dire";
+      await note(
+        session,
+        "match.ingest_scoreboard",
+        `Read scoreboard on ${a} vs ${b}: ${linked}/${seats} players linked`,
+        { matchId, seats, linked },
+      );
+      revalidateAdmin();
+      revalidatePath(`/matches/${matchId}`);
+      revalidatePath(`/admin/matches/${matchId}`);
+      revalidatePath("/players");
+      return { ok: true, seats, linked };
+    } catch (error) {
+      console.error("Match scoreboard OCR failed:", error);
+      await prisma.match.update({
+        where: { id: matchId },
+        data: { screenshotPath: uploaded.screenshotPath },
+      });
+      revalidatePath(`/admin/matches/${matchId}`);
+      return {
+        ok: false,
+        error: actionErrorMessage(
+          error,
+          "Screenshot saved, but player K/D/A could not be read. Use the SCOREBOARD tab (heroes, K/D/A, LH/DN, GPM).",
+        ),
+      };
+    }
   } catch (error) {
     console.error("Match screenshot attach failed:", error);
     return {

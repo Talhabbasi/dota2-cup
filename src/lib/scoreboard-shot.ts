@@ -133,17 +133,36 @@ Other rules:
 - matchId is the number labeled Match, not Lobby.${knownBlock}`;
 }
 
+function normalizeSide(value: unknown): "radiant" | "dire" | null {
+  const side = String(value ?? "").toLowerCase();
+  if (side === "radiant" || side === "r" || side.startsWith("rad") || side === "top" || side === "left") {
+    return "radiant";
+  }
+  if (side === "dire" || side === "d" || side.startsWith("dire") || side === "bottom" || side === "right") {
+    return "dire";
+  }
+  return null;
+}
+
+function kdaNumber(row: Record<string, unknown>, key: "kills" | "deaths" | "assists", index: number) {
+  const direct = Number(row[key]);
+  if (Number.isFinite(direct) && direct > 0) return direct;
+  const parts = String(row.kda ?? row.KDA ?? "").match(/\d+/g);
+  const fromText = Number(parts?.[index]);
+  if (Number.isFinite(fromText)) return fromText;
+  return Number.isFinite(direct) ? direct : 0;
+}
+
 function asRows(raw: unknown): ScoreboardPlayerRow[] {
   if (!Array.isArray(raw)) return [];
-  return raw.flatMap((entry) => {
+  const rows = raw.flatMap((entry, index) => {
     if (!entry || typeof entry !== "object") return [];
     const row = entry as Record<string, unknown>;
-    const side = String(row.side ?? "").toLowerCase();
-    if (side !== "radiant" && side !== "dire") return [];
+    const side = normalizeSide(row.side) ?? (index < 5 ? "radiant" : "dire");
     const items = Array.isArray(row.items)
       ? row.items.map((item) => String(item)).filter(Boolean)
       : [];
-    const name = String(row.name ?? "").trim();
+    const name = String(row.name ?? row.player ?? "").trim();
     const nameCoreRaw = String(row.nameCore ?? "").trim();
     const nameCore = nameCoreRaw || boardNameCore(name);
     return [
@@ -152,9 +171,9 @@ function asRows(raw: unknown): ScoreboardPlayerRow[] {
         nameCore: nameCore || undefined,
         hero: String(row.hero ?? "").trim(),
         side,
-        kills: Number(row.kills) || 0,
-        deaths: Number(row.deaths) || 0,
-        assists: Number(row.assists) || 0,
+        kills: kdaNumber(row, "kills", 0),
+        deaths: kdaNumber(row, "deaths", 1),
+        assists: kdaNumber(row, "assists", 2),
         lastHits: Number(row.lastHits) || 0,
         denies: Number(row.denies) || 0,
         gpm: Number(row.gpm) || 0,
@@ -163,6 +182,7 @@ function asRows(raw: unknown): ScoreboardPlayerRow[] {
       },
     ];
   });
+  return rows.filter((row) => row.name || row.hero);
 }
 
 function parseJsonObject(text: string): Record<string, unknown> | null {
@@ -177,8 +197,27 @@ function parseJsonObject(text: string): Record<string, unknown> | null {
   }
 }
 
+function playerListFromVision(data: Record<string, unknown>): unknown {
+  if (Array.isArray(data.players) && data.players.length >= 8) return data.players;
+  const buckets: unknown[] = [];
+  for (const key of ["radiant", "dire"] as const) {
+    const block = data[key];
+    const list = Array.isArray(block)
+      ? block
+      : block && typeof block === "object" && Array.isArray((block as { players?: unknown }).players)
+        ? (block as { players: unknown[] }).players
+        : [];
+    for (const entry of list) {
+      if (entry && typeof entry === "object") {
+        buckets.push({ ...(entry as object), side: key });
+      }
+    }
+  }
+  return buckets.length >= 8 ? buckets : data.players;
+}
+
 function fromVisionObject(data: Record<string, unknown>): ParsedScoreboard | null {
-  const players = asRows(data.players);
+  const players = asRows(playerListFromVision(data));
   if (players.length < 8) return null;
   const winner = String(data.winnerSide ?? "").toLowerCase();
   return {
@@ -203,8 +242,8 @@ function geminiImageMime(mime: string) {
   return "image/jpeg";
 }
 
-/** Prefer one fast Flash model; one fallback only if the first 404s/busy. */
-const GEMINI_MODELS = ["gemini-3.8-flash", "gemini-flash-latest"];
+/** Prefer one fast Flash model; lite fallback when that model is busy. */
+const GEMINI_MODELS = ["gemini-3.8-flash", "gemini-3.5-flash-lite"];
 
 /**
  * Per-request wait. Keep below Vercel maxDuration with room for S3 + DB.
@@ -509,6 +548,33 @@ function resolveItem(
   return hit ? { key: hit.key, name: hit.name } : { key: "", name: label };
 }
 
+/** Upside-down unicode nicks (ɿɒʞ…) back into readable letters, then un-reversed. */
+const TURNED_LETTER: Record<string, string> = {
+  "ɐ": "a",
+  "ɒ": "a",
+  "ɑ": "a",
+  "ɔ": "c",
+  "ǝ": "e",
+  "ɟ": "f",
+  "ƃ": "g",
+  "ɥ": "h",
+  "ᴉ": "i",
+  "ɾ": "j",
+  "ʞ": "k",
+  "ɯ": "m",
+  "ɹ": "r",
+  "ɿ": "r",
+  "ʇ": "t",
+  "ʌ": "v",
+  "ʍ": "w",
+  "ʎ": "y",
+};
+
+function uprightName(value: string) {
+  const mapped = [...value].map((ch) => TURNED_LETTER[ch] ?? ch).join("");
+  return [...mapped].reverse().join("");
+}
+
 function playerLabels(player: {
   steamName: string;
   discordName?: string | null;
@@ -521,10 +587,12 @@ function playerLabels(player: {
   ].filter(Boolean);
   const out = new Set<string>();
   for (const value of raw) {
-    const full = norm(value);
-    if (full) out.add(full);
-    const core = norm(boardNameCore(value));
-    if (core) out.add(core);
+    for (const form of [value, uprightName(value)]) {
+      const full = norm(form);
+      if (full) out.add(full);
+      const core = norm(boardNameCore(form));
+      if (core) out.add(core);
+    }
   }
   return [...out];
 }
@@ -574,6 +642,17 @@ export function resolvePlayer(
     const exact = pool.find((p) => p.labels.includes(want));
     if (exact) return exact;
   }
+
+  const prefix = pool.filter((p) =>
+    wants.some(
+      (want) =>
+        want.length >= 4 &&
+        p.labels.some(
+          (have) => have.length > want.length && have.startsWith(want),
+        ),
+    ),
+  );
+  if (prefix.length === 1) return prefix[0]!;
 
   const maxDist = (len: number) => {
     if (len <= 4) return 1;
@@ -638,12 +717,28 @@ export async function applyParsedScoreboard(
   screenshotPath?: string | null,
   sourceId?: string | null,
   fixtureId?: string | null,
+  options?: { matchId?: string | null },
 ) {
   if (parsed.players.length < 8) {
     throw new Error("That screenshot does not look like a 10-player scoreboard.");
   }
 
-  const seasonId = await currentSeasonId();
+  const pinnedMatch = options?.matchId
+    ? await prisma.match.findUnique({
+        where: { id: options.matchId },
+        include: {
+          players: true,
+          radiantTeam: { select: { id: true, name: true } },
+          direTeam: { select: { id: true, name: true } },
+          scheduledFixture: { select: { status: true } },
+        },
+      })
+    : null;
+  if (options?.matchId && !pinnedMatch) {
+    throw new Error("Match not found.");
+  }
+
+  const seasonId = pinnedMatch?.seasonId ?? (await currentSeasonId());
   const [heroes, itemCatalog, seasonPlayers, aliasRows, teams, standInAliases] =
     await Promise.all([
       loadHeroCatalog(),
@@ -704,6 +799,7 @@ export async function applyParsedScoreboard(
         select: {
           id: true,
           status: true,
+          matchId: true,
           radiantTeamId: true,
           direTeamId: true,
           radiantTeam: { select: { id: true, name: true } },
@@ -711,15 +807,21 @@ export async function applyParsedScoreboard(
         },
       })
     : null;
-  if (fixtureId && (!linkedFixture || linkedFixture.status !== "scheduled")) {
+  if (
+    fixtureId &&
+    !pinnedMatch &&
+    (!linkedFixture || linkedFixture.status !== "scheduled")
+  ) {
     throw new Error(
       "That scheduled match is missing or already completed. Open the pending fixture from Schedule.",
     );
   }
 
-  // Prefer schedule sides when uploading from a fixture page.
-  const fixtureRadiant = linkedFixture?.radiantTeam ?? null;
-  const fixtureDire = linkedFixture?.direTeam ?? null;
+  // Prefer schedule / already-saved sides so a later scoreboard upload
+  // does not swap the two cup teams.
+  const fixtureRadiant =
+    linkedFixture?.radiantTeam ?? pinnedMatch?.radiantTeam ?? null;
+  const fixtureDire = linkedFixture?.direTeam ?? pinnedMatch?.direTeam ?? null;
 
   // Only reuse a match by explicit match/source id — never by team pair alone.
   // Rematches (e.g. group Saif vs Toji, then playoff Saif vs Toji) must create a
@@ -729,16 +831,18 @@ export async function applyParsedScoreboard(
     sourceKey ? { openDotaId: sourceKey } : undefined,
   ].filter(Boolean) as { openDotaId: string }[];
 
-  let existing = identityWhere.length
-    ? await prisma.match.findFirst({
-        where: { OR: identityWhere },
-        include: {
-          players: true,
-          scheduledFixture: { select: { status: true } },
-        },
-        orderBy: { createdAt: "desc" },
-      })
-    : null;
+  let existing = pinnedMatch
+    ? pinnedMatch
+    : identityWhere.length
+      ? await prisma.match.findFirst({
+          where: { OR: identityWhere },
+          include: {
+            players: true,
+            scheduledFixture: { select: { status: true } },
+          },
+          orderBy: { createdAt: "desc" },
+        })
+      : null;
 
   // Fill a very recent manual/walkover stub for the same teams (from schedule
   // winner buttons), never a historical completed series match.
@@ -747,7 +851,7 @@ export async function applyParsedScoreboard(
     : radiantTeam && direTeam
       ? [radiantTeam, direTeam]
       : null;
-  if (!existing && stubTeams) {
+  if (!existing && !pinnedMatch && stubTeams) {
     const [teamA, teamB] = stubTeams;
     const stubs = await prisma.match.findMany({
       where: {
@@ -781,10 +885,12 @@ export async function applyParsedScoreboard(
       ? "dire"
       : "radiant");
 
-  // If OCR sides are swapped vs the fixture, keep fixture orientation and flip winner.
+  // If OCR sides are swapped vs the fixture, keep fixture orientation and flip
+  // winner, scores, and each seat so K/D/A links to the correct roster.
   let orientedRadiant = radiantTeam;
   let orientedDire = direTeam;
   let orientedWinnerSide: "radiant" | "dire" = winnerSide;
+  let flipSides = false;
   if (fixtureRadiant && fixtureDire && radiantTeam && direTeam) {
     const ocrIds = new Set([radiantTeam.id, direTeam.id]);
     if (ocrIds.has(fixtureRadiant.id) && ocrIds.has(fixtureDire.id)) {
@@ -793,6 +899,7 @@ export async function applyParsedScoreboard(
       orientedDire = fixtureDire;
       if (!ocrRadiantIsFixtureRadiant) {
         orientedWinnerSide = winnerSide === "radiant" ? "dire" : "radiant";
+        flipSides = true;
       }
     } else {
       orientedRadiant = fixtureRadiant;
@@ -806,10 +913,13 @@ export async function applyParsedScoreboard(
   const usedIds = new Set<string>();
   const rows = parsed.players.map((row) => {
     const hero = resolveHero(row.hero, heroes);
+    const side = flipSides
+      ? row.side === "radiant"
+        ? "dire"
+        : "radiant"
+      : row.side;
     const sideTeamId =
-      row.side === "dire"
-        ? orientedDire?.id ?? null
-        : orientedRadiant?.id ?? null;
+      side === "dire" ? orientedDire?.id ?? null : orientedRadiant?.id ?? null;
     const standIn = standInAliases.has(norm(row.name));
     const mapped = standIn
       ? null
@@ -825,11 +935,11 @@ export async function applyParsedScoreboard(
       .filter((item): item is ScoreboardItem => Boolean(item));
     return {
       steam32: mapped?.steam32 ?? 0,
-      playerId: mapped?.id ?? null,
+      ...(mapped ? { player: { connect: { id: mapped.id } } } : {}),
       unknown: !mapped,
       asStandIn: standIn,
       boardName: row.name,
-      side: row.side,
+      side,
       hero: hero?.name ?? row.hero,
       heroId: hero?.id ?? 0,
       kills: row.kills,
@@ -847,31 +957,48 @@ export async function applyParsedScoreboard(
   const direTeamId = orientedDire?.id ?? existing?.direTeamId ?? null;
   const winnerTeamId =
     orientedWinnerSide === "dire" ? direTeamId : radiantTeamId;
+  const lockResult = Boolean(
+    pinnedMatch && (pinnedMatch.winnerTeamId || pinnedMatch.radiantWin != null),
+  );
+  const radiantScore =
+    (flipSides ? parsed.direScore : parsed.radiantScore) ??
+    existing?.radiantScore ??
+    null;
+  const direScore =
+    (flipSides ? parsed.radiantScore : parsed.direScore) ??
+    existing?.direScore ??
+    null;
 
   const data = {
-    openDotaId:
-      parsed.matchId ||
-      existing?.openDotaId ||
-      (sourceId ? `shot-${sourceId}` : `shot-${Date.now()}`),
+    openDotaId: pinnedMatch
+      ? pinnedMatch.openDotaId
+      : parsed.matchId ||
+        existing?.openDotaId ||
+        (sourceId ? `shot-${sourceId}` : `shot-${Date.now()}`),
     duration: parsed.durationSeconds ?? existing?.duration ?? null,
-    radiantWin: orientedWinnerSide === "radiant",
-    radiantTeamId,
-    direTeamId,
-    winnerTeamId,
+    radiantWin: lockResult
+      ? pinnedMatch!.radiantWin
+      : orientedWinnerSide === "radiant",
+    radiantTeamId: lockResult ? pinnedMatch!.radiantTeamId : radiantTeamId,
+    direTeamId: lockResult ? pinnedMatch!.direTeamId : direTeamId,
+    winnerTeamId: lockResult ? pinnedMatch!.winnerTeamId : winnerTeamId,
     screenshotPath: screenshotPath ?? existing?.screenshotPath ?? null,
-    radiantScore: parsed.radiantScore ?? existing?.radiantScore ?? null,
-    direScore: parsed.direScore ?? existing?.direScore ?? null,
+    radiantScore,
+    direScore,
   };
 
   const match = existing
-    ? await prisma.$transaction(async (tx) => {
-        await tx.matchPlayer.deleteMany({ where: { matchId: existing.id } });
-        return tx.match.update({
-          where: { id: existing.id },
-          data: { ...data, players: { create: rows } },
-          include: MATCH_INCLUDE,
-        });
-      })
+    ? await prisma.$transaction(
+        async (tx) => {
+          await tx.matchPlayer.deleteMany({ where: { matchId: existing.id } });
+          return tx.match.update({
+            where: { id: existing.id },
+            data: { ...data, players: { create: rows } },
+            include: MATCH_INCLUDE,
+          });
+        },
+        { timeout: 20_000 },
+      )
     : await prisma.match.create({
         data: {
           seasonId,
@@ -881,7 +1008,12 @@ export async function applyParsedScoreboard(
         include: MATCH_INCLUDE,
       });
 
-  if (existing?.scheduledFixture?.status !== "completed") {
+  const fixtureAlreadyHasThisMatch =
+    linkedFixture?.matchId != null && linkedFixture.matchId === existing?.id;
+  if (
+    existing?.scheduledFixture?.status !== "completed" &&
+    !fixtureAlreadyHasThisMatch
+  ) {
     try {
       const { completeScheduledFixture } = await import("./schedule");
       await completeScheduledFixture({
@@ -923,6 +1055,8 @@ export async function ingestScoreboardScreenshot(input: {
   sourceId?: string | null;
   knownNames?: string[];
   fixtureId?: string | null;
+  /** Write seats onto this match instead of creating another row. */
+  matchId?: string | null;
 }) {
   const knownNames =
     input.knownNames ?? (await listScoreboardKnownNames());
@@ -936,6 +1070,7 @@ export async function ingestScoreboardScreenshot(input: {
     input.screenshotPath,
     input.sourceId,
     input.fixtureId,
+    { matchId: input.matchId },
   );
 }
 
