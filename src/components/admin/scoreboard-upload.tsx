@@ -86,7 +86,7 @@ export function AdminScoreboardUpload({
           /aborted due to timeout|timed? out|TimeoutError|AbortError/i.test(
             rawMsg,
           )
-            ? "Upload timed out while reading the scoreboard. Try again with a clearer crop."
+            ? "Reading the scoreboard timed out. Try the same screenshot once more."
             : rawMsg || "Could not read that screenshot. Try again.";
         setError(message);
         toast.error(message);

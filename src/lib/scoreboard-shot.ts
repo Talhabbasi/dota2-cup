@@ -242,14 +242,14 @@ function geminiImageMime(mime: string) {
   return "image/jpeg";
 }
 
-/** Prefer one fast Flash model; lite fallback when that model is busy. */
-const GEMINI_MODELS = ["gemini-3.8-flash", "gemini-3.5-flash-lite"];
+/** Lite first — it returns inside the function budget. Full Flash is the fallback. */
+const GEMINI_MODELS = ["gemini-3.5-flash-lite", "gemini-3.8-flash"] as const;
 
 /**
- * Per-request wait. Keep below Vercel maxDuration with room for S3 + DB.
- * Chaining many 45s attempts used to burn the whole function budget.
+ * Per-model wait. Both fit under the 120s server limit with room for S3 and the DB.
+ * A 500KB PNG is already small; the timeout is the model, not the file.
  */
-const GEMINI_TIMEOUT_MS = 50_000;
+const GEMINI_TIMEOUT_MS = [28_000, 36_000] as const;
 
 function isBusyGemini(status: number, message: string) {
   return (
@@ -280,6 +280,7 @@ async function generateGeminiJson(
   imageMime: string,
   buffer: Buffer,
   prompt: string,
+  timeoutMs: number,
 ) {
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
@@ -289,7 +290,7 @@ async function generateGeminiJson(
         "Content-Type": "application/json",
         "x-goog-api-key": key,
       },
-      signal: AbortSignal.timeout(GEMINI_TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeoutMs),
       body: JSON.stringify({
         contents: [
           {
@@ -327,10 +328,11 @@ async function parseWithGemini(
   knownNames: string[] = [],
 ): Promise<ParsedScoreboard> {
   const imageMime = geminiImageMime(mime);
-  const prompt = buildParsePrompt(knownNames);
+  const prompt = buildParsePrompt(knownNames.slice(0, 40));
   let lastError = "Gemini did not return a scoreboard.";
   for (let i = 0; i < GEMINI_MODELS.length; i++) {
     const model = GEMINI_MODELS[i]!;
+    const timeoutMs = GEMINI_TIMEOUT_MS[i] ?? 30_000;
     try {
       const { res, body } = await generateGeminiJson(
         model,
@@ -338,6 +340,7 @@ async function parseWithGemini(
         imageMime,
         buffer,
         prompt,
+        timeoutMs,
       );
       if (!res.ok) {
         lastError = body.error?.message || `Gemini ${model} returned ${res.status}.`;
@@ -362,9 +365,8 @@ async function parseWithGemini(
       lastError = `Gemini ${model} could not map 10 players from that screenshot.`;
     } catch (error) {
       if (isAbortTimeout(error)) {
-        lastError = `Gemini ${model} timed out. Try a clearer SCOREBOARD crop, or retry.`;
-        // Don't burn the rest of the function budget on another 50s wait.
-        break;
+        lastError = `Gemini ${model} timed out.`;
+        continue;
       }
       // Hard API errors thrown above — surface them.
       if (error instanceof Error && /returned \d+/.test(error.message)) {
@@ -511,7 +513,7 @@ export async function parseScoreboardImage(
   }
   if (/timed out|aborted due to timeout/i.test(lastError)) {
     throw new Error(
-      "Scoreboard OCR timed out. Compress/crop to the SCOREBOARD tab and try once more.",
+      "Scoreboard reading timed out. A 500KB image is fine — try the same screenshot once more.",
     );
   }
   throw new Error(

@@ -44,13 +44,15 @@ function safeKeyHint(hint: string): string {
   return (cleaned || "file").slice(0, 64);
 }
 
-/** Smaller payloads keep Gemini OCR under serverless time limits. */
+/** Display image on S3. OCR uses a smaller JPEG so Gemini answers before the function times out. */
 const MAX_UPLOAD_WIDTH = 1280;
+const MAX_OCR_EDGE = 1024;
 const JPEG_QUALITY = 64;
+const OCR_JPEG_QUALITY = 55;
 
 /**
- * Shrink + JPEG-compress for S3 and OCR. Same buffer is fine for scoreboard
- * vision — smaller payload is much faster to upload and parse.
+ * JPEG for S3, plus a smaller JPEG for scoreboard OCR.
+ * A 500KB PNG is already light; the OCR copy is what keeps Gemini inside the time limit.
  */
 export async function compressImageForS3(input: {
   buffer: Buffer;
@@ -58,23 +60,30 @@ export async function compressImageForS3(input: {
 }): Promise<{ uploadBuffer: Buffer; uploadMime: string; ocrBuffer: Buffer; ocrMime: string }> {
   const fallbackMime = input.mime?.trim() || "image/jpeg";
   try {
-    let pipeline = sharp(input.buffer, { failOn: "none" }).rotate();
-    const meta = await pipeline.metadata();
-    if ((meta.width ?? 0) > MAX_UPLOAD_WIDTH || (meta.height ?? 0) > MAX_UPLOAD_WIDTH) {
-      pipeline = pipeline.resize({
+    const source = sharp(input.buffer, { failOn: "none" }).rotate();
+    const uploadBuffer = await source
+      .clone()
+      .resize({
         width: MAX_UPLOAD_WIDTH,
         height: MAX_UPLOAD_WIDTH,
         fit: "inside",
         withoutEnlargement: true,
-      });
-    }
-    const uploadBuffer = await pipeline
+      })
       .jpeg({ quality: JPEG_QUALITY, mozjpeg: true })
+      .toBuffer();
+    const ocrBuffer = await sharp(uploadBuffer)
+      .resize({
+        width: MAX_OCR_EDGE,
+        height: MAX_OCR_EDGE,
+        fit: "inside",
+        withoutEnlargement: true,
+      })
+      .jpeg({ quality: OCR_JPEG_QUALITY, mozjpeg: true })
       .toBuffer();
     return {
       uploadBuffer,
       uploadMime: "image/jpeg",
-      ocrBuffer: uploadBuffer,
+      ocrBuffer,
       ocrMime: "image/jpeg",
     };
   } catch {
