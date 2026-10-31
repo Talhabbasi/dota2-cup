@@ -31,6 +31,7 @@ import {
   actionMarkStandIn,
   actionClearStandIn,
   actionSetMatchTeams,
+  actionRemoveMatchScreenshot,
 } from "@/app/admin/actions";
 import { cn } from "@/lib/utils";
 import { AdminMatchScreenshotUpload } from "@/components/admin/match-screenshot-upload";
@@ -112,6 +113,18 @@ export default async function AdminMatchDetailPage({
                 this match. Teams and the winner stay as they are.
               </p>
               <AdminMatchScreenshotUpload matchId={match.id} />
+              {match.screenshotPath ? (
+                <AdminConfirmForm
+                  action={actionRemoveMatchScreenshot}
+                  message="Remove this scoreboard image? It disappears from the match. Player K/D/A stay until you upload the correct screenshot."
+                  confirmLabel="Remove image"
+                  successMessage="Screenshot removed"
+                  className="mt-3"
+                >
+                  <input type="hidden" name="matchId" value={match.id} />
+                  <AdminSubmitButton variant="danger">Remove image</AdminSubmitButton>
+                </AdminConfirmForm>
+              ) : null}
             </>
           ) : null}
         </AdminSection>

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { DeleteObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import sharp from "sharp";
 
 /** True when AWS S3 env is complete enough to upload. */
@@ -158,6 +158,22 @@ export async function uploadImageToS3(input: {
     mime: compressed.ocrMime,
     key,
   };
+}
+
+/** Remove a match screenshot from S3 when the URL belongs to this bucket. */
+export async function deleteStoredScreenshot(screenshotPath: string | null | undefined) {
+  if (!screenshotPath?.trim() || !isObjectStorageConfigured()) return;
+  const base = s3PublicBaseUrl();
+  const value = screenshotPath.trim();
+  if (!value.startsWith(`${base}/`)) return;
+  const key = decodeURIComponent(value.slice(base.length + 1));
+  if (!key.startsWith("matches/") && !key.startsWith("payments/")) return;
+  await s3Client().send(
+    new DeleteObjectCommand({
+      Bucket: process.env.AWS_S3_BUCKET!.trim(),
+      Key: key,
+    }),
+  );
 }
 
 /** Match scoreboard screenshots → `matches/` on S3 (compressed). */

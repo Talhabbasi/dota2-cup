@@ -44,7 +44,7 @@ import {
   announceMarkedPaidInDiscord,
 } from "@/lib/discord-payments-rest";
 import { paymentsChannelName } from "@/lib/registration-status";
-import { uploadMatchScreenshot, isObjectStorageConfigured } from "@/lib/object-storage";
+import { uploadMatchScreenshot, deleteStoredScreenshot, isObjectStorageConfigured } from "@/lib/object-storage";
 import { ingestScoreboardScreenshot, listScoreboardKnownNames } from "@/lib/scoreboard-shot";
 import { recordManualSeriesWinner } from "@/lib/results";
 import { prisma } from "@/lib/prisma";
@@ -1045,6 +1045,44 @@ export async function actionAttachMatchScreenshot(
       ok: false,
       error: actionErrorMessage(error, "Upload failed. Try again."),
     };
+  }
+}
+
+/** Take a wrong scoreboard image off the match. Player K/D/A stay. */
+export async function actionRemoveMatchScreenshot(formData: FormData) {
+  try {
+    const session = await requireAdmin();
+    const matchId = String(formData.get("matchId") ?? "");
+    if (!matchId) throw new Error("Missing match.");
+    const match = await prisma.match.findUnique({
+      where: { id: matchId },
+      select: {
+        screenshotPath: true,
+        radiantTeam: { select: { name: true } },
+        direTeam: { select: { name: true } },
+      },
+    });
+    if (!match) throw new Error("Match not found.");
+    if (!match.screenshotPath) throw new Error("This match has no screenshot.");
+    try {
+      await deleteStoredScreenshot(match.screenshotPath);
+    } catch (error) {
+      console.error("Match screenshot S3 delete failed:", error);
+    }
+    await prisma.match.update({
+      where: { id: matchId },
+      data: { screenshotPath: null },
+    });
+    const a = match.radiantTeam?.name ?? "Radiant";
+    const b = match.direTeam?.name ?? "Dire";
+    await note(session, "match.remove_screenshot", `Removed screenshot on ${a} vs ${b}`, {
+      matchId,
+    });
+    revalidateAdmin();
+    revalidatePath(`/matches/${matchId}`);
+    revalidatePath(`/admin/matches/${matchId}`);
+  } catch (error) {
+    return failAction("Remove screenshot", error);
   }
 }
 

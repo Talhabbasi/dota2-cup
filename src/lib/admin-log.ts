@@ -17,6 +17,7 @@ export const ADMIN_ACTION_LABELS: Record<string, string> = {
   "match.stand_out": "Cleared stand-in",
   "match.set_result": "Set match result",
   "match.ingest_scoreboard": "Uploaded scoreboard",
+  "match.remove_screenshot": "Removed screenshot",
   "match.attach_screenshot": "Attached screenshot",
   "player.register": "Registered player",
   "player.update": "Updated player",
