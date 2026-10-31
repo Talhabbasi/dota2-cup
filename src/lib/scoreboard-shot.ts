@@ -56,15 +56,30 @@ function norm(value: string) {
 }
 
 /**
+ * Drop clan / guild tags. "Rogue [TH]" and "enjoyer (TI11)" are just the game name.
+ * Brackets can be nested ("Dua Pipa [ [ MM ] ]"), so strip until they are gone.
+ */
+export function boardNameWithoutGuild(value: string) {
+  let next = value;
+  for (let pass = 0; pass < 4; pass++) {
+    const stripped = next
+      .replace(/\[[^\]]*\]/g, " ")
+      .replace(/\([^)]*\)/g, " ")
+      .replace(/«[^»]*»/g, " ")
+      .replace(/‹[^›]*›/g, " ")
+      .replace(/【[^】]*】/g, " ");
+    if (stripped === next) break;
+    next = stripped;
+  }
+  return next.replace(/[\[\]]/g, " ").replace(/\s+/g, " ").trim();
+}
+
+/**
  * Strip clan tags / decorations so OCR board names match steam names better.
  * e.g. "TigerX [GB]" → "TigerX", "¤GerM¤ [LIBOG]" → "GerM"
  */
 export function boardNameCore(value: string) {
-  return value
-    .replace(/\[[^\]]*\]/g, " ")
-    .replace(/«[^»]*»/g, " ")
-    .replace(/‹[^›]*›/g, " ")
-    .replace(/【[^】]*】/g, " ")
+  return boardNameWithoutGuild(value)
     .replace(/[¤✪★☆✦✧◆◇⚙Φφ●○■□▪▫]/g, " ")
     .replace(/[_|]+/g, " ")
     .replace(/\s+/g, " ")
@@ -105,8 +120,8 @@ Return ONLY JSON:
   "matchId": "digits" or null,
   "players": [
     {
-      "name": "exact player name from the TOP line",
-      "nameCore": "same name with clan tags in [] removed",
+      "name": "player name only, no clan or guild tag",
+      "nameCore": "same as name",
       "hero": "official Dota 2 hero name",
       "side": "radiant" or "dire",
       "kills": 0, "deaths": 0, "assists": 0,
@@ -121,7 +136,7 @@ NAME PRECISION (critical):
 - Copy the TOP player-name line character-by-character. Do not guess.
 - Never put the hero name into "name" (even if the player's name looks like a hero, e.g. INVOKER).
 - Keep letters, digits, spaces, underscores, apostrophes, hyphens.
-- Clan / party tags in square brackets belong in "name"; strip them only for "nameCore".
+- Do not include clan, guild, or party tags. "Rogue [TH]" is "Rogue". "enjoyer (TI11)" is "enjoyer". Drop anything in [] or ().
 - Decorative symbols (stars, diamonds, etc.) around names: keep the readable letters; omit symbols you cannot read clearly.
 - Do not merge two seats or invent players.
 - Exactly 10 players: radiant (top / left team) first, then dire.
@@ -162,9 +177,10 @@ function asRows(raw: unknown): ScoreboardPlayerRow[] {
     const items = Array.isArray(row.items)
       ? row.items.map((item) => String(item)).filter(Boolean)
       : [];
-    const name = String(row.name ?? row.player ?? "").trim();
-    const nameCoreRaw = String(row.nameCore ?? "").trim();
-    const nameCore = nameCoreRaw || boardNameCore(name);
+    const rawName = String(row.name ?? row.player ?? "").trim();
+    const rawCore = String(row.nameCore ?? "").trim();
+    const name = boardNameWithoutGuild(rawName) || boardNameWithoutGuild(rawCore);
+    const nameCore = boardNameCore(name || rawName);
     return [
       {
         name,
@@ -979,7 +995,7 @@ export async function applyParsedScoreboard(
       ...(mapped ? { player: { connect: { id: mapped.id } } } : {}),
       unknown: !mapped,
       asStandIn: standIn,
-      boardName: row.name,
+      boardName: boardNameWithoutGuild(row.name) || row.name,
       side,
       hero: hero?.name ?? row.hero,
       heroId: hero?.id ?? 0,
