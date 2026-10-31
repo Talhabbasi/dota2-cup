@@ -44,15 +44,22 @@ function safeKeyHint(hint: string): string {
   return (cleaned || "file").slice(0, 64);
 }
 
-/** Display image on S3. OCR uses a smaller JPEG so Gemini answers before the function times out. */
-const MAX_UPLOAD_WIDTH = 1280;
+/** Display image stays sharp (Season 1 PNGs). OCR uses a smaller JPEG so Gemini answers in time. */
+const MAX_DISPLAY_EDGE = 1920;
+const DISPLAY_JPEG_QUALITY = 86;
+const KEEP_ORIGINAL_MAX_BYTES = 3_500_000;
 const MAX_OCR_EDGE = 1024;
-const JPEG_QUALITY = 64;
 const OCR_JPEG_QUALITY = 55;
 
+function displayExtension(mime: string): string {
+  if (mime === "image/png") return "png";
+  if (mime === "image/webp") return "webp";
+  return "jpg";
+}
+
 /**
- * JPEG for S3, plus a smaller JPEG for scoreboard OCR.
- * A 500KB PNG is already light; the OCR copy is what keeps Gemini inside the time limit.
+ * Keep a readable scoreboard for the match page, plus a smaller JPEG for OCR.
+ * Files already within 1920px and 3.5MB are stored as uploaded.
  */
 export async function compressImageForS3(input: {
   buffer: Buffer;
@@ -60,18 +67,35 @@ export async function compressImageForS3(input: {
 }): Promise<{ uploadBuffer: Buffer; uploadMime: string; ocrBuffer: Buffer; ocrMime: string }> {
   const fallbackMime = input.mime?.trim() || "image/jpeg";
   try {
-    const source = sharp(input.buffer, { failOn: "none" }).rotate();
-    const uploadBuffer = await source
+    const source = sharp(input.buffer, { failOn: "none" });
+    const meta = await source.metadata();
+    const edge = Math.max(meta.width ?? 0, meta.height ?? 0);
+    const mime = fallbackMime.toLowerCase();
+    const oriented = (meta.orientation ?? 1) > 1;
+    const keepOriginal =
+      !oriented &&
+      edge > 0 &&
+      edge <= MAX_DISPLAY_EDGE &&
+      input.buffer.length <= KEEP_ORIGINAL_MAX_BYTES &&
+      (mime === "image/png" || mime === "image/jpeg" || mime === "image/webp");
+
+    const uploadBuffer = keepOriginal
+      ? input.buffer
+      : await source
+          .clone()
+          .rotate()
+          .resize({
+            width: MAX_DISPLAY_EDGE,
+            height: MAX_DISPLAY_EDGE,
+            fit: "inside",
+            withoutEnlargement: true,
+          })
+          .jpeg({ quality: DISPLAY_JPEG_QUALITY, mozjpeg: true })
+          .toBuffer();
+    const uploadMime = keepOriginal ? mime : "image/jpeg";
+    const ocrBuffer = await source
       .clone()
-      .resize({
-        width: MAX_UPLOAD_WIDTH,
-        height: MAX_UPLOAD_WIDTH,
-        fit: "inside",
-        withoutEnlargement: true,
-      })
-      .jpeg({ quality: JPEG_QUALITY, mozjpeg: true })
-      .toBuffer();
-    const ocrBuffer = await sharp(uploadBuffer)
+      .rotate()
       .resize({
         width: MAX_OCR_EDGE,
         height: MAX_OCR_EDGE,
@@ -82,7 +106,7 @@ export async function compressImageForS3(input: {
       .toBuffer();
     return {
       uploadBuffer,
-      uploadMime: "image/jpeg",
+      uploadMime,
       ocrBuffer,
       ocrMime: "image/jpeg",
     };
@@ -97,7 +121,7 @@ export async function compressImageForS3(input: {
 }
 
 /**
- * Upload an image to S3 only (compressed). No local disk / public/uploads.
+ * Upload an image to S3. No local disk / public/uploads.
  * `folder` e.g. `matches` or `payments`.
  */
 export async function uploadImageToS3(input: {
@@ -114,7 +138,7 @@ export async function uploadImageToS3(input: {
   const hint = safeKeyHint(input.keyHint);
   const folder =
     (input.folder ?? "matches").replace(/[^a-zA-Z0-9_-]+/g, "") || "matches";
-  const fileName = `${hint}-${randomUUID()}.jpg`;
+  const fileName = `${hint}-${randomUUID()}.${displayExtension(compressed.uploadMime)}`;
   const key = `${folder}/${fileName}`;
 
   await s3Client().send(

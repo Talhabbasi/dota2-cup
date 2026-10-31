@@ -1,12 +1,12 @@
-/** Client-side resize/compress before FormData upload — cuts upload + OCR time. */
+/** Shrink only oversized shots. A normal scoreboard PNG is stored as-is, same as Season 1. */
 
-const MAX_EDGE = 1280;
-const JPEG_QUALITY = 0.64;
+const MAX_EDGE = 1920;
+const JPEG_QUALITY = 0.86;
+const SKIP_UNDER_BYTES = 3_000_000;
 
 export async function compressImageFileForUpload(file: File): Promise<File> {
   if (!file.type.startsWith("image/")) return file;
-  // Already small enough — skip work.
-  if (file.size < 400_000 && !/\.png$/i.test(file.name)) return file;
+  if (file.size <= SKIP_UNDER_BYTES) return file;
 
   try {
     const bitmap = await createImageBitmap(file);
