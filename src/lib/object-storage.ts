@@ -48,8 +48,8 @@ function safeKeyHint(hint: string): string {
 const MAX_DISPLAY_EDGE = 1920;
 const DISPLAY_JPEG_QUALITY = 86;
 const KEEP_ORIGINAL_MAX_BYTES = 3_500_000;
-const MAX_OCR_EDGE = 1024;
-const OCR_JPEG_QUALITY = 55;
+const MAX_OCR_EDGE = 768;
+const OCR_JPEG_QUALITY = 50;
 
 function displayExtension(mime: string): string {
   if (mime === "image/png") return "png";

@@ -258,14 +258,11 @@ function geminiImageMime(mime: string) {
   return "image/jpeg";
 }
 
-/** Lite first — it returns inside the function budget. Full Flash is the fallback. */
-const GEMINI_MODELS = ["gemini-3.5-flash-lite", "gemini-3.8-flash"] as const;
+/** One fast model. A second, slower model was using the whole function budget and timing out. */
+const GEMINI_MODELS = ["gemini-3.5-flash-lite"] as const;
 
-/**
- * Per-model wait. Both fit under the 120s server limit with room for S3 and the DB.
- * A 500KB PNG is already small; the timeout is the model, not the file.
- */
-const GEMINI_TIMEOUT_MS = [28_000, 36_000] as const;
+/** One attempt, then one automatic retry, both inside the 120s server limit. */
+const GEMINI_TIMEOUT_MS = [40_000] as const;
 
 function isBusyGemini(status: number, message: string) {
   return (
@@ -344,7 +341,7 @@ async function parseWithGemini(
   knownNames: string[] = [],
 ): Promise<ParsedScoreboard> {
   const imageMime = geminiImageMime(mime);
-  const prompt = buildParsePrompt(knownNames.slice(0, 40));
+  const prompt = buildParsePrompt(knownNames.slice(0, 24));
   let lastError = "Gemini did not return a scoreboard.";
   for (let i = 0; i < GEMINI_MODELS.length; i++) {
     const model = GEMINI_MODELS[i]!;
@@ -501,11 +498,17 @@ export async function parseScoreboardImage(
   const openai = process.env.OPENAI_API_KEY?.trim();
   let lastError = "";
   if (gemini) {
-    try {
-      return await parseWithGemini(buffer, mime, gemini, knownNames);
-    } catch (error) {
-      lastError = error instanceof Error ? error.message : String(error);
-      console.warn("Gemini scoreboard parse failed, trying fallback:", lastError);
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        return await parseWithGemini(buffer, mime, gemini, knownNames);
+      } catch (error) {
+        lastError = error instanceof Error ? error.message : String(error);
+        console.warn("Gemini scoreboard parse failed:", lastError);
+        if (attempt === 0 && /timed out|aborted due to timeout/i.test(lastError)) {
+          continue;
+        }
+        break;
+      }
     }
   }
   if (openai) {

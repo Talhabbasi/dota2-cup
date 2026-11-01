@@ -803,7 +803,7 @@ try {
   }
 }
 
-const MAX_SCOREBOARD_BYTES = 12 * 1024 * 1024;
+const MAX_SCOREBOARD_BYTES = 1_000_000;
 
 export type ScoreboardUploadResult =
   | { ok: true; matchId: string }
@@ -853,7 +853,7 @@ export async function actionIngestScoreboardScreenshot(
       return { ok: false, error: "Choose a SCOREBOARD screenshot to upload." };
     }
     if (file.size > MAX_SCOREBOARD_BYTES) {
-      return { ok: false, error: "Image is too large (max 12 MB)." };
+      return { ok: false, error: "Image is too large (max 1 MB)." };
     }
     const mime = file.type || "image/jpeg";
     if (!mime.startsWith("image/")) {
@@ -957,7 +957,7 @@ export async function actionAttachMatchScreenshot(
       return { ok: false, error: "Choose a screenshot to upload." };
     }
     if (file.size > MAX_SCOREBOARD_BYTES) {
-      return { ok: false, error: "Image is too large (max 12 MB)." };
+      return { ok: false, error: "Image is too large (max 1 MB)." };
     }
     const mime = file.type || "image/jpeg";
     if (!mime.startsWith("image/")) {

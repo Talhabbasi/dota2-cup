@@ -36,8 +36,8 @@ const nextConfig: NextConfig = {
       static: 180,
     },
     serverActions: {
-      // Admin scoreboard uploads (OCR ingest).
-      bodySizeLimit: "12mb",
+      // Screenshots are compressed to 1 MB in the browser. Leave room for the form.
+      bodySizeLimit: "2mb",
       // Host only (no protocol). Extra Vercel aliases so admin Server Actions
       // work from preview / team URLs, not only the production custom host.
       allowedOrigins: [

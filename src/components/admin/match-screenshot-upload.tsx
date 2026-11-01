@@ -4,15 +4,12 @@ import { useState, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { actionAttachMatchScreenshot } from "@/app/admin/actions";
 import { useAdminToast } from "@/components/admin/admin-toast";
+import { ImageDropField } from "@/components/admin/image-drop-field";
 import {
   AdminUploadProgress,
   type UploadProgressPhase,
 } from "@/components/admin/upload-progress";
-import {
-  adminBtnClass,
-  adminBtnPrimaryClass,
-  adminControlClass,
-} from "@/components/admin/ui";
+import { adminBtnClass, adminBtnPrimaryClass } from "@/components/admin/ui";
 import { compressImageFileForUpload } from "@/lib/compress-image-client";
 import { cn } from "@/lib/utils";
 
@@ -21,21 +18,15 @@ export function AdminMatchScreenshotUpload({ matchId }: { matchId: string }) {
   const [pending, startTransition] = useTransition();
   const [phase, setPhase] = useState<UploadProgressPhase>("idle");
   const [runId, setRunId] = useState(0);
+  const [fileName, setFileName] = useState<string | null>(null);
+  const [picked, setPicked] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const toast = useAdminToast();
   const router = useRouter();
 
-  function onSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const raw = new FormData(form).get("screenshot");
-    if (!(raw instanceof File) || raw.size === 0) {
-      const message = "Choose a screenshot to upload.";
-      setError(message);
-      toast.error(message);
-      return;
-    }
+  function upload(raw: File) {
     setError(null);
+    setFileName(raw.name);
     setRunId((n) => n + 1);
     setPhase("compress");
     startTransition(async () => {
@@ -60,7 +51,8 @@ export function AdminMatchScreenshotUpload({ matchId }: { matchId: string }) {
             ? `K/D/A saved · ${result.linked}/${result.seats} players linked`
             : `K/D/A saved · ${result.seats} players linked`,
         );
-        form.reset();
+        setPicked(null);
+        setFileName(null);
         setError(null);
         router.refresh();
       } catch (err) {
@@ -75,33 +67,43 @@ export function AdminMatchScreenshotUpload({ matchId }: { matchId: string }) {
     });
   }
 
+  function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!picked) {
+      const message = "Choose a screenshot to upload.";
+      setError(message);
+      toast.error(message);
+      return;
+    }
+    upload(picked);
+  }
+
   const busy = pending || phase === "done";
 
   return (
     <div className="grid gap-3">
-      <form
-        onSubmit={onSubmit}
-        className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end"
-      >
-        <label className="grid min-w-0 flex-1 gap-1.5 text-sm">
-          <span className="text-muted-foreground">Image file</span>
-          <input
-            type="file"
-            name="screenshot"
-            accept="image/png,image/jpeg,image/webp,image/gif"
-            required
-            disabled={pending}
-            className={adminControlClass}
-            onChange={() => setError(null)}
-          />
-        </label>
-        <button
-          type="submit"
+      <form onSubmit={onSubmit} className="grid gap-3">
+        <ImageDropField
           disabled={pending}
-          className={cn(adminBtnClass, adminBtnPrimaryClass)}
-        >
-          {pending ? "Working…" : "Read scoreboard"}
-        </button>
+          fileName={fileName}
+          onFile={(file) => {
+            setPicked(file);
+            upload(file);
+          }}
+          onReject={(message) => {
+            setError(message);
+            toast.error(message);
+          }}
+        />
+        <div>
+          <button
+            type="submit"
+            disabled={pending || !picked}
+            className={cn(adminBtnClass, adminBtnPrimaryClass)}
+          >
+            {pending ? "Working…" : "Read scoreboard"}
+          </button>
+        </div>
       </form>
       <AdminUploadProgress
         key={runId}
