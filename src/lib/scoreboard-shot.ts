@@ -42,7 +42,7 @@ const MATCH_INCLUDE = {
   winnerTeam: true,
 } as const;
 
-type RosterPlayer = {
+export type RosterPlayer = {
   id: string;
   steamName: string;
   steam32: number;
@@ -706,6 +706,41 @@ export function resolvePlayer(
   return best.player;
 }
 
+/**
+ * Own-roster match stays regular. A unique exact name on another franchise is a
+ * stand-in for this side only. Two players with the same name are not merged.
+ */
+export function resolveScoreboardSeat(
+  name: string,
+  roster: RosterPlayer[],
+  sideTeamId: string | null,
+  usedIds: Set<string>,
+  standInAlias: boolean,
+): { player: RosterPlayer | null; asStandIn: boolean } {
+  const onSide = sideTeamId
+    ? resolvePlayer(name, roster, sideTeamId, usedIds)
+    : null;
+  if (onSide) return { player: onSide, asStandIn: false };
+
+  const wants = [
+    ...new Set([norm(name), norm(boardNameCore(name))].filter(Boolean)),
+  ];
+  const others = roster.filter((player) => {
+    if (usedIds.has(player.id)) return false;
+    if (sideTeamId && player.teamId === sideTeamId) return false;
+    if (!player.teamId) return false;
+    return wants.some((want) => player.labels.includes(want));
+  });
+  const uniqueIds = [...new Set(others.map((player) => player.id))];
+  if (uniqueIds.length === 1) {
+    const player = others.find((row) => row.id === uniqueIds[0]) ?? null;
+    return { player, asStandIn: Boolean(player) };
+  }
+  if (uniqueIds.length > 1) return { player: null, asStandIn: false };
+  if (standInAlias) return { player: null, asStandIn: true };
+  return { player: null, asStandIn: false };
+}
+
 function resolveTeam(
   name: string | undefined,
   teams: { id: string; name: string }[],
@@ -725,12 +760,10 @@ function countRosterLinks(
   roster: RosterPlayer[],
   radiantId: string,
   direId: string,
-  standInAliases: Set<string>,
 ) {
   const used = new Set<string>();
   let hits = 0;
   for (const row of players) {
-    if (standInAliases.has(norm(row.name))) continue;
     const side = flip
       ? row.side === "radiant"
         ? "dire"
@@ -951,7 +984,6 @@ export async function applyParsedScoreboard(
       roster,
       fixtureRadiant.id,
       fixtureDire.id,
-      standInAliases,
     );
     const topIsScheduledDire = countRosterLinks(
       parsed.players,
@@ -959,7 +991,6 @@ export async function applyParsedScoreboard(
       roster,
       fixtureDire.id,
       fixtureRadiant.id,
-      standInAliases,
     );
     if (topIsScheduledDire > topIsScheduledRadiant) {
       orientedRadiant = fixtureDire;
@@ -980,15 +1011,17 @@ export async function applyParsedScoreboard(
       : row.side;
     const sideTeamId =
       side === "dire" ? orientedDire?.id ?? null : orientedRadiant?.id ?? null;
-    const standIn = standInAliases.has(norm(row.name));
-    const mapped = standIn
-      ? null
-      : resolvePlayer(
-          row.nameCore?.trim() || row.name,
-          roster,
-          sideTeamId,
-          usedIds,
-        );
+    const aliasHit =
+      standInAliases.has(norm(row.name)) ||
+      standInAliases.has(norm(row.nameCore ?? ""));
+    const resolved = resolveScoreboardSeat(
+      row.nameCore?.trim() || row.name,
+      roster,
+      sideTeamId,
+      usedIds,
+      aliasHit,
+    );
+    const mapped = resolved.player;
     if (mapped) usedIds.add(mapped.id);
     const items = row.items
       .map((label) => resolveItem(label, itemList))
@@ -997,7 +1030,7 @@ export async function applyParsedScoreboard(
       steam32: mapped?.steam32 ?? 0,
       ...(mapped ? { player: { connect: { id: mapped.id } } } : {}),
       unknown: !mapped,
-      asStandIn: standIn,
+      asStandIn: resolved.asStandIn,
       boardName: boardNameWithoutGuild(row.name) || row.name,
       side,
       hero: hero?.name ?? row.hero,
@@ -1158,7 +1191,6 @@ export async function alignMatchRosterSides(matchId: string) {
     roster,
     match.radiantTeam.id,
     match.direTeam.id,
-    standInAliases,
   );
   const flippedHits = countRosterLinks(
     seats,
@@ -1166,7 +1198,6 @@ export async function alignMatchRosterSides(matchId: string) {
     roster,
     match.radiantTeam.id,
     match.direTeam.id,
-    standInAliases,
   );
   const flipped = flippedHits > stay;
 
@@ -1195,20 +1226,33 @@ export async function alignMatchRosterSides(matchId: string) {
   const used = new Set<string>();
   let linked = 0;
   for (const seat of fresh) {
-    if (seat.asStandIn || standInAliases.has(norm(seat.boardName))) continue;
     const teamId =
       seat.side === "dire" ? match.direTeam.id : match.radiantTeam.id;
-    const mapped = resolvePlayer(seat.boardName, roster, teamId, used);
+    const resolved = resolveScoreboardSeat(
+      seat.boardName,
+      roster,
+      teamId,
+      used,
+      standInAliases.has(norm(seat.boardName)),
+    );
+    const mapped = resolved.player;
     if (!mapped) continue;
     used.add(mapped.id);
     linked += 1;
-    if (seat.playerId === mapped.id && !seat.unknown) continue;
+    if (
+      seat.playerId === mapped.id &&
+      !seat.unknown &&
+      seat.asStandIn === resolved.asStandIn
+    ) {
+      continue;
+    }
     await prisma.matchPlayer.update({
       where: { id: seat.id },
       data: {
         player: { connect: { id: mapped.id } },
         steam32: mapped.steam32 || seat.steam32,
         unknown: false,
+        asStandIn: resolved.asStandIn,
       },
     });
   }

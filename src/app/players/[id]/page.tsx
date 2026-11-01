@@ -214,8 +214,6 @@ export default async function PlayerPage({
               >
                 <TeamBadge name={player.team.name} />
               </Link>
-            ) : games.length > 0 ? (
-              <span className="text-sm text-muted-foreground">Stand-in</span>
             ) : (
               <span className="text-sm text-muted-foreground">Unsigned</span>
             )}
@@ -236,12 +234,12 @@ export default async function PlayerPage({
         </div>
         <ul className="m-0 grid list-none grid-cols-2 gap-3 p-5 sm:grid-cols-4">
           <li>
-            <StatTile label="Games" value={games.length || "0"} />
+            <StatTile label="Games" value={focus.games || "0"} />
           </li>
           <li>
             <StatTile
               label="Record"
-              value={games.length ? `${wins}W–${losses}L` : "—"}
+              value={focus.games ? `${wins}W–${losses}L` : "—"}
             />
           </li>
           <li>
@@ -289,7 +287,9 @@ export default async function PlayerPage({
                             ? `${row.wins}W–${row.losses}L · KDA ${
                                 row.kda?.toFixed(2) ?? "—"
                               }`
-                            : "No matches"}
+                            : row.standInGames
+                              ? `${row.standInGames} stand-in game${row.standInGames === 1 ? "" : "s"}`
+                              : "No matches"}
                           {row.soldPrice != null
                             ? ` · Sold ${formatPoints(row.soldPrice)}`
                             : row.isCaptain
@@ -374,6 +374,7 @@ export default async function PlayerPage({
             const standIn = isMatchStandIn({
               side: game.side,
               unknown: game.unknown,
+              asStandIn: game.asStandIn,
               playerId: player.id,
               playerTeamId: game.seasonTeamId ?? null,
               radiantTeamId: game.match.radiantTeam?.id ?? null,

@@ -3,6 +3,7 @@ import { currentSeasonId } from "./seasons";
 import { ROLE_LABELS, type PlayerRole } from "./constants";
 import { parseRolesJson } from "./roles";
 import { formatPoints } from "./constants";
+import { insightGroupForSeat, representedTeamId } from "./stand-in";
 
 export type InsightLeader = {
   name: string;
@@ -117,14 +118,13 @@ export async function getAdminInsights(
         side: true,
         match: {
           select: {
-            radiantTeam: { select: { name: true } },
-            direTeam: { select: { name: true } },
+            radiantTeam: { select: { id: true, name: true } },
+            direTeam: { select: { id: true, name: true } },
           },
         },
         player: {
           select: {
             steamName: true,
-            team: { select: { name: true } },
           },
         },
       },
@@ -132,8 +132,10 @@ export async function getAdminInsights(
     prisma.seasonPlayer.findMany({
       where: { seasonId },
       select: {
+        playerId: true,
         teamId: true,
         rolesJson: true,
+        team: { select: { name: true } },
         player: {
           select: { steamName: true, rolesJson: true, discordId: true },
         },
@@ -159,6 +161,13 @@ export async function getAdminInsights(
       },
     }),
   ]);
+
+  const originalByPlayer = new Map(
+    players.map((row) => [
+      row.playerId,
+      { teamId: row.teamId, teamName: row.team?.name ?? null },
+    ]),
+  );
 
   const realPlayers = players
     .filter(
@@ -215,37 +224,45 @@ export async function getAdminInsights(
       bump(teamDeaths, teamKey, teamName, teamName, "roster", seat.deaths);
     }
 
-    if (seat.asStandIn) {
-      standInSeats += 1;
-      const name =
-        seat.player?.steamName?.trim() ||
-        seat.boardName?.trim() ||
-        "Stand-in";
-      const identity = seat.playerId
-        ? `pid:${seat.playerId}`
-        : `name:${name.toLowerCase()}`;
-      const key = `standin:${identity}:${(teamName ?? "none").toLowerCase()}`;
-      // Stand-in totals never merge into roster keys.
-      bump(standInKills, key, name, teamName, "standin", seat.kills);
-      bump(standInAssists, key, name, teamName, "standin", seat.assists);
-      bump(standInGames, key, name, teamName, "standin", 1);
-      bump(kills, key, name, teamName, "standin", seat.kills);
-      bump(assists, key, name, teamName, "standin", seat.assists);
-      bump(deaths, key, name, teamName, "standin", seat.deaths);
-      bump(games, key, name, teamName, "standin", 1);
+    const original = seat.playerId
+      ? originalByPlayer.get(seat.playerId)
+      : undefined;
+    const group = insightGroupForSeat({
+      playerId: seat.playerId,
+      playerName: seat.player?.steamName,
+      boardName: seat.boardName,
+      unknown: seat.unknown,
+      asStandIn: seat.asStandIn,
+      originalTeamId: original?.teamId ?? null,
+      originalTeamName: original?.teamName ?? null,
+      representedTeamId: representedTeamId(
+        seat.side,
+        seat.match.radiantTeam?.id,
+        seat.match.direTeam?.id,
+      ),
+      representedTeamName: teamName,
+    });
+    if (!group) {
+      if (seat.unknown || !seat.playerId) unmatchedSeats += 1;
       continue;
     }
 
-    if (seat.unknown || !seat.playerId) {
-      unmatchedSeats += 1;
+    if (group.kind === "standin") {
+      standInSeats += 1;
+      bump(standInKills, group.key, group.name, group.teamName, "standin", seat.kills);
+      bump(standInAssists, group.key, group.name, group.teamName, "standin", seat.assists);
+      bump(standInGames, group.key, group.name, group.teamName, "standin", 1);
+      bump(kills, group.key, group.name, group.teamName, "standin", seat.kills);
+      bump(assists, group.key, group.name, group.teamName, "standin", seat.assists);
+      bump(deaths, group.key, group.name, group.teamName, "standin", seat.deaths);
+      bump(games, group.key, group.name, group.teamName, "standin", 1);
       continue;
     }
 
     linkedSeats += 1;
-    const name = seat.player?.steamName || seat.boardName || "Unknown";
-    // Key by player + match team so Danu roster ≠ Stoic (or any other) games.
-    const key = `roster:${seat.playerId}:${(teamName ?? seat.player?.team?.name ?? "none").toLowerCase()}`;
-    const displayTeam = teamName ?? seat.player?.team?.name ?? null;
+    const name = group.name;
+    const displayTeam = group.teamName;
+    const key = group.key;
 
     bump(kills, key, name, displayTeam, "roster", seat.kills);
     bump(assists, key, name, displayTeam, "roster", seat.assists);

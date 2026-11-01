@@ -4,19 +4,40 @@ import { currentSeasonId, getLiveSeason, syncSeasonPlayer } from "./seasons";
 import { rebalanceTeamRoster } from "./players-admin";
 import { STARTING_PURSE } from "./constants";
 import { addPlayerAlias } from "./player-aliases";
-import {
-  rememberStandInBoardName,
-  forgetStandInBoardName,
-  listMatchSeatsByBoardName,
-} from "./scoreboard-names";
+import { forgetStandInBoardName } from "./scoreboard-names";
+import { representedTeamId } from "./stand-in";
 
-/** Link a scoreboard seat to a registered player (OCR fix). */
+async function seasonTeamForSeat(
+  seasonId: string | null,
+  playerId: string,
+  side: string,
+  radiantTeamId: string | null,
+  direTeamId: string | null,
+) {
+  const membership = seasonId
+    ? await prisma.seasonPlayer.findUnique({
+        where: { seasonId_playerId: { seasonId, playerId } },
+        select: { teamId: true },
+      })
+    : null;
+  return {
+    originalTeamId: membership?.teamId ?? null,
+    representedTeamId: representedTeamId(side, radiantTeamId, direTeamId),
+  };
+}
+
+/** Link a scoreboard seat to a registered player. Other matches stay as they are. */
 export async function adminLinkMatchPlayer(input: {
   matchPlayerId: string;
   playerId: string;
 }) {
   const seat = await prisma.matchPlayer.findUnique({
     where: { id: input.matchPlayerId },
+    include: {
+      match: {
+        select: { seasonId: true, radiantTeamId: true, direTeamId: true },
+      },
+    },
   });
   if (!seat) throw new Error("Match seat not found.");
 
@@ -30,103 +51,122 @@ export async function adminLinkMatchPlayer(input: {
     await addPlayerAlias({ playerId: player.id, alias: boardName });
   }
 
+  const teams = await seasonTeamForSeat(
+    seat.match.seasonId,
+    player.id,
+    seat.side,
+    seat.match.radiantTeamId,
+    seat.match.direTeamId,
+  );
+  const asStandIn = Boolean(
+    teams.originalTeamId &&
+      teams.representedTeamId &&
+      teams.originalTeamId !== teams.representedTeamId,
+  );
+
   await prisma.matchPlayer.update({
     where: { id: seat.id },
     data: {
       playerId: player.id,
       steam32: player.steam32 || seat.steam32,
       unknown: false,
-      asStandIn: false,
+      asStandIn,
     },
   });
 
-  // Same board name on other matches → same player link.
-  let alsoFixed = 0;
-  if (boardName) {
-    const others = await listMatchSeatsByBoardName(boardName, seat.id);
-    const toFix = others.filter(
-      (row) =>
-        row.asStandIn ||
-        row.unknown ||
-        !row.playerId ||
-        row.playerId === player.id,
-    );
-    if (toFix.length > 0) {
-      const result = await prisma.matchPlayer.updateMany({
-        where: { id: { in: toFix.map((row) => row.id) } },
-        data: {
-          playerId: player.id,
-          ...(player.steam32 != null ? { steam32: player.steam32 } : {}),
-          unknown: false,
-          asStandIn: false,
-        },
-      });
-      alsoFixed = result.count;
-    }
-  }
-
   return {
     seatId: seat.id,
-    alsoFixed,
+    alsoFixed: 0,
     boardName,
     playerName: player.steamName || player.discordName,
   };
 }
 
 /**
- * Mark a seat as a stand-in: keep board name, clear player link.
- * Remembers the board name and applies stand-in to matching seats elsewhere.
+ * Mark this seat only. A registered player on their own team cannot be a stand-in.
+ * Their other matches are left untouched.
  */
 export async function adminMarkMatchStandIn(matchPlayerId: string) {
   const seat = await prisma.matchPlayer.findUnique({
     where: { id: matchPlayerId },
+    include: {
+      match: {
+        select: { seasonId: true, radiantTeamId: true, direTeamId: true },
+      },
+    },
   });
   if (!seat) throw new Error("Match seat not found.");
 
-  const boardName = seat.boardName.trim();
-  if (boardName) {
-    await rememberStandInBoardName(boardName);
+  const teams = seat.playerId
+    ? await seasonTeamForSeat(
+        seat.match.seasonId,
+        seat.playerId,
+        seat.side,
+        seat.match.radiantTeamId,
+        seat.match.direTeamId,
+      )
+    : { originalTeamId: null, representedTeamId: null };
+
+  if (
+    seat.playerId &&
+    teams.originalTeamId &&
+    teams.representedTeamId &&
+    teams.originalTeamId === teams.representedTeamId
+  ) {
+    throw new Error(
+      "This player is on their own team in this match, so it is not a stand-in.",
+    );
   }
 
+  const keepLink = Boolean(seat.playerId);
   await prisma.matchPlayer.update({
     where: { id: seat.id },
     data: {
-      playerId: null,
-      unknown: true,
       asStandIn: true,
+      unknown: !keepLink,
+      ...(keepLink ? {} : { playerId: null }),
     },
   });
 
-  let alsoFixed = 0;
-  if (boardName) {
-    const others = await listMatchSeatsByBoardName(boardName, seat.id);
-    if (others.length > 0) {
-      const result = await prisma.matchPlayer.updateMany({
-        where: { id: { in: others.map((row) => row.id) } },
-        data: {
-          playerId: null,
-          unknown: true,
-          asStandIn: true,
-        },
-      });
-      alsoFixed = result.count;
-    }
-  }
-
-  return { seatId: seat.id, alsoFixed, boardName };
+  return { seatId: seat.id, alsoFixed: 0, boardName: seat.boardName.trim() };
 }
 
 /**
- * Clear stand-in on a seat (stand-out): forget the remembered board name and
- * clear asStandIn on matching seats so admin can link a real player again.
+ * Clear stand-in on this seat only. A player who represented another team stays
+ * a stand-in. Forgetting a remembered board name does not edit other matches.
  */
 export async function adminClearMatchStandIn(matchPlayerId: string) {
   const seat = await prisma.matchPlayer.findUnique({
     where: { id: matchPlayerId },
+    include: {
+      match: {
+        select: { seasonId: true, radiantTeamId: true, direTeamId: true },
+      },
+    },
   });
   if (!seat) throw new Error("Match seat not found.");
   if (!seat.asStandIn) {
     throw new Error("That seat is not marked as a stand-in.");
+  }
+
+  const teams = seat.playerId
+    ? await seasonTeamForSeat(
+        seat.match.seasonId,
+        seat.playerId,
+        seat.side,
+        seat.match.radiantTeamId,
+        seat.match.direTeamId,
+      )
+    : { originalTeamId: null, representedTeamId: null };
+  if (
+    seat.playerId &&
+    teams.originalTeamId &&
+    teams.representedTeamId &&
+    teams.originalTeamId !== teams.representedTeamId
+  ) {
+    throw new Error(
+      "This player represented another team in this match, so the stand-in stays.",
+    );
   }
 
   const boardName = seat.boardName.trim();
@@ -138,30 +178,11 @@ export async function adminClearMatchStandIn(matchPlayerId: string) {
     where: { id: seat.id },
     data: {
       asStandIn: false,
-      // Stay unmatched until admin links a registered player.
-      playerId: null,
-      unknown: true,
+      unknown: !seat.playerId,
     },
   });
 
-  let alsoFixed = 0;
-  if (boardName) {
-    const others = await listMatchSeatsByBoardName(boardName, seat.id);
-    const standIns = others.filter((row) => row.asStandIn);
-    if (standIns.length > 0) {
-      const result = await prisma.matchPlayer.updateMany({
-        where: { id: { in: standIns.map((row) => row.id) } },
-        data: {
-          asStandIn: false,
-          playerId: null,
-          unknown: true,
-        },
-      });
-      alsoFixed = result.count;
-    }
-  }
-
-  return { seatId: seat.id, alsoFixed, boardName };
+  return { seatId: seat.id, alsoFixed: 0, boardName };
 }
 
 /** Set which franchises played and who won (fixes table “played” count). */

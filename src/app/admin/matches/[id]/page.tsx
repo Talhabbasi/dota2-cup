@@ -85,14 +85,9 @@ export default async function AdminMatchDetailPage({
       <AdminCard className="mb-6">
         <AdminSection title="Scoreboard screenshot">
           {shotUrl ? (
-            <a
-              href={shotUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="mb-4 block overflow-hidden rounded-lg border border-white/10"
-            >
+            <div className="mb-4 overflow-hidden rounded-lg border border-white/10">
               <MatchScreenshotImage src={shotUrl} />
-            </a>
+            </div>
           ) : match.screenshotPath ? (
             <p className="mb-4 text-sm text-amber-200/90">
               Original file for{" "}
@@ -261,8 +256,8 @@ export default async function AdminMatchDetailPage({
                     <div className="flex flex-wrap gap-2">
                       <AdminConfirmForm
                         action={actionLinkMatchPlayer}
-                        message={`Link this scoreboard seat to the selected player? Same board name on other matches will be fixed too.`}
-                        successMessage="Linked across matches"
+                        message="Link this scoreboard seat to the selected player? Other matches stay as they are."
+                        successMessage="Seat linked"
                         className="flex min-w-0 flex-1 flex-wrap items-center gap-2"
                       >
                         <input
@@ -294,7 +289,7 @@ export default async function AdminMatchDetailPage({
                       {seat.asStandIn ? (
                         <AdminConfirmForm
                           action={actionClearStandIn}
-                          message={`Remove stand-in from "${seat.boardName || "this seat"}"? Same board name on other matches is cleared too — you can link a real player after.`}
+                          message={`Remove stand-in from "${seat.boardName || "this seat"}"? Only this match changes.`}
                           successMessage="Stand-in removed"
                         >
                           <input
@@ -313,8 +308,8 @@ export default async function AdminMatchDetailPage({
                       ) : (
                         <AdminConfirmForm
                           action={actionMarkStandIn}
-                          message={`Mark "${seat.boardName || seat.player?.steamName || "this seat"}" as a stand-in? Same board name on other matches will be marked too.`}
-                          successMessage="Stand-in applied across matches"
+                          message={`Mark "${seat.boardName || seat.player?.steamName || "this seat"}" as a stand-in for this match only?`}
+                          successMessage="Stand-in saved for this match"
                         >
                           <input
                             type="hidden"

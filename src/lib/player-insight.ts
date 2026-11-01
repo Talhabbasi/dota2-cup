@@ -3,6 +3,7 @@ import { publicPlayerWhere } from "./dummy";
 import { formatPoints } from "./constants";
 import { getPredictionLeaderboard } from "./predictions";
 import { getLiveSeason } from "./seasons";
+import { insightGroupForSeat, representedTeamId } from "./stand-in";
 
 export type PlayerInsightAward = {
   playerId: string | null;
@@ -141,13 +142,14 @@ export async function getPublicPlayerInsight(options?: {
         assists: true,
         deaths: true,
         asStandIn: true,
+        unknown: true,
         boardName: true,
         side: true,
         playerId: true,
         match: {
           select: {
-            radiantTeam: { select: { name: true } },
-            direTeam: { select: { name: true } },
+            radiantTeam: { select: { id: true, name: true } },
+            direTeam: { select: { id: true, name: true } },
           },
         },
         player: {
@@ -185,13 +187,20 @@ export async function getPublicPlayerInsight(options?: {
     }),
     prisma.seasonPlayer.findMany({
       where: { seasonId, teamId: { not: null } },
-      select: { playerId: true, team: { select: { name: true } } },
+      select: {
+        playerId: true,
+        teamId: true,
+        team: { select: { name: true } },
+      },
     }),
   ]);
 
   /** Team per player for this season — Player.team mirrors only the live season. */
   const seasonTeamName = new Map(
     seasonRoster.map((row) => [row.playerId, row.team?.name ?? null]),
+  );
+  const seasonTeamId = new Map(
+    seasonRoster.map((row) => [row.playerId, row.teamId] as const),
   );
 
   /** One map, but roster vs stand-in (+ team) stay separate keys so they never merge. */
@@ -218,64 +227,53 @@ export async function getPublicPlayerInsight(options?: {
       teamKills.set(teamKey, team);
     }
 
-    if (seat.asStandIn) {
-      const name =
-        seat.player?.steamName?.trim() ||
-        seat.boardName?.trim() ||
-        "Stand-in";
-      const identity = seat.playerId
-        ? `pid:${seat.playerId}`
-        : `name:${name.toLowerCase()}`;
-      const key = `standin:${identity}:${(teamName ?? "none").toLowerCase()}`;
-      const cur = byKey.get(key) ?? {
-        key,
-        playerId: seat.playerId,
-        name,
-        teamName,
-        kills: 0,
-        assists: 0,
-        deaths: 0,
-        games: 0,
-        kind: "standin" as const,
-      };
-      cur.kills += seat.kills;
-      cur.assists += seat.assists;
-      cur.deaths += seat.deaths;
-      cur.games += 1;
-      cur.name = name;
-      cur.teamName = teamName;
-      byKey.set(key, cur);
-      continue;
-    }
-
-    if (!seat.playerId || !seat.player) continue;
     if (
-      seat.player.discordId.startsWith("test-dummy-") ||
-      seat.player.discordId.startsWith("test-dummy-team-")
+      seat.player?.discordId.startsWith("test-dummy-") ||
+      seat.player?.discordId.startsWith("test-dummy-team-")
     ) {
       continue;
     }
 
-    const rosterTeam = teamName ?? seasonTeamName.get(seat.playerId) ?? null;
-    const key = `roster:${seat.playerId}:${(rosterTeam ?? "none").toLowerCase()}`;
-    const cur = byKey.get(key) ?? {
-      key,
+    const sideTeamId = representedTeamId(
+      seat.side,
+      seat.match.radiantTeam?.id,
+      seat.match.direTeam?.id,
+    );
+    const group = insightGroupForSeat({
       playerId: seat.playerId,
-      name: seat.player.steamName,
-      teamName: rosterTeam,
+      playerName: seat.player?.steamName,
+      boardName: seat.boardName,
+      unknown: seat.unknown,
+      asStandIn: seat.asStandIn,
+      originalTeamId: seat.playerId
+        ? (seasonTeamId.get(seat.playerId) ?? null)
+        : null,
+      originalTeamName: seat.playerId
+        ? (seasonTeamName.get(seat.playerId) ?? null)
+        : null,
+      representedTeamId: sideTeamId,
+      representedTeamName: teamName,
+    });
+    if (!group) continue;
+
+    const cur = byKey.get(group.key) ?? {
+      key: group.key,
+      playerId: seat.playerId,
+      name: group.name,
+      teamName: group.teamName,
       kills: 0,
       assists: 0,
       deaths: 0,
       games: 0,
-      kind: "roster" as const,
+      kind: group.kind,
     };
     cur.kills += seat.kills;
     cur.assists += seat.assists;
     cur.deaths += seat.deaths;
     cur.games += 1;
-    cur.name = seat.player.steamName;
-    cur.teamName = rosterTeam;
-    byKey.set(key, cur);
+    cur.name = group.name;
+    cur.teamName = group.teamName;
+    byKey.set(group.key, cur);
   }
 
   const entries = [...byKey.values()];

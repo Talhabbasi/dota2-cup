@@ -405,9 +405,7 @@ export default async function MatchPage({
 
       {shotUrl ? (
         <EsportsCard interactive={false} className="mb-6 overflow-hidden p-0">
-          <a href={shotUrl} target="_blank" rel="noreferrer" className="block">
-            <MatchScreenshotImage src={shotUrl} />
-          </a>
+          <MatchScreenshotImage src={shotUrl} />
         </EsportsCard>
       ) : null}
 

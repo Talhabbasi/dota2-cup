@@ -137,7 +137,7 @@ export async function getHeroMatchAppearances(heroId: number, heroName: string) 
   return players.map((row) => ({
     ...row,
     seasonTeamId: row.playerId
-      ? (teamByPlayer.get(row.playerId) ?? row.player?.teamId ?? null)
+      ? (teamByPlayer.get(row.playerId) ?? null)
       : null,
   }));
 }

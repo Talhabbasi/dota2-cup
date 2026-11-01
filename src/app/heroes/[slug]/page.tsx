@@ -83,12 +83,9 @@ export default async function HeroDetailPage({
             const standIn = isMatchStandIn({
               side: row.side,
               unknown: row.unknown,
+              asStandIn: row.asStandIn,
               playerId: row.player?.id ?? null,
-              playerTeamId:
-                row.seasonTeamId ??
-                row.player?.teamId ??
-                row.player?.team?.id ??
-                null,
+              playerTeamId: row.seasonTeamId ?? null,
               radiantTeamId: row.match.radiantTeam?.id ?? null,
               direTeamId: row.match.direTeam?.id ?? null,
             });

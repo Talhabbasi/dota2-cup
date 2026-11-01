@@ -19,6 +19,7 @@ import {
   currentSeasonFilter,
   getCurrentSeasonSafe,
 } from "./seasons";
+import { classifySeatAppearance, representedTeamId } from "./stand-in";
 
 export { formatDuration, formatRoles };
 
@@ -159,6 +160,39 @@ function aggregateSeatStats(
   return { games, wins, losses, kills, deaths, assists, kda };
 }
 
+function regularSeats<
+  T extends {
+    side: string;
+    unknown: boolean;
+    asStandIn: boolean;
+    playerId: string | null;
+    match: {
+      seasonId: string | null;
+      radiantTeam: { id: string } | null;
+      direTeam: { id: string } | null;
+    };
+  },
+>(seats: T[], seasonTeamBySeason: Map<string, string | null>) {
+  return seats.filter((seat) => {
+    const original = seat.match.seasonId
+      ? (seasonTeamBySeason.get(seat.match.seasonId) ?? null)
+      : null;
+    return (
+      classifySeatAppearance({
+        playerId: seat.playerId,
+        unknown: seat.unknown,
+        asStandIn: seat.asStandIn,
+        originalTeamId: original,
+        representedTeamId: representedTeamId(
+          seat.side,
+          seat.match.radiantTeam?.id,
+          seat.match.direTeam?.id,
+        ),
+      }) === "regular"
+    );
+  });
+}
+
 export async function getPlayer(
   id: string,
   options?: { seasonId?: string | null },
@@ -242,7 +276,6 @@ export async function getPlayer(
     }
   }
 
-  const career = aggregateSeatStats(matchPlayers);
   const seatsBySeason = new Map<string, typeof matchPlayers>();
   for (const seat of matchPlayers) {
     const sid = seat.match.seasonId;
@@ -319,6 +352,9 @@ export async function getPlayer(
   const seasonTeamBySeason = new Map(
     seasonRows.map((row) => [row.seasonId, row.teamId] as const),
   );
+  const career = aggregateSeatStats(
+    regularSeats(matchPlayers, seasonTeamBySeason),
+  );
 
   const focusMembership = focusSeasonId
     ? membershipBySeason.get(focusSeasonId)
@@ -330,7 +366,9 @@ export async function getPlayer(
   const focusSeasonRow = focusSeasonId
     ? (seasonById.get(focusSeasonId) ?? null)
     : null;
-  const focusStats = aggregateSeatStats(scopedMatchPlayers);
+  const focusStats = aggregateSeatStats(
+    regularSeats(scopedMatchPlayers, seasonTeamBySeason),
+  );
   const focusSoldPrice = focusSeasonId
     ? (soldPriceBySeason.get(focusSeasonId) ?? null)
     : null;
@@ -357,7 +395,11 @@ export async function getPlayer(
     seasonHistory: playedSeasonIds.map((seasonId) => {
       const season = seasonById.get(seasonId)!;
       const membership = membershipBySeason.get(seasonId);
-      const stats = aggregateSeatStats(seatsBySeason.get(seasonId) ?? []);
+      const seasonSeats = seatsBySeason.get(seasonId) ?? [];
+      const stats = aggregateSeatStats(
+        regularSeats(seasonSeats, seasonTeamBySeason),
+      );
+      const standInGames = seasonSeats.length - stats.games;
       return {
         seasonId: season.id,
         number: season.number,
@@ -370,6 +412,7 @@ export async function getPlayer(
         rosterRole: membership?.rosterRole ?? null,
         soldPrice: soldPriceBySeason.get(seasonId) ?? null,
         games: stats.games,
+        standInGames,
         wins: stats.wins,
         losses: stats.losses,
         kda: stats.kda,
@@ -604,7 +647,7 @@ export async function getMatch(id: string) {
     players: match.players.map((row) => ({
       ...row,
       seasonTeamId: row.playerId
-        ? (teamByPlayer.get(row.playerId) ?? row.player?.teamId ?? null)
+        ? (teamByPlayer.get(row.playerId) ?? null)
         : null,
     })),
   };
