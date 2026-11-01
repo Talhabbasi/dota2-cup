@@ -660,7 +660,12 @@ function matchViewFromSlot(
         direTeam: { id: string; name: string };
       }
     | undefined,
-  pairing: { left: { id: string; name: string } | null; right: { id: string; name: string } | null },
+  pairing: {
+    left: { id: string; name: string } | null;
+    right: { id: string; name: string } | null;
+    leftLabel?: string;
+    rightLabel?: string;
+  },
   now: Date,
 ): PlayoffMatchView {
   const meta = BRACKET_META[slotKey];
@@ -708,8 +713,8 @@ function matchViewFromSlot(
         : null,
     winnerGoes: meta.winnerGoes,
     loserGoes: meta.loserGoes,
-    leftLabel: meta.leftLabel,
-    rightLabel: meta.rightLabel,
+    leftLabel: pairing.leftLabel ?? meta.leftLabel,
+    rightLabel: pairing.rightLabel ?? meta.rightLabel,
   };
 }
 

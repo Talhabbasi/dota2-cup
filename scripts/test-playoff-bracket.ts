@@ -241,6 +241,10 @@ const empty10 = unlockedPairings(seeds10, {});
 assert(sameTeam(empty10.lb0a.left, lala) && sameTeam(empty10.lb0a.right, stoic), "A play-in is A3 vs B4");
 assert(sameTeam(empty10.lb0b.left, gm) && sameTeam(empty10.lb0b.right, yona), "B play-in is B3 vs A4");
 assert(!empty10.lb1.left && !empty10.lb1.right, "LB1 waits for play-in winner + Match 1 loser");
+assert(
+  empty10.lb1.leftLabel === `${lala.name} / ${stoic.name} winner`,
+  "Match 3 names the play-in, not a separate group seed",
+);
 const afterPlayIn = unlockedPairings(seeds10, {
   ub1: result(xtc, ash),
   lb0a: result(lala, stoic),
