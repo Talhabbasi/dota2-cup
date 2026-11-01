@@ -5558,6 +5558,37 @@ html[data-game="pubg"] .brand-name-pubg {
   grid-template-columns: 4.6rem minmax(13rem, 1fr) 1.6rem minmax(13rem, 1fr) 1.2rem minmax(13rem, 1fr);
 }
 
+.playoff-graph.ti-pickem.ti-pickem-playin {
+  min-width: 1040px;
+  grid-template-columns: minmax(0, 1fr) minmax(11.5rem, 13.25rem);
+}
+
+.ti-pickem .pg-lane-upper-playin,
+.ti-pickem .pg-lane-lower-playin {
+  grid-template-columns:
+    3.2rem
+    minmax(0, 1fr)
+    1.1rem
+    minmax(0, 1fr)
+    1.15rem
+    minmax(0, 1fr)
+    0.95rem
+    minmax(0, 1fr);
+}
+
+.pg-pair-links {
+  display: grid;
+  grid-template-rows: 1fr 1fr;
+  align-self: stretch;
+  height: 100%;
+}
+
+.pg-pair-links span {
+  align-self: center;
+  height: 2px;
+  background: rgba(224, 179, 74, 0.45);
+}
+
 .ti-gf {
   position: relative;
 }
@@ -5606,14 +5637,23 @@ html[data-game="pubg"] .brand-name-pubg {
 .ti-node-head {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   gap: 0.4rem;
-  padding: 0.4rem 0.65rem 0.35rem;
+  min-height: 1.65rem;
+  padding: 0.35rem 0.6rem;
   font-family: var(--font-oxanium), sans-serif;
   font-size: 0.62rem;
-  letter-spacing: 0.07em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--muted);
+  white-space: nowrap;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.ti-node-head > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .ti-side {

@@ -275,11 +275,11 @@ export function unlockedPairings(
       };
       out.lb1 = {
         ...out.lb1,
-        leftLabel: `${seeds.a3.name} / ${seeds.b4.name} winner`,
+        leftLabel: "Play-in winner",
       };
       out.lb2 = {
         ...out.lb2,
-        leftLabel: `${seeds.b3.name} / ${seeds.a4.name} winner`,
+        leftLabel: "Play-in winner",
       };
     } else {
       // 8-team (2×4): 4th already eliminated; 3rd waits for upper loser.

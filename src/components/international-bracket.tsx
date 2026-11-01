@@ -5,6 +5,13 @@ import { pickemSlots, type PickemSlotView } from "@/lib/prediction-bracket";
 import type { InternationalPickemView } from "@/lib/predictions";
 import type { BracketSlot } from "@/lib/playoff-tree";
 
+const ROUND_LABEL: Record<string, string> = {
+  "Upper Round 1": "Upper R1",
+  "Lower play-in": "Play-in",
+  "Lower Round 1": "Lower R1",
+  "Lower Round 2": "Lower R2",
+};
+
 function node(slots: PickemSlotView[], slot: BracketSlot) {
   return slots.find((row) => row.slotKey === slot) ?? null;
 }
@@ -73,7 +80,7 @@ function SlotNode({
       <div className="ti-node-head">
         <span>
           {match.matchNumber != null ? `M${match.matchNumber}` : "M"} ·{" "}
-          {match.round}
+          {ROUND_LABEL[match.round] ?? match.round}
         </span>
         <span
           className={
@@ -209,13 +216,31 @@ export function InternationalBracket({
       </p>
       <div className="playoff-graph-scroll">
         <div
-          className="playoff-graph ti-pickem"
+          className={[
+            "playoff-graph ti-pickem",
+            view.seeds?.hasLowerPlayIn ? "ti-pickem-playin" : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
           role="img"
           aria-label="International pick’em bracket"
         >
           <div className="ti-pickem-lanes">
-            <div className="pg-lane pg-lane-upper">
+            <div
+              className={[
+                "pg-lane pg-lane-upper",
+                view.seeds?.hasLowerPlayIn ? "pg-lane-upper-playin" : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
+            >
               <span className="pg-lane-label">Upper</span>
+              {view.seeds?.hasLowerPlayIn ? (
+                <>
+                  <div />
+                  <div />
+                </>
+              ) : null}
               <div className="pg-stack">
                 {card("ub1")}
                 {card("ub2")}
@@ -224,8 +249,21 @@ export function InternationalBracket({
                 <span />
               </div>
               {card("uf")}
+              {view.seeds?.hasLowerPlayIn ? (
+                <>
+                  <div />
+                  <div />
+                </>
+              ) : null}
             </div>
-            <div className="pg-lane pg-lane-lower">
+            <div
+              className={[
+                "pg-lane pg-lane-lower",
+                view.seeds?.hasLowerPlayIn ? "pg-lane-lower-playin" : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
+            >
               <span className="pg-lane-label">Lower</span>
               {view.seeds?.hasLowerPlayIn ? (
                 <>
@@ -233,7 +271,10 @@ export function InternationalBracket({
                     {card("lb0a")}
                     {card("lb0b")}
                   </div>
-                  <div className="pg-line" aria-hidden />
+                  <div className="pg-pair-links" aria-hidden>
+                    <span />
+                    <span />
+                  </div>
                 </>
               ) : null}
               <div className="pg-stack">
