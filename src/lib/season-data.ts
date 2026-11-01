@@ -4,6 +4,7 @@ import { basePriceFor } from "./constants";
 import { parseRolesJson } from "./roles";
 import { toIso } from "./format";
 import type { GroupStandingRow } from "./group-stage-schedule";
+import { matchKillTotals } from "./match-score";
 
 const seasonWhere = (seasonId: string) => ({ seasonId });
 
@@ -190,28 +191,55 @@ export function groupFixtureWinnerId(fixture: {
   return null;
 }
 
-export async function loadGroupStandingsForSeason(
-  seasonId: string,
-  groupKey: "A" | "B",
-): Promise<GroupStandingRow[]> {
-  const season = seasonWhere(seasonId);
-  const [teams, fixtures] = await Promise.all([
-    prisma.team.findMany({
-      where: { groupKey, ...publicTeamWhere, ...season },
-      select: { id: true, name: true },
-      orderBy: { name: "asc" },
-    }),
-    prisma.scheduledFixture.findMany({
-      where: { kind: "group", status: "completed", ...season },
-      include: { match: true },
-    }),
-  ]);
+export function blankGroupStanding(team: {
+  id: string;
+  name: string;
+}): GroupStandingRow {
+  return {
+    id: team.id,
+    name: team.name,
+    played: 0,
+    wins: 0,
+    losses: 0,
+    points: 0,
+    kills: 0,
+    conceded: 0,
+  };
+}
+
+/** Points, then wins, then kills, then kill difference, then name. */
+export function compareGroupStandings(a: GroupStandingRow, b: GroupStandingRow) {
+  const diffA = a.kills - a.conceded;
+  const diffB = b.kills - b.conceded;
+  return (
+    b.points - a.points ||
+    b.wins - a.wins ||
+    b.kills - a.kills ||
+    diffB - diffA ||
+    a.name.localeCompare(b.name)
+  );
+}
+
+type GroupFixtureForTable = {
+  radiantTeamId: string;
+  direTeamId: string;
+  radiantWins: number;
+  direWins: number;
+  match?: {
+    winnerTeamId: string | null;
+    radiantScore?: number | null;
+    direScore?: number | null;
+    players?: { side: string; kills: number }[];
+  } | null;
+};
+
+export function applyGroupFixtures(
+  teams: { id: string; name: string }[],
+  fixtures: GroupFixtureForTable[],
+): GroupStandingRow[] {
   const ids = new Set(teams.map((team) => team.id));
-  const rows = new Map<string, GroupStandingRow>(
-    teams.map((team) => [
-      team.id,
-      { id: team.id, name: team.name, played: 0, wins: 0, losses: 0, points: 0 },
-    ]),
+  const rows = new Map(
+    teams.map((team) => [team.id, blankGroupStanding(team)] as const),
   );
 
   for (const fixture of fixtures) {
@@ -234,12 +262,36 @@ export async function loadGroupStandingsForSeason(
       dire.points += 1;
       radiant.losses += 1;
     }
+
+    const score = matchKillTotals(fixture.match?.players, {
+      radiantScore: fixture.match?.radiantScore,
+      direScore: fixture.match?.direScore,
+    });
+    if (!score.hasScore) continue;
+    radiant.kills += score.radiantKills;
+    radiant.conceded += score.direKills;
+    dire.kills += score.direKills;
+    dire.conceded += score.radiantKills;
   }
 
-  return [...rows.values()].sort(
-    (a, b) =>
-      b.points - a.points ||
-      b.wins - a.wins ||
-      a.name.localeCompare(b.name),
-  );
+  return [...rows.values()].sort(compareGroupStandings);
+}
+
+export async function loadGroupStandingsForSeason(
+  seasonId: string,
+  groupKey: "A" | "B",
+): Promise<GroupStandingRow[]> {
+  const season = seasonWhere(seasonId);
+  const [teams, fixtures] = await Promise.all([
+    prisma.team.findMany({
+      where: { groupKey, ...publicTeamWhere, ...season },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    }),
+    prisma.scheduledFixture.findMany({
+      where: { kind: "group", status: "completed", ...season },
+      include: { match: true },
+    }),
+  ]);
+  return applyGroupFixtures(teams, fixtures);
 }

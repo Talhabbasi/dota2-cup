@@ -13,7 +13,7 @@ import {
   upcomingWeekendDates,
 } from "./schedule-crud";
 import { getLivePlayoffFormat, roundRobinRounds } from "./playoff-format";
-import { groupFixtureWinnerId } from "./season-data";
+import { applyGroupFixtures } from "./season-data";
 
 /** One Group A match and one Group B match per hour, 8:00 PM through 6:00 AM PKT. */
 const GROUP_NIGHT_HOURS = [20, 21, 22, 23, 0, 1, 2, 3, 4, 5, 6];
@@ -40,6 +40,10 @@ export type GroupStandingRow = {
   wins: number;
   losses: number;
   points: number;
+  /** Team kills across decided group games. Breaks a tie on points. */
+  kills: number;
+  /** Kills conceded. Used only when two teams also have the same kill total. */
+  conceded: number;
 };
 
 export type BookedGroupMatch = {
@@ -341,41 +345,7 @@ export const getGroupStandings = unstable_cache(
         include: { match: true },
       }),
     ]);
-    const ids = new Set(teams.map((team) => team.id));
-    const rows = new Map<string, GroupStandingRow>(
-      teams.map((team) => [
-        team.id,
-        { id: team.id, name: team.name, played: 0, wins: 0, losses: 0, points: 0 },
-      ]),
-    );
-
-    for (const fixture of fixtures) {
-      if (!ids.has(fixture.radiantTeamId) || !ids.has(fixture.direTeamId)) continue;
-      const radiant = rows.get(fixture.radiantTeamId);
-      const dire = rows.get(fixture.direTeamId);
-      if (!radiant || !dire) continue;
-
-      const winnerId = groupFixtureWinnerId(fixture);
-      if (!winnerId) continue;
-
-      radiant.played += 1;
-      dire.played += 1;
-      if (winnerId === radiant.id) {
-        radiant.wins += 1;
-        radiant.points += 1;
-        dire.losses += 1;
-      } else if (winnerId === dire.id) {
-        dire.wins += 1;
-        dire.points += 1;
-        radiant.losses += 1;
-      }
-    }
-
-    return [...rows.values()].sort((a, b) => {
-      if (b.points !== a.points) return b.points - a.points;
-      if (b.wins !== a.wins) return b.wins - a.wins;
-      return a.name.localeCompare(b.name);
-    });
+    return applyGroupFixtures(teams, fixtures);
   },
   ["group-standings"],
   { tags: [PUBLIC_PAGE_TAG], revalidate: PUBLIC_REVALIDATE_SECONDS },

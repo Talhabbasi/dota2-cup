@@ -45,7 +45,7 @@ export function GroupStandingsTable({
             <EsportsTableRow className="hover:bg-transparent">
               <EsportsTableHead className="w-12">#</EsportsTableHead>
               <EsportsTableHead>Team</EsportsTableHead>
-              {(["P", "W", "L", "PTS"] as const).map((label) => (
+              {(["P", "W", "L", "K", "PTS"] as const).map((label) => (
                 <EsportsTableHead key={label} className="text-right!">
                   {label}
                 </EsportsTableHead>
@@ -87,6 +87,9 @@ export function GroupStandingsTable({
                   <EsportsTableCell className="text-right! font-mono text-sm tabular-nums">
                     {row.losses}
                   </EsportsTableCell>
+                  <EsportsTableCell className="text-right! font-mono text-sm tabular-nums">
+                    {row.kills}
+                  </EsportsTableCell>
                   <EsportsTableCell className="text-right! font-mono text-sm font-bold tabular-nums text-amber-400">
                     {row.points}
                   </EsportsTableCell>
@@ -96,6 +99,11 @@ export function GroupStandingsTable({
           </EsportsTableBody>
         </EsportsTable>
       )}
+      {rows.length > 0 ? (
+        <p className="m-0 text-xs text-muted-foreground">
+          Same points: more kills ranks higher.
+        </p>
+      ) : null}
     </section>
   );
 }

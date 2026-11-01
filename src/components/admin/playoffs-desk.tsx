@@ -33,8 +33,8 @@ export type PlayoffDeskView = {
   groupStageComplete: boolean;
   eliminatePlace: number;
   hasLowerPlayIn: boolean;
-  standingsA: { name: string; points: number; played: number }[];
-  standingsB: { name: string; points: number; played: number }[];
+  standingsA: { name: string; points: number; played: number; kills: number }[];
+  standingsB: { name: string; points: number; played: number; kills: number }[];
   matchSummary: { label: string; status: string; when: string | null }[];
 };
 
@@ -368,7 +368,7 @@ function StandingsColumn({
   rows,
 }: {
   title: string;
-  rows: { name: string; points: number; played: number }[];
+  rows: { name: string; points: number; played: number; kills: number }[];
 }) {
   return (
     <div className={adminCardClass}>
@@ -381,7 +381,7 @@ function StandingsColumn({
             <li key={r.name} className="text-foreground">
               {r.name}{" "}
               <span className="text-muted-foreground">
-                · {r.points} pts · {r.played} played
+                · {r.points} pts · {r.kills} kills · {r.played} played
               </span>
             </li>
           ))}

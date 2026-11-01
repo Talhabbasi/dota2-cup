@@ -38,6 +38,8 @@ function standing(
     wins,
     losses: 3 - wins,
     points: wins,
+    kills: 0,
+    conceded: 0,
   };
 }
 
@@ -214,6 +216,8 @@ const groupA10 = rankingA10.map((row, index) => ({
   wins: 4 - index,
   losses: index,
   points: 4 - index,
+  kills: 0,
+  conceded: 0,
 }));
 const groupB10 = rankingB10.map((row, index) => ({
   id: row.id,
@@ -222,6 +226,8 @@ const groupB10 = rankingB10.map((row, index) => ({
   wins: 4 - index,
   losses: index,
   points: 4 - index,
+  kills: 0,
+  conceded: 0,
 }));
 const seeds10 = seedsFromStandings(groupA10, groupB10, fmt10);
 assert(seeds10, "10-team seeds should resolve once every team has played 4 games");

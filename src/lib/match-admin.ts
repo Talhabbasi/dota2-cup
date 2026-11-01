@@ -3,7 +3,7 @@ import { prisma } from "./prisma";
 import { currentSeasonId, getLiveSeason, syncSeasonPlayer } from "./seasons";
 import { rebalanceTeamRoster } from "./players-admin";
 import { STARTING_PURSE } from "./constants";
-import { addPlayerAlias } from "./player-aliases";
+import { addPlayerAlias, normalizeAlias } from "./player-aliases";
 import { forgetStandInBoardName } from "./scoreboard-names";
 import { representedTeamId } from "./stand-in";
 
@@ -47,7 +47,8 @@ export async function adminLinkMatchPlayer(input: {
   if (!player) throw new Error("Player not found.");
 
   const boardName = seat.boardName.trim();
-  if (boardName) {
+  // A one-letter or symbol-only scoreboard name must not block the link.
+  if (normalizeAlias(boardName).length >= 2) {
     await addPlayerAlias({ playerId: player.id, alias: boardName });
   }
 

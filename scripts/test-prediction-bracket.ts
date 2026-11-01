@@ -8,7 +8,16 @@ function team(id: string, name: string): NamedTeam {
 }
 
 function standing(id: string, name: string, wins: number): GroupStandingRow {
-  return { id, name, played: 3, wins, losses: 3 - wins, points: wins };
+  return {
+    id,
+    name,
+    played: 3,
+    wins,
+    losses: 3 - wins,
+    points: wins,
+    kills: 0,
+    conceded: 0,
+  };
 }
 
 function assert(condition: unknown, message: string): asserts condition {

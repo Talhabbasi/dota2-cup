@@ -1,7 +1,12 @@
 import { prisma } from "./prisma";
 
+/** Letters and numbers only. Accents, kana, and Cyrillic stay; clan tags and symbols drop. */
 export function normalizeAlias(value: string) {
-  return value.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]+/g, "");
+  return value
+    .normalize("NFKD")
+    .toLowerCase()
+    .replace(/\p{M}+/gu, "")
+    .replace(/[^\p{L}\p{N}]+/gu, "");
 }
 
 export async function listAliasesForPlayer(playerId: string) {
@@ -20,7 +25,9 @@ export async function addPlayerAlias(input: {
   if (!raw) throw new Error("Alias cannot be empty.");
   const alias = normalizeAlias(raw);
   if (alias.length < 2) {
-    throw new Error("Alias is too short after normalizing.");
+    throw new Error(
+      "Alias needs at least 2 letters or numbers. Symbols and clan tags are not saved.",
+    );
   }
 
   const player = input.playerId
