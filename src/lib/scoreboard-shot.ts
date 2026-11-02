@@ -1119,6 +1119,21 @@ export async function applyParsedScoreboard(
     }
   }
 
+  if (match.winnerTeamId) {
+    const finished = await prisma.scheduledFixture.findFirst({
+      where: { matchId: match.id, status: "completed" },
+      select: { id: true },
+    });
+    if (finished) {
+      try {
+        const { rescoreFixtureForWinner } = await import("./predictions");
+        await rescoreFixtureForWinner(finished.id, match.winnerTeamId);
+      } catch {
+        /* predictions optional */
+      }
+    }
+  }
+
   return { match, created: !existing };
 }
 

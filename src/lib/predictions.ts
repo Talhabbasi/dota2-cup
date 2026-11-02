@@ -132,6 +132,58 @@ export function seriesWinnerTeamId(fixture: {
   return fixture.match?.winnerTeamId ?? null;
 }
 
+/**
+ * Series score after an organizer sets the winner.
+ * Bo1 becomes 1–0 for that team. A finished longer series flips to the new
+ * winner without touching a series that is still in progress.
+ * Returns null when this winner should not rewrite the fixture.
+ */
+export function correctedSeriesScore(
+  fixture: {
+    status: string;
+    bestOf: number;
+    radiantWins: number;
+    direWins: number;
+    radiantTeamId: string;
+    direTeamId: string;
+  },
+  winnerTeamId: string,
+) {
+  if (
+    winnerTeamId !== fixture.radiantTeamId &&
+    winnerTeamId !== fixture.direTeamId
+  ) {
+    return null;
+  }
+  const bestOf = fixture.bestOf || 1;
+  if (fixture.status !== "completed" && bestOf > 1) return null;
+
+  const needed = Math.ceil(bestOf / 2);
+  const radiantWon = winnerTeamId === fixture.radiantTeamId;
+  if (bestOf <= 1) {
+    return {
+      radiantWins: radiantWon ? 1 : 0,
+      direWins: radiantWon ? 0 : 1,
+    };
+  }
+  if (radiantWon && fixture.radiantWins <= fixture.direWins) {
+    return {
+      radiantWins: needed,
+      direWins: Math.min(fixture.direWins, needed - 1),
+    };
+  }
+  if (!radiantWon && fixture.direWins <= fixture.radiantWins) {
+    return {
+      radiantWins: Math.min(fixture.radiantWins, needed - 1),
+      direWins: needed,
+    };
+  }
+  return {
+    radiantWins: fixture.radiantWins,
+    direWins: fixture.direWins,
+  };
+}
+
 function roundLabel(fixture: Pick<ScheduleFixtureView, "kind" | "slotKey">) {
   if (isGrandFinalFixture(fixture.kind, fixture.slotKey)) return "Grand Final";
   if (isPlayoffKind(fixture.kind)) {
@@ -512,6 +564,34 @@ export async function getInternationalPickem(
     savedPicks: picks,
     slots: pickemSlots(seeds, actual, picks, lockedSlots, treeLocked),
   };
+}
+
+/** Rewrite a finished series onto `winnerTeamId` and award picks again. */
+export async function rescoreFixtureForWinner(
+  fixtureId: string,
+  winnerTeamId: string,
+) {
+  const fixture = await prisma.scheduledFixture.findUnique({
+    where: { id: fixtureId },
+  });
+  if (!fixture) return;
+  const next = correctedSeriesScore(fixture, winnerTeamId);
+  if (!next) return;
+  if (
+    next.radiantWins !== fixture.radiantWins ||
+    next.direWins !== fixture.direWins ||
+    fixture.status !== "completed"
+  ) {
+    await prisma.scheduledFixture.update({
+      where: { id: fixture.id },
+      data: {
+        radiantWins: next.radiantWins,
+        direWins: next.direWins,
+        status: "completed",
+      },
+    });
+  }
+  await scorePredictionsForFixture(fixture.id);
 }
 
 export async function scorePredictionsForFixture(fixtureId: string) {
