@@ -16,6 +16,7 @@ function standing(id: string, name: string, wins: number): GroupStandingRow {
     losses: 3 - wins,
     points: wins,
     kills: 0,
+    standInKills: 0,
     conceded: 0,
   };
 }

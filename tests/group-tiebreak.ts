@@ -16,6 +16,7 @@ function row(
     losses: 4 - points,
     points,
     kills,
+    standInKills: 0,
     conceded,
   };
 }

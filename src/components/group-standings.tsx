@@ -45,8 +45,17 @@ export function GroupStandingsTable({
             <EsportsTableRow className="hover:bg-transparent">
               <EsportsTableHead className="w-12">#</EsportsTableHead>
               <EsportsTableHead>Team</EsportsTableHead>
-              {(["P", "W", "L", "K", "PTS"] as const).map((label) => (
-                <EsportsTableHead key={label} className="text-right!">
+              {(
+                [
+                  ["P", "Played"],
+                  ["W", "Wins"],
+                  ["L", "Losses"],
+                  ["K", "Roster kills. Used to rank teams on the same points."],
+                  ["SI", "Stand-in kills for this team. Not used to rank."],
+                  ["PTS", "Points"],
+                ] as const
+              ).map(([label, hint]) => (
+                <EsportsTableHead key={label} className="text-right!" title={hint}>
                   {label}
                 </EsportsTableHead>
               ))}
@@ -90,6 +99,9 @@ export function GroupStandingsTable({
                   <EsportsTableCell className="text-right! font-mono text-sm tabular-nums">
                     {row.kills}
                   </EsportsTableCell>
+                  <EsportsTableCell className="text-right! font-mono text-sm tabular-nums text-muted-foreground">
+                    {row.standInKills}
+                  </EsportsTableCell>
                   <EsportsTableCell className="text-right! font-mono text-sm font-bold tabular-nums text-amber-400">
                     {row.points}
                   </EsportsTableCell>
@@ -101,7 +113,7 @@ export function GroupStandingsTable({
       )}
       {rows.length > 0 ? (
         <p className="m-0 text-xs text-muted-foreground">
-          Same points: more kills ranks higher.
+          K is roster kills and breaks ties. SI is stand-in kills for that team and does not change the rank.
         </p>
       ) : null}
     </section>

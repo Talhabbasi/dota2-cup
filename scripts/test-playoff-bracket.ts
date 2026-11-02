@@ -39,6 +39,7 @@ function standing(
     losses: 3 - wins,
     points: wins,
     kills: 0,
+    standInKills: 0,
     conceded: 0,
   };
 }
@@ -217,6 +218,7 @@ const groupA10 = rankingA10.map((row, index) => ({
   losses: index,
   points: 4 - index,
   kills: 0,
+  standInKills: 0,
   conceded: 0,
 }));
 const groupB10 = rankingB10.map((row, index) => ({
@@ -227,6 +229,7 @@ const groupB10 = rankingB10.map((row, index) => ({
   losses: index,
   points: 4 - index,
   kills: 0,
+  standInKills: 0,
   conceded: 0,
 }));
 const seeds10 = seedsFromStandings(groupA10, groupB10, fmt10);

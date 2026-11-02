@@ -4,7 +4,7 @@ import { basePriceFor } from "./constants";
 import { parseRolesJson } from "./roles";
 import { toIso } from "./format";
 import type { GroupStandingRow } from "./group-stage-schedule";
-import { matchKillTotals } from "./match-score";
+import { classifySeatAppearance, representedTeamId } from "./stand-in";
 
 const seasonWhere = (seasonId: string) => ({ seasonId });
 
@@ -203,6 +203,7 @@ export function blankGroupStanding(team: {
     losses: 0,
     points: 0,
     kills: 0,
+    standInKills: 0,
     conceded: 0,
   };
 }
@@ -220,6 +221,14 @@ export function compareGroupStandings(a: GroupStandingRow, b: GroupStandingRow) 
   );
 }
 
+type GroupSeatForTable = {
+  side: string;
+  kills: number;
+  asStandIn?: boolean;
+  unknown?: boolean;
+  playerId?: string | null;
+};
+
 type GroupFixtureForTable = {
   radiantTeamId: string;
   direTeamId: string;
@@ -227,15 +236,101 @@ type GroupFixtureForTable = {
   direWins: number;
   match?: {
     winnerTeamId: string | null;
-    radiantScore?: number | null;
-    direScore?: number | null;
-    players?: { side: string; kills: number }[];
+    players?: GroupSeatForTable[];
   } | null;
 };
+
+function orientedSide(side: string, flipped: boolean) {
+  if (!flipped) return side;
+  if (side === "radiant") return "dire";
+  if (side === "dire") return "radiant";
+  return side;
+}
+
+/** Roster links vote on whether the saved radiant/dire sides are swapped. */
+export function groupMatchSidesFlipped(
+  fixture: { radiantTeamId: string; direTeamId: string },
+  players: GroupSeatForTable[],
+  seasonTeamByPlayer: ReadonlyMap<string, string | null>,
+) {
+  let stay = 0;
+  let flipped = 0;
+  for (const seat of players) {
+    if (!seat.playerId || seat.unknown) continue;
+    const rosterTeam = seasonTeamByPlayer.get(seat.playerId) ?? null;
+    if (
+      rosterTeam !== fixture.radiantTeamId &&
+      rosterTeam !== fixture.direTeamId
+    ) {
+      continue;
+    }
+    const recorded = representedTeamId(
+      seat.side,
+      fixture.radiantTeamId,
+      fixture.direTeamId,
+    );
+    const opposite = representedTeamId(
+      orientedSide(seat.side, true),
+      fixture.radiantTeamId,
+      fixture.direTeamId,
+    );
+    if (rosterTeam === recorded) stay += 1;
+    if (rosterTeam === opposite) flipped += 1;
+  }
+  return flipped > stay;
+}
+
+/**
+ * Roster kills and stand-in kills for one group game.
+ * The combined scoreboard total is not used.
+ * Roster kills go to the player's season team. Stand-in kills go to the team
+ * they played for, and are not mixed into the roster total.
+ */
+export function groupFixtureRosterKills(
+  fixture: { radiantTeamId: string; direTeamId: string },
+  players: GroupSeatForTable[],
+  seasonTeamByPlayer: ReadonlyMap<string, string | null>,
+) {
+  const flipped = groupMatchSidesFlipped(fixture, players, seasonTeamByPlayer);
+  let radiantKills = 0;
+  let direKills = 0;
+  let radiantStandIn = 0;
+  let direStandIn = 0;
+  for (const seat of players) {
+    const represented = representedTeamId(
+      orientedSide(seat.side, flipped),
+      fixture.radiantTeamId,
+      fixture.direTeamId,
+    );
+    if (!represented) continue;
+    const rosterTeam = seat.playerId
+      ? (seasonTeamByPlayer.get(seat.playerId) ?? null)
+      : null;
+    const kind = classifySeatAppearance({
+      playerId: seat.playerId,
+      unknown: seat.unknown,
+      asStandIn: seat.asStandIn,
+      originalTeamId: rosterTeam,
+      representedTeamId: represented,
+    });
+    const roster =
+      represented === fixture.radiantTeamId ? "radiant" : represented === fixture.direTeamId ? "dire" : null;
+    if (!roster) continue;
+    if (kind === "standin") {
+      if (roster === "radiant") radiantStandIn += seat.kills;
+      else direStandIn += seat.kills;
+      continue;
+    }
+    if (roster === "radiant") radiantKills += seat.kills;
+    else direKills += seat.kills;
+  }
+  return { radiantKills, direKills, radiantStandIn, direStandIn };
+}
 
 export function applyGroupFixtures(
   teams: { id: string; name: string }[],
   fixtures: GroupFixtureForTable[],
+  seasonTeamByPlayer: ReadonlyMap<string, string | null> = new Map(),
 ): GroupStandingRow[] {
   const ids = new Set(teams.map((team) => team.id));
   const rows = new Map(
@@ -263,18 +358,51 @@ export function applyGroupFixtures(
       radiant.losses += 1;
     }
 
-    const score = matchKillTotals(fixture.match?.players, {
-      radiantScore: fixture.match?.radiantScore,
-      direScore: fixture.match?.direScore,
-    });
-    if (!score.hasScore) continue;
+    const score = groupFixtureRosterKills(
+      fixture,
+      fixture.match?.players ?? [],
+      seasonTeamByPlayer,
+    );
     radiant.kills += score.radiantKills;
+    radiant.standInKills += score.radiantStandIn;
     radiant.conceded += score.direKills;
     dire.kills += score.direKills;
+    dire.standInKills += score.direStandIn;
     dire.conceded += score.radiantKills;
   }
 
   return [...rows.values()].sort(compareGroupStandings);
+}
+
+const groupTableFixtureSelect = {
+  radiantTeamId: true,
+  direTeamId: true,
+  radiantWins: true,
+  direWins: true,
+  match: {
+    select: {
+      winnerTeamId: true,
+      players: {
+        select: {
+          side: true,
+          kills: true,
+          asStandIn: true,
+          unknown: true,
+          playerId: true,
+        },
+      },
+    },
+  },
+} as const;
+
+async function seasonRosterTeams(seasonId: string) {
+  const memberships = await prisma.seasonPlayer.findMany({
+    where: { seasonId },
+    select: { playerId: true, teamId: true },
+  });
+  return new Map(
+    memberships.map((row) => [row.playerId, row.teamId] as const),
+  );
 }
 
 export async function loadGroupStandingsForSeason(
@@ -282,7 +410,7 @@ export async function loadGroupStandingsForSeason(
   groupKey: "A" | "B",
 ): Promise<GroupStandingRow[]> {
   const season = seasonWhere(seasonId);
-  const [teams, fixtures] = await Promise.all([
+  const [teams, fixtures, seasonTeamByPlayer] = await Promise.all([
     prisma.team.findMany({
       where: { groupKey, ...publicTeamWhere, ...season },
       select: { id: true, name: true },
@@ -290,8 +418,9 @@ export async function loadGroupStandingsForSeason(
     }),
     prisma.scheduledFixture.findMany({
       where: { kind: "group", status: "completed", ...season },
-      include: { match: true },
+      select: groupTableFixtureSelect,
     }),
+    seasonRosterTeams(seasonId),
   ]);
-  return applyGroupFixtures(teams, fixtures);
+  return applyGroupFixtures(teams, fixtures, seasonTeamByPlayer);
 }

@@ -63,12 +63,14 @@ export default async function AdminPlayoffsPage({
             points: r.points,
             played: r.played,
             kills: r.kills,
+            standInKills: r.standInKills,
           })),
           standingsB: playoff.standingsB.map((r) => ({
             name: r.name,
             points: r.points,
             played: r.played,
             kills: r.kills,
+            standInKills: r.standInKills,
           })),
           matchSummary: playoff.matches.map((m) => ({
             label: m.label,

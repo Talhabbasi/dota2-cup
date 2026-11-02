@@ -13,7 +13,7 @@ import {
   upcomingWeekendDates,
 } from "./schedule-crud";
 import { getLivePlayoffFormat, roundRobinRounds } from "./playoff-format";
-import { applyGroupFixtures } from "./season-data";
+import { loadGroupStandingsForSeason } from "./season-data";
 
 /** One Group A match and one Group B match per hour, 8:00 PM through 6:00 AM PKT. */
 const GROUP_NIGHT_HOURS = [20, 21, 22, 23, 0, 1, 2, 3, 4, 5, 6];
@@ -40,9 +40,11 @@ export type GroupStandingRow = {
   wins: number;
   losses: number;
   points: number;
-  /** Team kills across decided group games. Breaks a tie on points. */
+  /** This season's group-game kills by the team's own roster. Stand-ins are left out. */
   kills: number;
-  /** Kills conceded. Used only when two teams also have the same kill total. */
+  /** Stand-in kills for this team in group games. Shown beside K. Not used to rank. */
+  standInKills: number;
+  /** Roster kills conceded. Used only when two teams also have the same kill total. */
   conceded: number;
 };
 
@@ -334,20 +336,9 @@ function assertFullRoundRobin(
 export const getGroupStandings = unstable_cache(
   async (groupKey: "A" | "B"): Promise<GroupStandingRow[]> => {
     const season = await currentSeasonFilter();
-    const [teams, fixtures] = await Promise.all([
-      prisma.team.findMany({
-        where: { groupKey, ...publicTeamWhere, ...season },
-        select: { id: true, name: true },
-        orderBy: { name: "asc" },
-      }),
-      prisma.scheduledFixture.findMany({
-        where: { kind: "group", status: "completed", ...season },
-        include: { match: true },
-      }),
-    ]);
-    return applyGroupFixtures(teams, fixtures);
+    return loadGroupStandingsForSeason(season.seasonId, groupKey);
   },
-  ["group-standings"],
+  ["group-standings-roster-kills"],
   { tags: [PUBLIC_PAGE_TAG], revalidate: PUBLIC_REVALIDATE_SECONDS },
 );
 
