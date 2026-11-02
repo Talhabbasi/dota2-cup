@@ -6,6 +6,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { LogIn } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
+import { NewsTicker } from "@/components/news-ticker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CUP_ICON_PATH, CUP_NAME, PUBG_CUP_NAME } from "@/lib/brand";
@@ -222,6 +223,7 @@ export function Nav({
           />
         ))}
       </nav>
+      <NewsTicker />
     </header>
   );
 }
