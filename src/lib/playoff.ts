@@ -388,10 +388,12 @@ export async function generatePlayoffGroupStage(input?: {
     },
   ];
 
+  const seasonId = await currentSeasonId();
   await prisma.$transaction(async (tx) => {
     if (input?.force) {
       await tx.scheduledFixture.deleteMany({
         where: {
+          seasonId,
           status: "scheduled",
           OR: [
             { kind: { in: [...PLAYOFF_KINDS] } },
@@ -401,8 +403,8 @@ export async function generatePlayoffGroupStage(input?: {
       });
     }
     for (const row of rows) {
-      const existing = await tx.scheduledFixture.findUnique({
-        where: { slotKey: row.slotKey },
+      const existing = await tx.scheduledFixture.findFirst({
+        where: { seasonId, slotKey: row.slotKey },
       });
       if (existing) {
         if (existing.status === "completed" && !input?.force) {
@@ -436,8 +438,10 @@ export async function generatePlayoffGroupStage(input?: {
 }
 
 export async function clearPlayoffFixtures() {
+  const season = await currentSeasonFilter();
   const removed = await prisma.scheduledFixture.deleteMany({
     where: {
+      ...season,
       status: "scheduled",
       OR: [
         { slotKey: { in: [...BRACKET_SLOTS] } },
@@ -450,8 +454,8 @@ export async function clearPlayoffFixtures() {
 }
 
 async function fixtureBySlot(slotKey: PlayoffSlot) {
-  return prisma.scheduledFixture.findUnique({
-    where: { slotKey },
+  return prisma.scheduledFixture.findFirst({
+    where: { seasonId: await currentSeasonId(), slotKey },
   });
 }
 

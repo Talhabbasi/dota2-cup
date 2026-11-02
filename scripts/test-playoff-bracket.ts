@@ -290,23 +290,45 @@ assert(!isAllowedPlayoffKickoff(fridayMorning), "Friday 10:00 AM must be rejecte
 const monday4 = localToUtc(2026, 8, 28, 4, 0, 5);
 assert(!isAllowedPlayoffKickoff(monday4), "Monday 4:00 AM must be rejected");
 
+const mondayMorning = localToUtc(2026, 8, 21, 4, 0, 5);
 const slot = nextPlayoffKickoff({
-  after: localToUtc(2026, 8, 21, 4, 0, 5),
+  after: mondayMorning,
+  notBefore: mondayMorning,
   occupied: [],
   teamBusy: [],
   teamIds: [xtc.id, ash.id],
 });
 assert(isAllowedPlayoffKickoff(slot), "Auto-picked playoff time must stay inside the weekend window");
+assert(
+  slot.getTime() === kickoffFromMatchNight(saturday, 20).getTime(),
+  "Auto playoff kickoff starts the next Saturday at 8:00 PM PKT",
+);
 
+const sat8 = kickoffFromMatchNight(saturday, 20);
 const clustered = nextPlayoffKickoff({
-  after: sat10am,
-  occupied: [sat10am],
-  teamBusy: [{ teamId: xtc.id, at: sat10am }],
+  after: sat8,
+  notBefore: sat8,
+  occupied: [sat8],
+  teamBusy: [{ teamId: xtc.id, at: sat8 }],
   teamIds: [saif.id, chessman.id],
 });
 assert(
-  clustered.getTime() >= sat10am.getTime() + 60 * 60 * 1000,
+  clustered.getTime() === kickoffFromMatchNight(saturday, 21).getTime(),
   "The next match must leave a buffer after the previous kickoff",
+);
+
+const afterGroups = localToUtc(2026, 10, 2, 0, 0, 5);
+const openedMonday = nextPlayoffKickoff({
+  after: afterGroups,
+  notBefore: localToUtc(2026, 10, 2, 13, 0, 5),
+  occupied: [],
+  teamBusy: [],
+  teamIds: [xtc.id, ash.id],
+});
+assert(
+  openedMonday.getTime() ===
+    kickoffFromMatchNight(parseWeekendDate("2026-11-07"), 20).getTime(),
+  "Opening on Monday afternoon waits for the next Saturday night",
 );
 
 console.log("playoff bracket tests passed");

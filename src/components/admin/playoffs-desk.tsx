@@ -236,12 +236,14 @@ export function AdminPlayoffsDesk({
               3. Playoffs / upper bracket
             </h3>
             <p className="mb-4 text-xs text-muted-foreground">
-              After every group match has a winner: open Upper R1 (A1 vs B2, B1
+              After every group match has a winner: book Upper R1 (A1 vs B2, B1
               vs A2)
               {view.hasLowerPlayIn
-                ? `; ${view.eliminatePlace}th out; A3 vs B4 / B3 vs A4 into lower`
-                : `; ${view.eliminatePlace}th out; 3rd waits for a crossover loser`}
-              . Same as <code className="text-foreground">/playoff open</code>.
+                ? ` and the lower play-ins (A3 vs B4, B3 vs A4). ${view.eliminatePlace}th is out.`
+                : `. ${view.eliminatePlace}th is out; 3rd waits for a crossover loser.`}{" "}
+              Later rounds are added when those matches have a winner. Kickoffs
+              are the next Saturday and Sunday nights, 8:00 PM–3:00 AM PKT.
+              Same as <code className="text-foreground">/playoff open</code>.
             </p>
             <div className="flex flex-wrap gap-2">
               <AdminActionForm

@@ -33,7 +33,7 @@ function SlotNode({
       ? "✓ Correct"
       : match.pickStatus === "busted"
         ? match.completed
-          ? "✗ Missed"
+          ? "✗ Incorrect"
           : "✗ Busted"
         : match.completed
           ? "Done"
@@ -47,10 +47,10 @@ function SlotNode({
       : match.pickStatus === "busted"
         ? match.pickTeamName
           ? match.completed
-            ? `Missed · picked ${match.pickTeamName}`
+            ? `Incorrect · picked ${match.pickTeamName}`
             : `Busted · ${match.pickTeamName} out`
           : match.completed
-            ? "Missed"
+            ? "✗ Incorrect"
             : "Busted"
         : match.pickStatus === "picked"
           ? match.pickTeamName

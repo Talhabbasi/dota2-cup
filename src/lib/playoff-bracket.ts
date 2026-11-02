@@ -1,5 +1,6 @@
 import { prisma } from "./prisma";
 import { scheduleUtcOffsetHours } from "./schedule";
+import { currentSeasonId } from "./seasons";
 import {
   createScheduledMatch,
   isAllowedPlayoffKickoff,
@@ -128,6 +129,11 @@ export function seriesWinnerLoser(fixture: {
 const TEAM_REST_MS = 2 * 60 * 60 * 1000;
 const MATCH_BUFFER_MS = 60 * 60 * 1000;
 
+/** Auto-booked playoffs use the night window, same as group stage. */
+function isPlayoffNightHour(hour: number) {
+  return hour >= 20 || hour <= 3;
+}
+
 function ceilToHour(date: Date) {
   const t = new Date(date);
   if (t.getUTCMinutes() > 0 || t.getUTCSeconds() > 0 || t.getUTCMilliseconds() > 0) {
@@ -141,16 +147,27 @@ function ceilToHour(date: Date) {
 
 export function nextPlayoffKickoff(input: {
   after: Date;
+  /** Do not book a kickoff before this instant. Defaults to now. */
+  notBefore?: Date;
   occupied: Date[];
   teamBusy: { teamId: string; at: Date }[];
   teamIds: string[];
 }): Date {
   const occupied = input.occupied.map((d) => d.getTime());
-  let cursor = ceilToHour(new Date(input.after.getTime() + MATCH_BUFFER_MS));
+  const offsetH = scheduleUtcOffsetHours();
+  const earliest = Math.max(
+    input.after.getTime() + MATCH_BUFFER_MS,
+    (input.notBefore ?? new Date()).getTime(),
+  );
+  let cursor = ceilToHour(new Date(earliest));
   const deadline = cursor.getTime() + 21 * 24 * 60 * 60 * 1000;
 
   while (cursor.getTime() < deadline) {
-    if (isAllowedPlayoffKickoff(cursor)) {
+    const shifted = new Date(cursor.getTime() + offsetH * 3_600_000);
+    if (
+      isPlayoffNightHour(shifted.getUTCHours()) &&
+      isAllowedPlayoffKickoff(cursor)
+    ) {
       const t = cursor.getTime();
       const clash = occupied.some((ms) => Math.abs(ms - t) < MATCH_BUFFER_MS);
       const teamClash = input.teamBusy.some(
@@ -163,7 +180,9 @@ export function nextPlayoffKickoff(input: {
     cursor = new Date(cursor.getTime() + 60 * 60 * 1000);
   }
 
-  throw new Error("Could not find a Saturday/Sunday 10:00 AM–3:00 AM PKT slot for the next playoff match.");
+  throw new Error(
+    "Could not find a Saturday or Sunday night (8:00 PM–3:00 AM PKT) for the next playoff match.",
+  );
 }
 
 function nightDateString(scheduledAt: Date) {
@@ -200,8 +219,9 @@ async function loadSeeds(): Promise<GroupSeeds | null> {
 }
 
 async function fixturesBySlot() {
+  const seasonId = await currentSeasonId();
   const rows = await prisma.scheduledFixture.findMany({
-    where: { slotKey: { in: [...BRACKET_SLOTS] } },
+    where: { seasonId, slotKey: { in: [...BRACKET_SLOTS] } },
     include: {
       radiantTeam: { select: { id: true, name: true } },
       direTeam: { select: { id: true, name: true } },
@@ -224,7 +244,9 @@ function resultsFromFixtures(
 }
 
 async function scheduleOccupancy() {
+  const seasonId = await currentSeasonId();
   const fixtures = await prisma.scheduledFixture.findMany({
+    where: { seasonId },
     select: {
       scheduledAt: true,
       radiantTeamId: true,
@@ -241,8 +263,9 @@ async function scheduleOccupancy() {
 }
 
 async function lastGroupKickoff() {
+  const seasonId = await currentSeasonId();
   const last = await prisma.scheduledFixture.findFirst({
-    where: { kind: "group" },
+    where: { seasonId, kind: "group" },
     orderBy: { scheduledAt: "desc" },
     select: { scheduledAt: true },
   });
@@ -255,8 +278,9 @@ async function bookSlot(input: {
   right: NamedTeam;
   after: Date;
 }) {
-  const existing = await prisma.scheduledFixture.findUnique({
-    where: { slotKey: input.slotKey },
+  const seasonId = await currentSeasonId();
+  const existing = await prisma.scheduledFixture.findFirst({
+    where: { seasonId, slotKey: input.slotKey },
   });
   if (existing) return existing;
 

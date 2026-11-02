@@ -5396,6 +5396,9 @@ html[data-game="pubg"] .brand-name-pubg {
 
 .pred-pick {
   appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: 1px solid rgba(228, 182, 92, 0.22);
   background: var(--bg-elev);
   color: inherit;
@@ -5442,6 +5445,12 @@ html[data-game="pubg"] .brand-name-pubg {
 .pred-pick-miss {
   border-color: rgba(224, 122, 106, 0.65);
   background: rgba(224, 122, 106, 0.12);
+}
+
+.pred-pick-x {
+  margin-left: 0.45rem;
+  color: #e07a6a;
+  font-weight: 700;
 }
 
 .pred-card-note {

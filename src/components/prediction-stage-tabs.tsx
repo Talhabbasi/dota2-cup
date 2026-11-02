@@ -45,7 +45,7 @@ export function PredictionStageTabs({
         continue;
       }
       // resolvedBracketPicks skips finished matches — keep the saved pick so
-      // Correct / Missed still shows what they actually selected.
+      // Correct / Incorrect still shows what they actually selected.
       if (pickem.actual[key]) {
         completedPicks[key] = value;
       }

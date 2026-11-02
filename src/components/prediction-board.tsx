@@ -114,6 +114,11 @@ export function PredictionBoard({
                             }
                           >
                             {team.name}
+                            {result === "loss" && selected ? (
+                              <span className="pred-pick-x" aria-hidden>
+                                ✗
+                              </span>
+                            ) : null}
                           </button>
                         );
                       })}
@@ -123,7 +128,7 @@ export function PredictionBoard({
                         ? selectedId
                           ? selectedId === fixture.winnerTeamId
                             ? `Correct · +${fixture.points}`
-                            : "Missed"
+                            : "✗ Incorrect"
                           : "No pick"
                         : stageLocked
                           ? selectedId
