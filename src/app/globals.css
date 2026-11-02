@@ -4802,6 +4802,47 @@ html[data-game="pubg"] .brand-name-pubg {
   object-fit: cover;
 }
 
+.skel {
+  display: block;
+  position: relative;
+  overflow: hidden;
+  border-radius: 0.55rem;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.teams-list-hero .skel,
+.hero-stage .skel {
+  background: rgba(8, 10, 16, 0.55);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.skel::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(240, 197, 106, 0.2),
+    transparent
+  );
+  animation: skel-shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes skel-shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.skel-panel {
+  padding: 1.1rem 1.2rem 1.2rem;
+  border-radius: 20px;
+  border: 1px solid rgba(224, 179, 74, 0.16);
+  background: linear-gradient(180deg, #181c26 0%, #12151c 100%);
+}
+
 .page-loader-text {
   margin: 0;
   color: var(--muted);
@@ -4859,7 +4900,8 @@ html[data-game="pubg"] .brand-name-pubg {
   .route-progress.is-on .route-progress-bar,
   .page-loader-orbit,
   .page-loader-ring,
-  .page-loader-gem {
+  .page-loader-gem,
+  .skel::after {
     animation: none;
   }
 
