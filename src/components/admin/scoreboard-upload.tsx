@@ -66,16 +66,22 @@ export function AdminScoreboardUpload({
         }
         setPhase("done");
         toast.success(
-          alreadyPlayed
-            ? "Player K/D/A saved"
-            : "Scoreboard saved · winner from screenshot",
+          seriesLabel
+            ? "Map saved. Upload the next scoreboard on this page."
+            : alreadyPlayed
+              ? "Player K/D/A saved"
+              : "Scoreboard saved · winner from screenshot",
         );
         formRef.current?.reset();
         setPicked(null);
         setFileName(null);
         setError(null);
-        router.push(`/admin/matches/${result.matchId}`);
-        router.refresh();
+        if (seriesLabel) {
+          router.refresh();
+        } else {
+          router.push(`/admin/matches/${result.matchId}`);
+          router.refresh();
+        }
       } catch (err) {
         const rawMsg =
           err instanceof Error && err.message.trim() ? err.message : "";
