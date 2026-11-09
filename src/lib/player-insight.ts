@@ -214,19 +214,6 @@ export async function getPublicPlayerInsight(options?: {
         : seat.match.direTeam?.name;
     const teamName = matchTeam ?? null;
 
-    if (teamName) {
-      const teamKey = teamName.toLowerCase();
-      const team = teamKills.get(teamKey) ?? {
-        name: teamName,
-        kills: 0,
-        deaths: 0,
-      };
-      team.kills += seat.kills;
-      team.deaths += seat.deaths;
-      team.name = teamName;
-      teamKills.set(teamKey, team);
-    }
-
     if (
       seat.player?.discordId.startsWith("test-dummy-") ||
       seat.player?.discordId.startsWith("test-dummy-team-")
@@ -254,7 +241,20 @@ export async function getPublicPlayerInsight(options?: {
       representedTeamId: sideTeamId,
       representedTeamName: teamName,
     });
-    if (!group) continue;
+    if (!group || group.kind !== "roster") continue;
+
+    if (teamName) {
+      const teamKey = teamName.toLowerCase();
+      const team = teamKills.get(teamKey) ?? {
+        name: teamName,
+        kills: 0,
+        deaths: 0,
+      };
+      team.kills += seat.kills;
+      team.deaths += seat.deaths;
+      team.name = teamName;
+      teamKills.set(teamKey, team);
+    }
 
     const cur = byKey.get(group.key) ?? {
       key: group.key,
@@ -276,7 +276,7 @@ export async function getPublicPlayerInsight(options?: {
     byKey.set(group.key, cur);
   }
 
-  const entries = [...byKey.values()];
+  const entries = [...byKey.values()].filter((row) => row.kind === "roster");
   const teams = [...teamKills.values()];
 
   const mostKillsRow = pickTopByValue(
@@ -353,7 +353,7 @@ export async function getPublicPlayerInsight(options?: {
           value: mostTeamKillsRow.kills,
           valueLabel: `${mostTeamKillsRow.kills} kills`,
           detail: awardDetail(
-            "All seats for this franchise",
+            "Roster seats for this franchise",
             mostTeamKillsRow.tieDetail,
           ),
           kind: "roster",
@@ -367,7 +367,7 @@ export async function getPublicPlayerInsight(options?: {
           value: mostTeamDeathsRow.deaths,
           valueLabel: `${mostTeamDeathsRow.deaths} deaths`,
           detail: awardDetail(
-            "All seats for this franchise",
+            "Roster seats for this franchise",
             mostTeamDeathsRow.tieDetail,
           ),
           kind: "roster",

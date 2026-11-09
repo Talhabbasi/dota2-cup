@@ -27,9 +27,13 @@ export function PredictionLeaderboard({
         {rows.map((row) => (
           <li
             key={row.playerId}
-            className={
-              row.isYou ? "pred-points-row pred-points-you" : "pred-points-row"
-            }
+            className={[
+              "pred-points-row",
+              row.rank === 1 ? "pred-points-top" : "",
+              row.isYou ? "pred-points-you" : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
           >
             <span
               className={`rank${row.rank <= 3 ? ` rank-${row.rank}` : ""}`}
@@ -38,8 +42,17 @@ export function PredictionLeaderboard({
               {row.rank}
             </span>
             <span className="pred-points-name">
-              {row.name}
-              {row.isYou ? <span className="pred-you-tag">You</span> : null}
+              <span className="pred-points-who">
+                {row.name}
+                {row.rank === 1 ? (
+                  <span className="pred-you-tag">Top</span>
+                ) : null}
+                {row.isYou ? <span className="pred-you-tag">You</span> : null}
+              </span>
+              <span className="pred-points-meta">
+                {row.correct} correct · {row.incorrect} incorrect ·{" "}
+                {row.accuracyPct}%
+              </span>
             </span>
             <strong className="pred-points-value">{row.points}</strong>
           </li>

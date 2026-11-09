@@ -834,7 +834,14 @@ export async function actionIngestScoreboardScreenshot(
     }
     const fixture = await prisma.scheduledFixture.findUnique({
       where: { id: fixtureId },
-      select: { id: true, status: true, matchId: true },
+      select: {
+        id: true,
+        status: true,
+        matchId: true,
+        bestOf: true,
+        radiantWins: true,
+        direWins: true,
+      },
     });
     if (!fixture) {
       return { ok: false, error: "That fixture is missing." };
@@ -842,12 +849,39 @@ export async function actionIngestScoreboardScreenshot(
     if (fixture.status !== "scheduled" && fixture.status !== "completed") {
       return { ok: false, error: "That fixture cannot take a scoreboard." };
     }
-    if (fixture.status === "completed" && !fixture.matchId) {
+    if (fixture.status === "completed" && !fixture.matchId && (fixture.bestOf ?? 1) <= 1) {
       return {
         ok: false,
         error: "That result has no match yet. Upload the scoreboard before marking a winner.",
       };
     }
+    const { planSeriesUpload } = await import("@/lib/series-games");
+    const storedScoreboards = await prisma.match.count({
+      where: {
+        OR: [
+          { seriesFixtureId: fixture.id },
+          ...(fixture.matchId ? [{ id: fixture.matchId }] : []),
+        ],
+        players: { some: {} },
+      },
+    });
+    const plan = planSeriesUpload({
+      bestOf: fixture.bestOf,
+      status: fixture.status,
+      radiantWins: fixture.radiantWins,
+      direWins: fixture.direWins,
+      matchId: fixture.matchId,
+      storedScoreboards,
+    });
+    if (plan.kind === "closed") {
+      return {
+        ok: false,
+        error:
+          "This series already has a scoreboard for each recorded map. Open a game below and upload there to replace that map.",
+      };
+    }
+    const replaceMatchId = plan.kind === "bo1" || plan.kind === "first" ? plan.matchId : null;
+    const countSeries = plan.kind !== "recover";
     const file = formData.get("screenshot");
     if (!(file instanceof File) || file.size === 0) {
       return { ok: false, error: "Choose a SCOREBOARD screenshot to upload." };
@@ -901,7 +935,9 @@ export async function actionIngestScoreboardScreenshot(
         sourceId: `admin-${fixtureId.slice(0, 8)}-${Date.now()}`,
         knownNames,
         fixtureId,
-        matchId: fixture.matchId,
+        matchId: replaceMatchId,
+        countSeries,
+        skipStub: plan.kind === "append" || plan.kind === "recover",
       });
     } catch (error) {
       console.error("Scoreboard OCR ingest failed:", error);

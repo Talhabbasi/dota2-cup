@@ -24,6 +24,7 @@ import {
   AdminSubmitButton,
 } from "@/components/admin/form-controls";
 import { AdminScoreboardUpload } from "@/components/admin/scoreboard-upload";
+import { planSeriesUpload } from "@/lib/series-games";
 import {
   actionDeleteFixture,
   actionRecordFixtureWinner,
@@ -88,7 +89,26 @@ export default async function AdminFixtureDetailPage({
     include: {
       radiantTeam: { select: { id: true, name: true } },
       direTeam: { select: { id: true, name: true } },
-      match: { select: { id: true, winnerTeamId: true, openDotaId: true } },
+      match: {
+        select: {
+          id: true,
+          winnerTeamId: true,
+          openDotaId: true,
+          _count: { select: { players: true } },
+        },
+      },
+      seriesGames: {
+        orderBy: [{ gameNumber: "asc" }, { createdAt: "asc" }],
+        select: {
+          id: true,
+          gameNumber: true,
+          radiantScore: true,
+          direScore: true,
+          winnerTeamId: true,
+          screenshotPath: true,
+          _count: { select: { players: true } },
+        },
+      },
     },
   });
   if (!fixture) notFound();
@@ -113,6 +133,30 @@ export default async function AdminFixtureDetailPage({
             ? teamB
             : null;
   const wasWalkover = Boolean(fixture.match?.openDotaId?.startsWith("walkover-"));
+  const seriesMaps = fixture.seriesGames.filter((game) => game._count.players > 0);
+  const storedScoreboards =
+    seriesMaps.length > 0
+      ? seriesMaps.length
+      : (fixture.match?._count.players ?? 0) > 0
+        ? 1
+        : 0;
+  const uploadPlan = planSeriesUpload({
+    bestOf: fixture.bestOf,
+    status: fixture.status,
+    radiantWins: fixture.radiantWins,
+    direWins: fixture.direWins,
+    matchId: fixture.matchId,
+    storedScoreboards,
+  });
+  const nextGameNumber = seriesMaps.length + 1;
+  const seriesLabel =
+    fixture.bestOf > 1
+      ? uploadPlan.kind === "closed"
+        ? `Bo${fixture.bestOf} is ${fixture.radiantWins}–${fixture.direWins}. Each map is saved separately. Open a game to replace that scoreboard.`
+        : uploadPlan.kind === "recover"
+          ? `Bo${fixture.bestOf} is ${fixture.radiantWins}–${fixture.direWins}, with ${seriesMaps.length} scoreboard${seriesMaps.length === 1 ? "" : "s"} saved. This upload adds the missing map and does not change the series score.`
+          : `Bo${fixture.bestOf} · this upload saves Game ${nextGameNumber}. Earlier games stay saved.`
+      : null;
 
   return (
     <div className="page">
@@ -129,13 +173,58 @@ export default async function AdminFixtureDetailPage({
         ]}
       />
 
-      {canEdit ? (
+      {canEdit && uploadPlan.kind !== "closed" ? (
         <AdminScoreboardUpload
           fixtureId={fixture.id}
           teamA={teamA}
           teamB={teamB}
-          alreadyPlayed={!isPending}
+          alreadyPlayed={!isPending && fixture.bestOf <= 1}
+          seriesLabel={seriesLabel}
         />
+      ) : null}
+
+      {fixture.bestOf > 1 ? (
+        <AdminCard className="mb-6">
+          <AdminSection title={`Maps · Bo${fixture.bestOf}`}>
+            {seriesMaps.length === 0 ? (
+              <p className="m-0 text-sm text-muted-foreground">
+                No scoreboard saved yet. Series {fixture.radiantWins}–{fixture.direWins}.
+              </p>
+            ) : (
+              <ul className="m-0 grid list-none gap-2 p-0">
+                {seriesMaps.map((game) => {
+                  const gameWinner =
+                    game.winnerTeamId === fixture.radiantTeamId
+                      ? teamA
+                      : game.winnerTeamId === fixture.direTeamId
+                        ? teamB
+                        : null;
+                  return (
+                    <li key={game.id} className="text-sm">
+                      <a
+                        href={`/admin/matches/${game.id}?season=${view.id}`}
+                        className="text-primary underline-offset-2 hover:underline"
+                      >
+                        Game {game.gameNumber ?? "—"}
+                      </a>
+                      <span className="text-muted-foreground">
+                        {" "}
+                        · {game.radiantScore ?? "?"}–{game.direScore ?? "?"}
+                        {gameWinner ? ` · ${gameWinner}` : ""}
+                        {game.screenshotPath ? "" : " · no screenshot"}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            {uploadPlan.kind === "closed" ? (
+              <p className="mt-3 mb-0 text-sm text-muted-foreground">
+                {seriesLabel}
+              </p>
+            ) : null}
+          </AdminSection>
+        </AdminCard>
       ) : null}
 
       {isPending && canEdit ? (

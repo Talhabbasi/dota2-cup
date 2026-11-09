@@ -24,12 +24,15 @@ export function AdminScoreboardUpload({
   teamA,
   teamB,
   alreadyPlayed = false,
+  seriesLabel = null,
 }: {
   fixtureId: string;
   teamA: string;
   teamB: string;
   /** Winner is already saved. This upload only fills player K/D/A. */
   alreadyPlayed?: boolean;
+  /** BO3: explains whether this upload adds a map or fills the only one. */
+  seriesLabel?: string | null;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
   const [pending, startTransition] = useTransition();
@@ -108,7 +111,9 @@ export function AdminScoreboardUpload({
         title={alreadyPlayed ? "Add player K/D/A" : "Option A · Upload scoreboard"}
       >
         <p className="m-0 text-sm text-muted-foreground">
-          {alreadyPlayed ? (
+          {seriesLabel ? (
+            seriesLabel
+          ) : alreadyPlayed ? (
             <>
               Upload the SCOREBOARD tab for <strong>{teamA}</strong> vs{" "}
               <strong>{teamB}</strong>. Player K/D/A is saved on this match.

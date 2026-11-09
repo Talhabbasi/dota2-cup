@@ -541,11 +541,16 @@ export async function parseScoreboardImage(
   );
 }
 
+const HERO_NAME_ALIASES: Record<string, string> = {
+  larksh: "largo",
+  outworlddevourer: "outworlddestroyer",
+};
+
 function resolveHero(
   name: string,
   heroes: { id: number; name: string; slug: string }[],
 ) {
-  const want = norm(name);
+  const want = HERO_NAME_ALIASES[norm(name)] ?? norm(name);
   return (
     heroes.find((h) => norm(h.name) === want) ??
     heroes.find((h) => norm(h.name).includes(want) || want.includes(norm(h.name)))
@@ -803,7 +808,7 @@ export async function applyParsedScoreboard(
   screenshotPath?: string | null,
   sourceId?: string | null,
   fixtureId?: string | null,
-  options?: { matchId?: string | null },
+  options?: { matchId?: string | null; countSeries?: boolean; skipStub?: boolean },
 ) {
   if (parsed.players.length < 8) {
     throw new Error("That screenshot does not look like a 10-player scoreboard.");
@@ -884,6 +889,7 @@ export async function applyParsedScoreboard(
         select: {
           id: true,
           status: true,
+          bestOf: true,
           matchId: true,
           radiantTeamId: true,
           direTeamId: true,
@@ -892,10 +898,12 @@ export async function applyParsedScoreboard(
         },
       })
     : null;
+  const allowFinishedSeries = options?.countSeries === false;
   if (
     fixtureId &&
     !pinnedMatch &&
-    (!linkedFixture || linkedFixture.status !== "scheduled")
+    (!linkedFixture ||
+      (linkedFixture.status !== "scheduled" && !allowFinishedSeries))
   ) {
     throw new Error(
       "That scheduled match is missing or already completed. Open the pending fixture from Schedule.",
@@ -936,7 +944,7 @@ export async function applyParsedScoreboard(
     : radiantTeam && direTeam
       ? [radiantTeam, direTeam]
       : null;
-  if (!existing && !pinnedMatch && stubTeams) {
+  if (!existing && !pinnedMatch && !options?.skipStub && stubTeams) {
     const [teamA, teamB] = stubTeams;
     const stubs = await prisma.match.findMany({
       where: {
@@ -1099,27 +1107,48 @@ export async function applyParsedScoreboard(
         include: MATCH_INCLUDE,
       });
 
-  const fixtureAlreadyHasThisMatch =
-    linkedFixture?.matchId != null && linkedFixture.matchId === existing?.id;
-  if (
-    existing?.scheduledFixture?.status !== "completed" &&
-    !fixtureAlreadyHasThisMatch
-  ) {
+  const seriesBestOf = linkedFixture?.bestOf ?? 1;
+  if (linkedFixture && seriesBestOf > 1) {
     try {
-      const { completeScheduledFixture } = await import("./schedule");
-      await completeScheduledFixture({
-        radiantTeamId: match.radiantTeamId,
-        direTeamId: match.direTeamId,
-        winnerTeamId: match.winnerTeamId,
-        matchId: match.id,
-        fixtureId: linkedFixture?.id ?? null,
-      });
+      const { attachMatchToSeries, syncSeriesFromGames } = await import(
+        "./series-games"
+      );
+      await attachMatchToSeries(linkedFixture.id, match.id);
+      if (options?.countSeries !== false) {
+        const shouldPoint =
+          linkedFixture.matchId == null ||
+          linkedFixture.matchId === match.id ||
+          !existing;
+        await syncSeriesFromGames(linkedFixture.id, {
+          pointAtMatchId: shouldPoint ? match.id : null,
+        });
+      }
     } catch {
       /* schedule optional */
     }
+  } else {
+    const fixtureAlreadyHasThisMatch =
+      linkedFixture?.matchId != null && linkedFixture.matchId === existing?.id;
+    if (
+      existing?.scheduledFixture?.status !== "completed" &&
+      !fixtureAlreadyHasThisMatch
+    ) {
+      try {
+        const { completeScheduledFixture } = await import("./schedule");
+        await completeScheduledFixture({
+          radiantTeamId: match.radiantTeamId,
+          direTeamId: match.direTeamId,
+          winnerTeamId: match.winnerTeamId,
+          matchId: match.id,
+          fixtureId: linkedFixture?.id ?? null,
+        });
+      } catch {
+        /* schedule optional */
+      }
+    }
   }
 
-  if (match.winnerTeamId) {
+  if (match.winnerTeamId && seriesBestOf <= 1) {
     const finished = await prisma.scheduledFixture.findFirst({
       where: { matchId: match.id, status: "completed" },
       select: { id: true },
@@ -1301,6 +1330,10 @@ export async function ingestScoreboardScreenshot(input: {
   fixtureId?: string | null;
   /** Write seats onto this match instead of creating another row. */
   matchId?: string | null;
+  /** BO3: false stores a missing map without changing the series score. */
+  countSeries?: boolean;
+  /** BO3: do not reuse a recent manual stub from another map. */
+  skipStub?: boolean;
 }) {
   const knownNames =
     input.knownNames ?? (await listScoreboardKnownNames());
@@ -1314,7 +1347,11 @@ export async function ingestScoreboardScreenshot(input: {
     input.screenshotPath,
     input.sourceId,
     input.fixtureId,
-    { matchId: input.matchId },
+    {
+      matchId: input.matchId,
+      countSeries: input.countSeries,
+      skipStub: input.skipStub,
+    },
   );
 }
 

@@ -220,10 +220,17 @@ export type PredictionLeaderRow = {
   name: string;
   points: number;
   correct: number;
+  incorrect: number;
   picks: number;
+  accuracyPct: number;
   barPct: number;
   isYou: boolean;
 };
+
+export function predictionAccuracyPct(correct: number, picks: number) {
+  if (picks <= 0) return 0;
+  return Math.round((correct / picks) * 100);
+}
 
 const MAX_PREDICTION_BATCH = 40;
 
@@ -863,7 +870,9 @@ export async function getPredictionLeaderboard(
     name: row.name,
     points: row.points,
     correct: row.correct,
+    incorrect: Math.max(0, row.picks - row.correct),
     picks: row.picks,
+    accuracyPct: predictionAccuracyPct(row.correct, row.picks),
     barPct: maxPoints > 0 ? Math.round((row.points / maxPoints) * 100) : 0,
     isYou: Boolean(youPlayerId && youPlayerId === playerId),
   }));

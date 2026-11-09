@@ -293,11 +293,16 @@ model Match {
   startedAt      DateTime?
   createdAt      DateTime @default(now())
   players        MatchPlayer[]
-  scheduledFixture ScheduledFixture?
+  scheduledFixture ScheduledFixture? @relation("FixtureResult")
+  /// BO3+ maps share one fixture. BO1 leaves this empty and uses FixtureResult.
+  seriesFixtureId String?
+  gameNumber      Int?
+  seriesFixture   ScheduledFixture? @relation("SeriesGames", fields: [seriesFixtureId], references: [id], onDelete: SetNull)
 
   @@index([createdAt])
   @@index([winnerTeamId])
   @@index([seasonId])
+  @@index([seriesFixtureId])
 }
 
 model ScheduledFixture {
@@ -318,7 +323,8 @@ model ScheduledFixture {
   status        String   @default("scheduled")
   reminderSent  Boolean  @default(false)
   matchId       String?  @unique
-  match         Match?   @relation(fields: [matchId], references: [id], onDelete: SetNull)
+  match         Match?   @relation("FixtureResult", fields: [matchId], references: [id], onDelete: SetNull)
+  seriesGames   Match[]  @relation("SeriesGames")
   slotKey       String?
   createdAt     DateTime @default(now())
   predictions   MatchPrediction[]

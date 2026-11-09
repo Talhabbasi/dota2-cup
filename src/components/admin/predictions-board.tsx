@@ -21,7 +21,9 @@ export type AdminPredictionRow = {
   name: string;
   points: number;
   correct: number;
+  incorrect: number;
   picks: number;
+  accuracyPct: number;
 };
 
 export function AdminPredictionsBoard({
@@ -89,6 +91,8 @@ export function AdminPredictionsBoard({
                 <EsportsTableHead>Name</EsportsTableHead>
                 <EsportsTableHead>Points</EsportsTableHead>
                 <EsportsTableHead>Correct</EsportsTableHead>
+                <EsportsTableHead>Incorrect</EsportsTableHead>
+                <EsportsTableHead>Accuracy</EsportsTableHead>
                 <EsportsTableHead>Picks</EsportsTableHead>
               </EsportsTableRow>
             </EsportsTableHeader>
@@ -106,6 +110,12 @@ export function AdminPredictionsBoard({
                   </EsportsTableCell>
                   <EsportsTableCell className="tabular-nums">
                     {row.correct}
+                  </EsportsTableCell>
+                  <EsportsTableCell className="tabular-nums">
+                    {row.incorrect}
+                  </EsportsTableCell>
+                  <EsportsTableCell className="tabular-nums">
+                    {row.accuracyPct}%
                   </EsportsTableCell>
                   <EsportsTableCell className="tabular-nums text-muted-foreground">
                     {row.picks}

@@ -197,6 +197,20 @@ export default async function PredictionsPage() {
       </EsportsCard>
 
       <section className="pred-section">
+        {board.revealed && board.rows[0] ? (
+          <EsportsCard interactive={false} className="mb-4 border-amber-500/30 p-5">
+            <p className="m-0 text-[0.68rem] font-semibold tracking-[0.16em] text-amber-300 uppercase">
+              Highest prediction
+            </p>
+            <h2 className="mt-2 mb-1 font-display text-2xl">{board.rows[0].name}</h2>
+            <p className="m-0 text-sm text-muted-foreground">
+              Rank #{board.rows[0].rank} · {board.rows[0].points} pts ·{" "}
+              {board.rows[0].picks} submitted · {board.rows[0].correct} correct ·{" "}
+              {board.rows[0].incorrect} incorrect · {board.rows[0].accuracyPct}%
+              accuracy
+            </p>
+          </EsportsCard>
+        ) : null}
         {board.revealed ? (
           <EsportsCard interactive={false} className="overflow-hidden p-0">
             <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3 sm:px-5">

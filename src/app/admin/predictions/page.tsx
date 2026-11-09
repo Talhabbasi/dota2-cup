@@ -39,7 +39,9 @@ export default async function AdminPredictionsPage({
           name: row.name,
           points: row.points,
           correct: row.correct,
+          incorrect: row.incorrect,
           picks: row.picks,
+          accuracyPct: row.accuracyPct,
         }))}
       />
     </div>

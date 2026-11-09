@@ -5630,12 +5630,31 @@ html[data-game="pubg"] .brand-name-pubg {
 
 .pred-points-name {
   font-weight: 650;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.pred-points-who {
+  display: flex;
+  align-items: center;
+  max-width: 100%;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  display: flex;
-  align-items: center;
-  min-width: 0;
+}
+
+.pred-points-meta {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.pred-points-top {
+  border-color: rgba(224, 179, 74, 0.55);
 }
 
 .pred-points-value {

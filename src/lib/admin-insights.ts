@@ -218,12 +218,6 @@ export async function getAdminInsights(
 
     const teamName = matchTeamName(seat);
 
-    if (teamName) {
-      const teamKey = `team:${teamName.toLowerCase()}`;
-      bump(teamKills, teamKey, teamName, teamName, "roster", seat.kills);
-      bump(teamDeaths, teamKey, teamName, teamName, "roster", seat.deaths);
-    }
-
     const original = seat.playerId
       ? originalByPlayer.get(seat.playerId)
       : undefined;
@@ -252,14 +246,15 @@ export async function getAdminInsights(
       bump(standInKills, group.key, group.name, group.teamName, "standin", seat.kills);
       bump(standInAssists, group.key, group.name, group.teamName, "standin", seat.assists);
       bump(standInGames, group.key, group.name, group.teamName, "standin", 1);
-      bump(kills, group.key, group.name, group.teamName, "standin", seat.kills);
-      bump(assists, group.key, group.name, group.teamName, "standin", seat.assists);
-      bump(deaths, group.key, group.name, group.teamName, "standin", seat.deaths);
-      bump(games, group.key, group.name, group.teamName, "standin", 1);
       continue;
     }
 
     linkedSeats += 1;
+    if (teamName) {
+      const teamKey = `team:${teamName.toLowerCase()}`;
+      bump(teamKills, teamKey, teamName, teamName, "roster", seat.kills);
+      bump(teamDeaths, teamKey, teamName, teamName, "roster", seat.deaths);
+    }
     const name = group.name;
     const displayTeam = group.teamName;
     const key = group.key;
