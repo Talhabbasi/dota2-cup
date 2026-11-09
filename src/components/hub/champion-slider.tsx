@@ -32,52 +32,56 @@ export function ChampionSlider({ slides }: { slides: ChampionSlide[] }) {
   if (!slide) return null;
 
   return (
-    <div className="arena-slider">
-      {slides.map((item, itemIndex) => (
-        <Image
-          key={item.id}
-          src={item.image}
-          alt={itemIndex === safe ? item.alt : ""}
-          fill
-          priority={itemIndex === 0}
-          sizes="100vw"
-          className={itemIndex === safe ? "arena-hero-photo is-on" : "arena-hero-photo"}
-        />
-      ))}
-      <div className="arena-slider-caption">
-        <p>{slide.label}</p>
-        <strong>{slide.team}</strong>
-        {slide.player ? <span>Winner {slide.player}</span> : null}
-        <Link href={slide.href}>Season page</Link>
+    <>
+      <div className="arena-slider">
+        {slides.map((item, itemIndex) => (
+          <Image
+            key={item.id}
+            src={item.image}
+            alt={itemIndex === safe ? item.alt : ""}
+            fill
+            priority={itemIndex === 0}
+            sizes="100vw"
+            className={itemIndex === safe ? "arena-hero-photo is-on" : "arena-hero-photo"}
+          />
+        ))}
       </div>
-      {count > 1 ? (
-        <div className="arena-slider-controls">
-          <button
-            type="button"
-            aria-label="Previous champion"
-            onClick={() => setIndex((current) => (current - 1 + count) % count)}
-          >
-            Prev
-          </button>
-          {slides.map((item, itemIndex) => (
-            <button
-              key={item.id}
-              type="button"
-              aria-label={item.label}
-              aria-current={itemIndex === safe ? "true" : undefined}
-              className={itemIndex === safe ? "is-on" : ""}
-              onClick={() => setIndex(itemIndex)}
-            />
-          ))}
-          <button
-            type="button"
-            aria-label="Next champion"
-            onClick={() => setIndex((current) => (current + 1) % count)}
-          >
-            Next
-          </button>
+      <div className="arena-slider-panel">
+        <div className="arena-slider-caption">
+          <p>{slide.label}</p>
+          <strong>{slide.team}</strong>
+          {slide.player ? <span>Winner {slide.player}</span> : null}
+          <Link href={slide.href}>Season page</Link>
         </div>
-      ) : null}
-    </div>
+        {count > 1 ? (
+          <div className="arena-slider-controls">
+            <button
+              type="button"
+              aria-label="Previous champion"
+              onClick={() => setIndex((current) => (current - 1 + count) % count)}
+            >
+              Prev
+            </button>
+            {slides.map((item, itemIndex) => (
+              <button
+                key={item.id}
+                type="button"
+                aria-label={item.label}
+                aria-current={itemIndex === safe ? "true" : undefined}
+                className={itemIndex === safe ? "is-on" : ""}
+                onClick={() => setIndex(itemIndex)}
+              />
+            ))}
+            <button
+              type="button"
+              aria-label="Next champion"
+              onClick={() => setIndex((current) => (current + 1) % count)}
+            >
+              Next
+            </button>
+          </div>
+        ) : null}
+      </div>
+    </>
   );
 }
