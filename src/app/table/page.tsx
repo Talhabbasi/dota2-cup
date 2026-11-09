@@ -8,6 +8,7 @@ import {
 } from "@/lib/season-data";
 import { getGroupStandings } from "@/lib/group-stage-schedule";
 import { getStandings } from "@/lib/data";
+import { SeasonLinks } from "@/components/season-links";
 import { getPublicSeasonContext } from "@/lib/season-page";
 import { livePageMeta } from "@/lib/seo";
 import { isPubgSeason, pubgModeLabel } from "@/lib/games";
@@ -30,7 +31,7 @@ export default async function TablePage({
   searchParams: Promise<{ season?: string }>;
 }) {
   const sp = await searchParams;
-  const { view, seasonId } = await getPublicSeasonContext(sp);
+  const { view, seasonId, seasons } = await getPublicSeasonContext(sp);
   const seasonRow = seasonId
     ? await prisma.season.findUnique({
         where: { id: seasonId },
@@ -42,6 +43,7 @@ export default async function TablePage({
     return (
       <div className="page table-page">
         <SeasonArchiveBannerServer season={sp.season} />
+        <SeasonLinks seasons={seasons} currentId={seasonId} noun="table" />
         <PageHeader
           eyebrow={`${seasonRow?.name ?? "PUBG"} · ${pubgModeLabel(seasonRow?.pubgMode)}`}
           title="Points table"
@@ -118,6 +120,7 @@ export default async function TablePage({
   return (
     <div className="page table-page">
       <SeasonArchiveBannerServer season={sp.season} />
+      <SeasonLinks seasons={seasons} currentId={seasonId} noun="table" />
       <PageHeader
         eyebrow="Standings"
         title={view ? `Table · Season ${view.number}` : "Standings"}

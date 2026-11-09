@@ -1,0 +1,30 @@
+---
+description: MM Arena visual theme for new public UI
+alwaysApply: true
+---
+
+# MM Arena theme
+
+New public pages and components follow the MM Arena command-center theme already used on the hub homepage.
+
+## Tokens
+
+Use the CSS variables in `src/app/globals.css`. Do not introduce a second palette.
+
+- Background `#080B12`, secondary `#0E1420`, card `#161D2A`, elevated `#1E2838`
+- Accent `#F5AE28`, hover `#FFBF47`, live `#36D6BF`
+- Text `#F8FAFC`, secondary `#A6AFBD`, muted `#697586`
+- Borders `rgba(255,255,255,0.08)`
+
+Gold is for the active state, a primary button, or one status mark. Do not paint every card gold.
+
+## Type and layout
+
+- Headings: Rajdhani (`--font-rajdhani`). Body: Inter (`--font-inter`). Scores use tabular numerals.
+- Content width matches `.page` / `.arena-wrap` (about 1360px).
+- Section spacing stays even. Cards use about 16px radius and the shared border.
+- Motion stays under 250ms and respects `prefers-reduced-motion`.
+
+## Data
+
+Show real season, team, and player records. Do not invent scores, winners, or roster names. A missing winner is an empty state.

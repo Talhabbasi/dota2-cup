@@ -9,8 +9,12 @@ import {
   MatchStatusBadge,
   TeamBadge,
 } from "@/components/common";
-import { formatMatchWhen } from "@/lib/format";
+import { formatDuration, formatMatchWhen } from "@/lib/format";
 import { matchKillTotals, type MatchPlayerKills } from "@/lib/match-score";
+import {
+  classifyMatchNarrative,
+  type MatchNarrative,
+} from "@/lib/match-narrative";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -28,6 +32,10 @@ export type MatchCardMatch = {
   createdAt?: Date | string;
   bestOf?: number | null;
   scheduledFixture?: { bestOf: number } | null;
+  narrative?: MatchNarrative | null;
+  roundLabel?: string | null;
+  seasonLabel?: string | null;
+  seasonId?: string | null;
 };
 
 function MatchSide({
@@ -58,7 +66,9 @@ function MatchSide({
           lost && "[&_span]:text-slate-500!",
         )}
       >
-        {won ? <Trophy className="size-3.5 shrink-0 text-amber-400" aria-hidden /> : null}
+        {won ? (
+          <Trophy className="size-3.5 shrink-0 text-amber-400" aria-hidden />
+        ) : null}
         <TeamBadge name={name} side={side} showName size="md" />
       </div>
     </div>
@@ -84,11 +94,27 @@ export const MatchCard = memo(function MatchCard({
     : match.radiantWin === false;
   const finished = radiantWon || direWon;
   const bestOf = match.bestOf ?? match.scheduledFixture?.bestOf ?? 1;
+  const contextLine = [match.seasonLabel, match.roundLabel].filter(Boolean).join(" · ");
+  const shownKicker = kicker || contextLine || undefined;
 
   const { radiantKills, direKills, hasScore } = matchKillTotals(match.players, {
     radiantScore: match.radiantScore,
     direScore: match.direScore,
   });
+
+  const narrative =
+    match.narrative ??
+    classifyMatchNarrative({
+      duration: match.duration,
+      radiantKills,
+      direKills,
+      hasScore,
+    });
+
+  const durationLabel =
+    match.duration && match.duration > 0
+      ? formatDuration(match.duration)
+      : null;
 
   return (
     <Link
@@ -99,11 +125,11 @@ export const MatchCard = memo(function MatchCard({
       <EsportsCard className="relative px-4 py-4 sm:px-5">
         <div className="flex items-center gap-3">
           <div className="min-w-0 flex-1">
-            {kicker || (showDate && match.createdAt) ? (
+            {shownKicker || (showDate && match.createdAt) ? (
               <div className="mb-3 flex items-center justify-between gap-3">
-                {kicker ? (
+                {shownKicker ? (
                   <span className="text-[0.65rem] font-semibold tracking-[0.16em] text-primary uppercase">
-                    {kicker}
+                    {shownKicker}
                   </span>
                 ) : (
                   <span />
@@ -117,7 +143,12 @@ export const MatchCard = memo(function MatchCard({
             ) : null}
 
             <div className="grid items-center gap-4 md:grid-cols-[1fr_auto_1fr]">
-              <MatchSide name={radiant} side="radiant" won={radiantWon} lost={direWon} />
+              <MatchSide
+                name={radiant}
+                side="radiant"
+                won={radiantWon}
+                lost={direWon}
+              />
 
               <div className="flex flex-col items-center gap-2">
                 <p
@@ -168,8 +199,33 @@ export const MatchCard = memo(function MatchCard({
                 )}
               </div>
 
-              <MatchSide name={dire} side="dire" won={direWon} lost={radiantWon} />
+              <MatchSide
+                name={dire}
+                side="dire"
+                won={direWon}
+                lost={radiantWon}
+              />
             </div>
+
+            {narrative || durationLabel ? (
+              <div className="match-card-read">
+                {narrative && narrative.kind !== "standard" ? (
+                  <span
+                    className={cn(
+                      "match-kind-badge",
+                      `match-kind-${narrative.kind}`,
+                    )}
+                  >
+                    {narrative.label}
+                  </span>
+                ) : null}
+                <span className="match-card-read-copy">
+                  {[narrative?.blurb, durationLabel ? `${durationLabel} played` : null]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </span>
+              </div>
+            ) : null}
           </div>
 
           <span

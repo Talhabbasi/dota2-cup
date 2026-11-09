@@ -8,6 +8,7 @@ import { toIso } from "@/lib/format";
 import { PLAY_WINDOW_SHORT, playWindowOrBoth } from "@/lib/play-window";
 import { isRosterSub } from "@/lib/roles";
 import { loadPlayersForSeason } from "@/lib/season-data";
+import { SeasonLinks } from "@/components/season-links";
 import { getPublicSeasonContext } from "@/lib/season-page";
 import { livePageMeta } from "@/lib/seo";
 import { formatSeasonStartDate, seasonPlanLine } from "@/lib/season-constants";
@@ -33,7 +34,7 @@ export default async function PlayersPage({
   searchParams: Promise<{ season?: string }>;
 }) {
   const sp = await searchParams;
-  const { view, seasonId } = await getPublicSeasonContext(sp);
+  const { view, seasonId, seasons } = await getPublicSeasonContext(sp);
   const players = seasonId ? await loadPlayersForSeason(seasonId) : [];
 
   const views: PlayerCardView[] = players.map((p) => ({
@@ -62,6 +63,7 @@ export default async function PlayersPage({
   return (
     <div className="page players-list-page">
       <SeasonArchiveBannerServer season={sp.season} />
+      <SeasonLinks seasons={seasons} currentId={seasonId} noun="players" />
       <PageHeader
         className="players-list-hero"
         eyebrow={

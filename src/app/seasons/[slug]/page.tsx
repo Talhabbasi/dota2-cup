@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { unstable_cache } from "next/cache";
 import { notFound } from "next/navigation";
@@ -7,6 +8,7 @@ import { PageHeader } from "@/components/common";
 import { PlayerInsightAwardsGrid } from "@/components/player-insight-awards";
 import { CUP_NAME, PUBG_CUP_NAME } from "@/lib/brand";
 import { getPublicPlayerInsight } from "@/lib/player-insight";
+import { championRosterArt } from "@/lib/season-champion-art";
 import {
   getSeasonHistory,
   type SeasonHistoryRow,
@@ -124,6 +126,7 @@ export default async function SeasonDetailPage({
   const starters =
     season.champion?.players.filter((player) => !player.isSub) ?? [];
   const subs = season.champion?.players.filter((player) => player.isSub) ?? [];
+  const art = championRosterArt(season.game, season.number);
 
   return (
     <div className="page seasons-page">
@@ -143,7 +146,13 @@ export default async function SeasonDetailPage({
         ]}
       />
 
-      <article className="season-history-card mb-8">
+      <article className={art ? "season-history-card has-art mb-8" : "season-history-card mb-8"}>
+        {art ? (
+          <div className="season-history-art">
+            <Image src={art.src} alt={art.alt} fill sizes="(max-width: 760px) 100vw, 420px" />
+          </div>
+        ) : null}
+        <div className="season-history-body">
         <header>
           <p className="eyebrow">
             Champions
@@ -151,6 +160,8 @@ export default async function SeasonDetailPage({
           </p>
           <h2>Season {season.number}</h2>
         </header>
+
+        {art ? <p className="season-history-lineup">{art.lineup}</p> : null}
 
         {season.champion ? (
           <>
@@ -191,6 +202,7 @@ export default async function SeasonDetailPage({
         ) : (
           <p className="muted">No champion recorded for this season.</p>
         )}
+        </div>
       </article>
 
       <section aria-label={`Season ${season.number} player insight`}>

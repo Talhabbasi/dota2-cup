@@ -518,6 +518,41 @@ export async function listPublicSeasons(): Promise<PublicSeasonRow[]> {
   return rows.map((row) => toPublicSeasonRow(row, live?.id));
 }
 
+export type FeaturedSeasonState = "live" | "upcoming" | "archive" | "empty";
+
+export type FeaturedSeasonForGame = {
+  game: (typeof CUP_GAME)[keyof typeof CUP_GAME];
+  state: FeaturedSeasonState;
+  season: PublicSeasonRow | null;
+};
+
+/** Hub card spotlight for one game — live if that game is active, else upcoming, else newest. */
+export async function getFeaturedSeasonForGame(
+  game: (typeof CUP_GAME)[keyof typeof CUP_GAME],
+): Promise<FeaturedSeasonForGame> {
+  const seasons = await listPublicSeasons();
+  const forGame = seasons.filter((row) => parseCupGame(row.game) === game);
+  const live = forGame.find((row) => row.isActive) ?? null;
+  if (live && live.status !== SEASON_STATUS.archived) {
+    return { game, state: "live", season: live };
+  }
+  const upcoming =
+    forGame.find(
+      (row) =>
+        row.status === SEASON_STATUS.upcoming ||
+        row.phase === SEASON_PHASE.UPCOMING ||
+        row.phase === SEASON_PHASE.AUCTION_ACTIVE,
+    ) ?? null;
+  if (upcoming) return { game, state: "upcoming", season: upcoming };
+  const newest = forGame[0] ?? null;
+  if (!newest) return { game, state: "empty", season: null };
+  return {
+    game,
+    state: newest.status === SEASON_STATUS.archived ? "archive" : "upcoming",
+    season: newest,
+  };
+}
+
 export async function getSeasonByIdOrNumber(
   idOrNumber: string,
 ): Promise<PublicSeasonRow | null> {

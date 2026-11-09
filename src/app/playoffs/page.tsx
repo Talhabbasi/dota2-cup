@@ -9,6 +9,7 @@ import {
   loadGroupStandingsForSeason,
 } from "@/lib/season-data";
 import { getPlayoffView } from "@/lib/playoff";
+import { SeasonLinks } from "@/components/season-links";
 import { getPublicSeasonContext } from "@/lib/season-page";
 import { listCupSchedule } from "@/lib/schedule-crud";
 import { getSeasonSnapshotBracket } from "@/lib/seasons";
@@ -29,7 +30,7 @@ export default async function PlayoffsPage({
   searchParams: Promise<{ season?: string }>;
 }) {
   const sp = await searchParams;
-  const { view: viewSeason, seasonId } = await getPublicSeasonContext(sp);
+  const { view: viewSeason, seasonId, seasons } = await getPublicSeasonContext(sp);
 
   const [viewFromSnap, viewLive, groupA, groupB, fixtures] = await Promise.all([
     viewSeason?.isArchive && seasonId
@@ -48,7 +49,26 @@ export default async function PlayoffsPage({
     }),
   ]);
 
-  const view = viewFromSnap ?? viewLive;
+  const view =
+    viewFromSnap ??
+    (viewSeason?.isLive
+      ? viewLive
+      : {
+          groupA: [],
+          groupB: [],
+          unassigned: [],
+          standingsA: [],
+          standingsB: [],
+          matches: [],
+          groupRoundRobin: 0,
+          groupStageComplete: false,
+          eliminated: [],
+          teamCount: viewSeason?.teamCount ?? 0,
+          groupSize: 0,
+          gamesPerTeam: 0,
+          hasLowerPlayIn: false,
+          eliminatePlace: 0,
+        });
   const groupIdsA = new Set(groupA.map((row) => row.id));
   const groupMatches: GroupGraphMatch[] = fixtures
     .filter((fixture) => fixture.kind === "group")
@@ -90,6 +110,7 @@ export default async function PlayoffsPage({
   return (
     <div className="page playoffs-page">
       <SeasonArchiveBannerServer season={sp.season} />
+      <SeasonLinks seasons={seasons} currentId={seasonId} noun="playoffs" />
       <PageHeader
         eyebrow="Tournament"
         title={viewSeason ? `Playoffs · Season ${viewSeason.number}` : "Playoffs"}

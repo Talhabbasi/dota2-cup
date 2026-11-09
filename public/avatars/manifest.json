@@ -1,0 +1,150 @@
+{
+  "version": 1,
+  "canvas": { "width": 1024, "height": 1024 },
+  "assets": [
+    {
+      "id": "male-base-short",
+      "gender": "male",
+      "category": "base",
+      "styleId": "short",
+      "src": "/avatars/male/base/short.png",
+      "zIndex": 20,
+      "canvas": { "width": 1024, "height": 1024 },
+      "anchor": { "x": 512, "y": 512 },
+      "recolorable": "skin",
+      "label": "Short"
+    },
+    {
+      "id": "male-base-spiky",
+      "gender": "male",
+      "category": "base",
+      "styleId": "spiky",
+      "src": "/avatars/male/base/spiky.png",
+      "zIndex": 20,
+      "canvas": { "width": 1024, "height": 1024 },
+      "anchor": { "x": 512, "y": 512 },
+      "recolorable": "skin",
+      "label": "Spiky"
+    },
+    {
+      "id": "male-base-undercut",
+      "gender": "male",
+      "category": "base",
+      "styleId": "undercut",
+      "src": "/avatars/male/base/undercut.png",
+      "zIndex": 20,
+      "canvas": { "width": 1024, "height": 1024 },
+      "anchor": { "x": 512, "y": 512 },
+      "recolorable": "skin",
+      "label": "Undercut"
+    },
+    {
+      "id": "female-base-long-wavy",
+      "gender": "female",
+      "category": "base",
+      "styleId": "long-wavy",
+      "src": "/avatars/female/base/long-wavy.png",
+      "zIndex": 20,
+      "canvas": { "width": 1024, "height": 1024 },
+      "anchor": { "x": 512, "y": 512 },
+      "recolorable": "skin",
+      "label": "Long wavy"
+    },
+    {
+      "id": "female-base-bob",
+      "gender": "female",
+      "category": "base",
+      "styleId": "bob",
+      "src": "/avatars/female/base/bob.png",
+      "zIndex": 20,
+      "canvas": { "width": 1024, "height": 1024 },
+      "anchor": { "x": 512, "y": 512 },
+      "recolorable": "skin",
+      "label": "Bob"
+    },
+    {
+      "id": "female-base-ponytail",
+      "gender": "female",
+      "category": "base",
+      "styleId": "ponytail",
+      "src": "/avatars/female/base/ponytail.png",
+      "zIndex": 20,
+      "canvas": { "width": 1024, "height": 1024 },
+      "anchor": { "x": 512, "y": 512 },
+      "recolorable": "skin",
+      "label": "Ponytail"
+    },
+    {
+      "id": "male-beard-stubble",
+      "gender": "male",
+      "category": "beard",
+      "styleId": "stubble",
+      "src": "/avatars/male/beard/stubble.png",
+      "zIndex": 40,
+      "canvas": { "width": 1024, "height": 1024 },
+      "anchor": { "x": 512, "y": 512 },
+      "recolorable": "beard",
+      "label": "Stubble"
+    },
+    {
+      "id": "male-beard-full",
+      "gender": "male",
+      "category": "beard",
+      "styleId": "full",
+      "src": "/avatars/male/beard/full.png",
+      "zIndex": 40,
+      "canvas": { "width": 1024, "height": 1024 },
+      "anchor": { "x": 512, "y": 512 },
+      "recolorable": "beard",
+      "label": "Full beard"
+    },
+    {
+      "id": "male-beard-goatee",
+      "gender": "male",
+      "category": "beard",
+      "styleId": "goatee",
+      "src": "/avatars/male/beard/goatee.png",
+      "zIndex": 40,
+      "canvas": { "width": 1024, "height": 1024 },
+      "anchor": { "x": 512, "y": 512 },
+      "recolorable": "beard",
+      "label": "Goatee"
+    },
+    {
+      "id": "clothing-hoodie",
+      "gender": "any",
+      "category": "clothing",
+      "styleId": "hoodie",
+      "src": "/avatars/shared/hoodie.png",
+      "zIndex": 30,
+      "canvas": { "width": 1024, "height": 1024 },
+      "anchor": { "x": 512, "y": 512 },
+      "recolorable": "clothing",
+      "label": "Hoodie"
+    },
+    {
+      "id": "clothing-jersey",
+      "gender": "any",
+      "category": "clothing",
+      "styleId": "jersey",
+      "src": "/avatars/shared/jersey.png",
+      "zIndex": 30,
+      "canvas": { "width": 1024, "height": 1024 },
+      "anchor": { "x": 512, "y": 512 },
+      "recolorable": "clothing",
+      "label": "Esports jersey"
+    },
+    {
+      "id": "clothing-tshirt",
+      "gender": "any",
+      "category": "clothing",
+      "styleId": "tshirt",
+      "src": "/avatars/shared/tshirt.png",
+      "zIndex": 30,
+      "canvas": { "width": 1024, "height": 1024 },
+      "anchor": { "x": 512, "y": 512 },
+      "recolorable": "clothing",
+      "label": "T-shirt"
+    }
+  ]
+}

@@ -1,16 +1,16 @@
 "use client";
 
+import Image from "next/image";
+import Link from "next/link";
 import { LogIn, LogOut } from "lucide-react";
 import { signIn, signOut, useSession } from "next-auth/react";
-import { usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
 
 const signInClass =
-  "border-amber-500/50 bg-amber-500/5 text-foreground shadow-[0_0_18px_rgba(245,158,11,0.22)] hover:border-amber-500/70 hover:bg-amber-500/10 hover:text-foreground hover:shadow-[0_0_22px_rgba(245,158,11,0.35)] dark:border-amber-500/50 dark:bg-amber-500/5 dark:hover:border-amber-500/70 dark:hover:bg-amber-500/10 dark:hover:text-foreground";
+  "h-10 border-white/10 bg-[#161D2A] text-[#F8FAFC] shadow-none transition-colors duration-200 hover:border-[#F5AE28]/50 hover:bg-[#1E2838] hover:text-[#F8FAFC]";
 
 export function AuthButtons() {
   const { data, status } = useSession();
-  const pathname = usePathname();
 
   if (status === "loading") {
     return (
@@ -28,7 +28,7 @@ export function AuthButtons() {
         variant="outline"
         size="sm"
         className={signInClass}
-        onClick={() => signIn("discord", { callbackUrl: pathname || "/" })}
+        onClick={() => signIn("discord", { callbackUrl: "/profile" })}
       >
         <LogIn />
         Sign in
@@ -36,16 +36,35 @@ export function AuthButtons() {
     );
   }
 
+  const name = data.user.name ?? "Profile";
+  const initial = name.trim().charAt(0).toUpperCase() || "P";
+
   return (
     <span className="flex items-center gap-2">
-      <span className="hidden max-w-36 truncate text-sm text-muted-foreground sm:inline">
-        {data.user.name}
-      </span>
+      <Link
+        href="/profile"
+        className="inline-flex max-w-40 items-center gap-2 text-sm text-[#A6AFBD]! transition-colors duration-200 hover:text-[#F8FAFC]!"
+      >
+        {data.user.image ? (
+          <Image
+            src={data.user.image}
+            alt=""
+            width={32}
+            height={32}
+            className="size-8 rounded-full ring-1 ring-white/15"
+          />
+        ) : (
+          <span className="grid size-8 place-items-center rounded-full bg-[#1E2838] font-display text-sm font-bold text-[#F8FAFC]">
+            {initial}
+          </span>
+        )}
+        <span className="hidden truncate sm:inline">{name}</span>
+      </Link>
       <Button
         type="button"
         variant="outline"
         size="sm"
-        className="border-white/15 bg-transparent text-foreground shadow-none hover:border-white/25 hover:bg-transparent hover:text-foreground dark:border-white/15 dark:bg-transparent dark:hover:bg-transparent"
+        className="h-10 border-white/10 bg-transparent text-[#F8FAFC] shadow-none transition-colors duration-200 hover:border-white/20 hover:bg-[#1E2838] hover:text-[#F8FAFC]"
         onClick={() =>
           signOut({ redirect: false }).then(() => window.location.reload())
         }

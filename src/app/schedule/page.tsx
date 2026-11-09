@@ -3,6 +3,7 @@ import { CupScheduleBoard } from "@/components/cup-schedule";
 import { GroupStandingsTable } from "@/components/group-standings";
 import { SeasonArchiveBannerServer } from "@/components/season-archive-banner-server";
 import { loadGroupStandingsForSeason } from "@/lib/season-data";
+import { SeasonLinks } from "@/components/season-links";
 import { getPublicSeasonContext } from "@/lib/season-page";
 import { listCupSchedule } from "@/lib/schedule-crud";
 import { listPubgLobbies } from "@/lib/pubg-lobby";
@@ -25,7 +26,7 @@ export default async function SchedulePage({
   searchParams: Promise<{ season?: string }>;
 }) {
   const sp = await searchParams;
-  const { view, seasonId } = await getPublicSeasonContext(sp);
+  const { view, seasonId, seasons } = await getPublicSeasonContext(sp);
   if (view?.game === "PUBG" && seasonId) {
     const lobbies = (await listPubgLobbies(seasonId)).filter(
       (lobby) => lobby.status === "scheduled",
@@ -33,6 +34,7 @@ export default async function SchedulePage({
     return (
       <div className="page schedule-page">
         <SeasonArchiveBannerServer season={sp.season} />
+        <SeasonLinks seasons={seasons} currentId={seasonId} noun="schedule" />
         <PageHeader
           eyebrow="Fixtures"
           title={`${view.name} · schedule`}
@@ -85,6 +87,7 @@ export default async function SchedulePage({
   return (
     <div className="page schedule-page">
       <SeasonArchiveBannerServer season={sp.season} />
+      <SeasonLinks seasons={seasons} currentId={seasonId} noun="schedule" />
       <PageHeader
         eyebrow="Fixtures"
         title={view ? `Schedule · Season ${view.number}` : "Schedule"}

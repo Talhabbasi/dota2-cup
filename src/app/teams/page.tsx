@@ -1,19 +1,19 @@
 import { PageHeader } from "@/components/common";
 import {
-  TeamsGrid,
-  type FormDot,
+  TeamSeasonTabs,
   type TeamCardView,
+  type TeamSeasonSection,
 } from "@/components/teams-grid";
 import { SeasonArchiveBannerServer } from "@/components/season-archive-banner-server";
-import {
-  loadStandingsForSeason,
-  loadTeamsForSeason,
-} from "@/lib/season-data";
+import { loadTeamsForSeason } from "@/lib/season-data";
 import { getPublicSeasonContext } from "@/lib/season-page";
-import { isRosterSub } from "@/lib/roles";
+import { isRosterSub, parseRolesJson } from "@/lib/roles";
 import { livePageMeta } from "@/lib/seo";
 import { seasonPlanLine } from "@/lib/season-constants";
 import { seasonEmptyTeamsCopy } from "@/lib/season-public-copy";
+import { showcaseRole } from "@/lib/team-portraits";
+import { CUP_GAME, type CupGame } from "@/lib/games";
+import type { PublicSeasonRow } from "@/lib/seasons";
 
 export const revalidate = 30;
 
@@ -21,21 +21,79 @@ export function generateMetadata() {
   return livePageMeta(
     "Teams & Rosters",
     (brand) =>
-      `Meet the ${brand.name} franchises, captains, and rosters for this indoor ${brand.gameLabel} season in Pakistan.`,
+      `Franchises from every ${brand.name} season — captains, rosters, and records.`,
   );
 }
 
-/** Approximate recent form from W/L totals when match history isn't on the list. */
-function formFromRecord(wins: number, losses: number): FormDot[] {
-  const slots: FormDot[] = [];
-  const total = wins + losses;
-  if (total === 0) {
-    return ["·", "·", "·", "·", "·"];
-  }
-  for (let i = 0; i < wins && slots.length < 5; i++) slots.push("W");
-  for (let i = 0; i < losses && slots.length < 5; i++) slots.push("L");
-  while (slots.length < 5) slots.push("·");
-  return slots;
+function seasonHeading(season: PublicSeasonRow) {
+  const game = season.game === "PUBG" ? "PUBG" : "Dota";
+  return season.name !== `Season ${season.number}`
+    ? `${game} · ${season.name}`
+    : `${game} Season ${season.number}`;
+}
+
+async function cardsForSeason(seasonId: string): Promise<TeamCardView[]> {
+  const teams = await loadTeamsForSeason(seasonId);
+  return teams.map((team) => ({
+    id: team.id,
+    name: team.name,
+    players: team.players
+      .filter((player) => !isRosterSub(player.rosterRole))
+      .slice(0, 5)
+      .map((player) => ({
+        id: player.id,
+        avatarConfig: player.avatarConfig,
+        name: player.profileName.trim() || player.steamName,
+        role: showcaseRole(parseRolesJson(player.rolesJson ?? "[]")),
+      })),
+  }));
+}
+
+export async function TeamsScreen({
+  searchParams,
+  game,
+}: {
+  searchParams: { season?: string };
+  game?: CupGame;
+}) {
+  const { seasons } = await getPublicSeasonContext(searchParams, game);
+  const sections: TeamSeasonSection[] = await Promise.all(
+    seasons.map(async (season) => ({
+      id: season.id,
+      label: `Season ${season.number} teams`,
+      note: `${seasonHeading(season)} · ${seasonPlanLine({
+        number: season.number,
+        teamCount: season.teamCount,
+        plannedStartAt: season.plannedStartAt,
+        startedAt: season.startedAt,
+        phase: season.phase,
+      })}${season.championName ? ` · Champion ${season.championName}` : ""}`,
+      teams: await cardsForSeason(season.id),
+      empty: seasonEmptyTeamsCopy(season),
+    })),
+  );
+  const label = seasons[0]?.game === CUP_GAME.PUBG ? "PUBG" : "Dota";
+
+  return (
+    <div className="page teams-list-page">
+      <SeasonArchiveBannerServer season={searchParams.season} />
+      <PageHeader
+        eyebrow={label}
+        title="Teams"
+        subtitle="Open a season tab. Each franchise is its roster, name and role only."
+      />
+
+      {sections.length === 0 ? (
+        <div className="empty-panel teams-list-empty">
+          <p className="muted" style={{ margin: 0 }}>
+            No seasons for this game yet.
+          </p>
+        </div>
+      ) : (
+        <TeamSeasonTabs sections={sections} />
+      )}
+    </div>
+  );
 }
 
 export default async function TeamsPage({
@@ -44,93 +102,5 @@ export default async function TeamsPage({
   searchParams: Promise<{ season?: string }>;
 }) {
   const sp = await searchParams;
-  const { view, seasonId } = await getPublicSeasonContext(sp);
-  const [teams, table] = seasonId
-    ? await Promise.all([
-        loadTeamsForSeason(seasonId),
-        loadStandingsForSeason(seasonId),
-      ])
-    : [[], []];
-
-  const rankById = new Map(table.map((row, i) => [row.id, i + 1]));
-  const recordById = new Map(table.map((row) => [row.id, row]));
-
-  const cards: TeamCardView[] = teams.map((team) => {
-    const captain = team.players.find((p) => p.isCaptain);
-    const starters = team.players.filter((p) => !isRosterSub(p.rosterRole));
-    const subs = team.players.filter((p) => isRosterSub(p.rosterRole));
-    const record = recordById.get(team.id);
-    const wins = record?.wins ?? 0;
-    const losses = record?.losses ?? 0;
-
-    return {
-      id: team.id,
-      name: team.name,
-      captainName: captain?.steamName ?? null,
-      playerCount: team.players.length,
-      starterCount: starters.length,
-      subCount: subs.length,
-      wins,
-      losses,
-      rank: rankById.get(team.id) ?? 0,
-      playerNames: team.players.map((p) => p.steamName),
-      form: formFromRecord(wins, losses),
-      purse: team.purse,
-    };
-  });
-
-  return (
-    <div className="page teams-list-page">
-      <SeasonArchiveBannerServer season={sp.season} />
-      <PageHeader
-        eyebrow={
-          view
-            ? seasonPlanLine({
-                number: view.number,
-                teamCount: view.teamCount,
-                plannedStartAt: view.plannedStartAt,
-                startedAt: view.startedAt,
-                phase: view.phase,
-              })
-            : "Franchises"
-        }
-        title="Teams"
-        pills={
-          cards.length > 0
-            ? [
-                { value: cards.length, label: "active franchises" },
-                {
-                  value: cards.reduce((n, t) => n + t.playerCount, 0),
-                  label: "players signed",
-                },
-              ]
-            : view
-              ? [{ value: view.teamCount, label: "planned teams" }]
-              : undefined
-        }
-      />
-
-      {cards.length === 0 ? (
-        <div className="empty-panel teams-list-empty">
-          <span className="team-empty-matches-icon" aria-hidden>
-            🏆
-          </span>
-          <p className="muted" style={{ margin: 0 }}>
-            {view
-              ? seasonEmptyTeamsCopy({
-                  number: view.number,
-                  name: view.name,
-                  teamCount: view.teamCount,
-                  plannedStartAt: view.plannedStartAt,
-                  startedAt: view.startedAt,
-                  phase: view.phase,
-                })
-              : "No teams yet."}
-          </p>
-        </div>
-      ) : (
-        <TeamsGrid teams={cards} />
-      )}
-    </div>
-  );
+  return <TeamsScreen searchParams={sp} />;
 }

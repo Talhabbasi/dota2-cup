@@ -8,7 +8,8 @@ import {
   type TeamPlayerView,
 } from "@/components/team-profile";
 import { getStandings, getTeam, getTeamName, formatRoles } from "@/lib/data";
-import { loadStandingsForSeason } from "@/lib/season-data";
+import { loadStandingsForSeason, loadTeamsForSeason } from "@/lib/season-data";
+import { teamKitsFor } from "@/lib/avatar/roster";
 import { getPublicSeasonContext } from "@/lib/season-page";
 import { resolveViewSeason } from "@/lib/season-view";
 import {
@@ -43,10 +44,13 @@ function toPlayerView(player: {
   playWindow: string;
   isCaptain: boolean;
   rosterRole: string | null;
-}): TeamPlayerView {
+  avatarConfig: string;
+}, teamId: string): TeamPlayerView {
   const roleKeys = parseRolesJson(player.rolesJson);
   return {
     id: player.id,
+    avatarConfig: player.avatarConfig,
+    teamId,
     steamName: player.steamName,
     medal: player.medal,
     rolesLabel: formatRoles(roleKeys),
@@ -92,6 +96,11 @@ export default async function TeamPage({
   const standings = standingsSeasonId
     ? await loadStandingsForSeason(standingsSeasonId)
     : await getStandings();
+  const seasonTeamIds = standingsSeasonId
+    ? (await loadTeamsForSeason(standingsSeasonId)).map((row) => row.id)
+    : standings.map((row) => row.id);
+  if (!seasonTeamIds.includes(team.id)) seasonTeamIds.push(team.id);
+  const kit = teamKitsFor(seasonTeamIds).get(team.id)!;
 
   const captain = team.players.find((p) => p.isCaptain);
   const ordered = sortTeamRoster(team.players);
@@ -125,8 +134,9 @@ export default async function TeamPage({
       />
 
       <TeamRosterBoard
-        starters={starters.map(toPlayerView)}
-        subs={subs.map(toPlayerView)}
+        kit={kit}
+        starters={starters.map((player) => toPlayerView(player, team.id))}
+        subs={subs.map((player) => toPlayerView(player, team.id))}
       />
 
       <section className="team-matches-panel">

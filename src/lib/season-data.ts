@@ -74,7 +74,21 @@ export async function loadTeamsForSeason(seasonId: string) {
         select: {
           isCaptain: true,
           rosterRole: true,
-          player: { select: { id: true, steamName: true } },
+          rolesJson: true,
+          steamName: true,
+          player: {
+            select: {
+              id: true,
+              steamName: true,
+              profileName: true,
+              avatarConfig: true,
+              rolesJson: true,
+              tone: true,
+              hairColor: true,
+              hairStyle: true,
+              faceType: true,
+            },
+          },
         },
         orderBy: [{ isCaptain: "desc" }, { player: { steamName: "asc" } }],
       },
@@ -89,9 +103,16 @@ export async function loadTeamsForSeason(seasonId: string) {
     groupKey: team.groupKey,
     players: team.seasonPlayers.map((row) => ({
       id: row.player.id,
-      steamName: row.player.steamName,
+      steamName: row.steamName || row.player.steamName,
+      profileName: row.player.profileName,
+      avatarConfig: row.player.avatarConfig,
+      tone: row.player.tone,
+      hairColor: row.player.hairColor,
+      hairStyle: row.player.hairStyle,
+      faceType: row.player.faceType,
       isCaptain: row.isCaptain,
       rosterRole: row.rosterRole,
+      rolesJson: row.rolesJson ?? row.player.rolesJson,
     })),
   }));
 }
@@ -154,22 +175,39 @@ export async function loadStandingsForSeason(seasonId: string) {
     );
 }
 
+const matchListSelect = {
+  id: true,
+  openDotaId: true,
+  duration: true,
+  radiantWin: true,
+  radiantScore: true,
+  direScore: true,
+  createdAt: true,
+  gameNumber: true,
+  season: { select: { id: true, number: true, game: true, name: true } },
+  radiantTeam: { select: { id: true, name: true } },
+  direTeam: { select: { id: true, name: true } },
+  winnerTeam: { select: { id: true, name: true } },
+  players: { select: { side: true, kills: true } },
+  scheduledFixture: { select: { kind: true, slotKey: true, bestOf: true } },
+  seriesFixture: { select: { kind: true, slotKey: true, bestOf: true } },
+} as const;
+
 export async function loadMatchesForSeason(seasonId: string) {
   return prisma.match.findMany({
     where: { ...publicMatchWhere, ...seasonWhere(seasonId) },
-    select: {
-      id: true,
-      openDotaId: true,
-      duration: true,
-      radiantWin: true,
-      radiantScore: true,
-      direScore: true,
-      createdAt: true,
-      radiantTeam: { select: { id: true, name: true } },
-      direTeam: { select: { id: true, name: true } },
-      winnerTeam: { select: { id: true, name: true } },
-      players: { select: { side: true, kills: true } },
+    select: matchListSelect,
+    orderBy: { createdAt: "desc" },
+  });
+}
+
+export async function loadMatchesForSeasons(seasonIds: string[]) {
+  if (seasonIds.length === 0) return [];
+  return prisma.match.findMany({
+    where: {
+      AND: [{ seasonId: { in: seasonIds } }, publicMatchWhere],
     },
+    select: matchListSelect,
     orderBy: { createdAt: "desc" },
   });
 }

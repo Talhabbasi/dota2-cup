@@ -483,6 +483,7 @@ export async function getTeam(id: string) {
         select: {
           id: true,
           steamName: true,
+          avatarConfig: true,
           medal: true,
           rolesJson: true,
           playWindow: true,
@@ -506,6 +507,7 @@ export async function getTeam(id: string) {
             select: {
               id: true,
               steamName: true,
+          avatarConfig: true,
               medal: true,
               rolesJson: true,
               playWindow: true,
@@ -557,6 +559,7 @@ export async function getTeam(id: string) {
       ? team.seasonPlayers.map((row) => ({
           id: row.player.id,
           steamName: row.player.steamName,
+          avatarConfig: row.player.avatarConfig,
           medal: row.medal ?? row.player.medal,
           rolesJson: row.rolesJson ?? row.player.rolesJson,
           playWindow: row.playWindow ?? row.player.playWindow,

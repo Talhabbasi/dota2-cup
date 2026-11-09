@@ -71,7 +71,7 @@ model PostedRelease {
 }
 
 /// One person's registration in one season (team, captain, payment snapshot).
-/// Player stays the forever identity (Discord + Steam).
+/// Player stays the forever identity (Discord). Steam can change per season.
 model SeasonPlayer {
   id            String    @id @default(cuid())
   seasonId      String
@@ -83,6 +83,9 @@ model SeasonPlayer {
   rosterRole    String?
   teamJoinedAt  DateTime?
   isCaptain     Boolean   @default(false)
+  /// Steam account used in this season. Discord stays on Player.
+  steam32       Int?
+  steamName     String?
   medal         String?
   rolesJson     String?
   playWindow    String?
@@ -105,6 +108,22 @@ model Player {
   /// Null when a PUBG player has not linked Steam.
   steam32     Int?     @unique
   steamName   String
+  /// Name shown on the roster. Steam and Discord ids stay fixed.
+  profileName String   @default("")
+  about       String   @default("")
+  /// Roster character. Empty means the default squad portrait.
+  /// boy | girl. Empty until the player saves a character.
+  gender      String   @default("")
+  /// young | adult | older.
+  age         String   @default("")
+  tone        String   @default("")
+  hairColor   String   @default("")
+  hairStyle   String   @default("")
+  faceType    String   @default("")
+  /// none | beard.
+  beard       String   @default("")
+  /// Layered avatar maker JSON (AvatarConfig). Empty means default squad portrait.
+  avatarConfig String  @default("")
   /// PUBG in-game name. Dota players leave this empty.
   pubgName    String?
   medal       String

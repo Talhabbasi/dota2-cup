@@ -1,3 +1,4 @@
+import { parseCupGame, type CupGame } from "./games";
 import {
   getLiveSeason,
   getSeasonByIdOrNumber,
@@ -79,6 +80,32 @@ function toResolved(row: PublicSeasonRow): ResolvedViewSeason {
     isArchive: row.status === "archived" || row.phase === "COMPLETED",
     championName: row.championName,
   };
+}
+
+/** Newest season of one game, or the `?season=` row when it belongs to that game. */
+export async function resolveGameSeason(
+  game: CupGame,
+  seasonParam?: string | null,
+): Promise<ResolvedViewSeason | null> {
+  const param = seasonParam?.trim();
+  if (param) {
+    const requested = await resolveViewSeason({ season: param });
+    if (requested && parseCupGame(requested.game) === game) return requested;
+  }
+
+  const [seasons, live] = await Promise.all([
+    listPublicSeasons(),
+    getLiveSeason(),
+  ]);
+  const forGame = seasons.filter((row) => parseCupGame(row.game) === game);
+  const picked =
+    forGame.find((row) => row.id === live?.id) ?? forGame[0] ?? null;
+  return picked ? toResolved(picked) : null;
+}
+
+export async function listSeasonsForGame(game: CupGame) {
+  const seasons = await listPublicSeasons();
+  return seasons.filter((row) => parseCupGame(row.game) === game);
 }
 
 /** Prisma `where` spread for public live-cup reads (never all seasons). */

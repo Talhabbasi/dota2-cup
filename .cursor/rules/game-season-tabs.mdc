@@ -1,0 +1,17 @@
+---
+description: Teams, matches, and other cup lists use season tabs for the open game
+alwaysApply: true
+---
+
+# Game season tabs
+
+Public lists follow the game the visitor opened (`/dota`, `/pubg`, or the hub cookie). They do not follow a different game’s live season.
+
+Show one season at a time behind tabs. Do not stack every season in one unlabeled list.
+
+- Teams: `Season 1 teams`, `Season 2 teams`. A franchise row is portrait boxes. Illustrated anime characters only, never photoreal faces. The profile avatar uses the layered maker (`AvatarMaker` / `PlayerAvatar`) with male or female bases, skin tone, hair style/color, beard, and clothing. Only styles with real transparent layers are selectable. Preview updates live. Saved config is JSON on `Player.avatarConfig`. On one season tab each franchise gets its own jersey from `teamKitsFor` once a player is on that team. Players on a franchise share that jersey and each has a different face. A saved profile character does not replace the team jersey. Show the profile name when set, otherwise the steam name, plus the role. Do not put purse, roster count, win–loss, subs, or “starting five” on that card.
+- A player is one Discord id across seasons. Steam id may differ per season on `SeasonPlayer`. `/profile` is that player's overall account, not a season page. Discord sign-in opens it, including before they register for a season. Profile can edit display name, about, roles, and the roster character. Steam id and Discord id are visible and not editable. Saving a character does not enroll them in a season.
+- Matches: `Season 1 matches`, `Season 2 matches`. Keep the series line from `seriesContextLabel` (`Bo1 · UB`, `Bo3 · Grand Final`, `Bo1 · Lower bracket · Elimination`, `Bo1 · Group`). Do not invent a round or a score.
+- Schedule, table, playoffs, and players use the same tabs: `Season N schedule`, `Season N table`, `Season N playoffs`, `Season N players`.
+
+When a game has only one season, still use that season’s tab label.

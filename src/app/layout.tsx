@@ -1,15 +1,17 @@
 import type { Metadata, Viewport } from "next";
-import { Bebas_Neue, Oxanium, Sora } from "next/font/google";
+import { Bebas_Neue, Inter, Oxanium, Rajdhani, Sora } from "next/font/google";
 import { ClosedBanner } from "@/components/closed-banner";
 import { NavigationLoader } from "@/components/navigation-loader";
 import { Providers } from "@/components/providers";
 import { SiteChrome } from "@/components/site-chrome";
-import { CUP_ICON_PATH } from "@/lib/brand";
-import { isPubgSeason } from "@/lib/games";
+import { CUP_ICON_PATH, HUB_DESCRIPTION, HUB_NAME } from "@/lib/brand";
+import { readHubGameCookie } from "@/lib/hub-game-server";
+import { CUP_GAME } from "@/lib/games";
 import { SITE_URL, liveCupBrand } from "@/lib/seo";
 import {
   countCompletedSeasons,
   getCurrentSeasonSafe,
+  getFeaturedSeasonForGame,
   getLiveSeason,
   listPublicSeasons,
   liveSeasonLabel,
@@ -41,15 +43,30 @@ const bebas = Bebas_Neue({
   preload: false,
 });
 
+const inter = Inter({
+  variable: "--font-inter",
+  subsets: ["latin"],
+  display: "swap",
+  preload: true,
+});
+
+const rajdhani = Rajdhani({
+  variable: "--font-rajdhani",
+  subsets: ["latin"],
+  weight: ["500", "600", "700"],
+  display: "swap",
+  preload: true,
+});
+
 export async function generateMetadata(): Promise<Metadata> {
   const brand = await liveCupBrand();
   return {
     metadataBase: new URL(SITE_URL),
     title: {
-      default: `${brand.name} | ${brand.titleSuffix}`,
-      template: `%s | ${brand.name}`,
+      default: `${HUB_NAME} | ${brand.titleSuffix}`,
+      template: `%s | ${HUB_NAME}`,
     },
-    description: brand.description,
+    description: HUB_DESCRIPTION,
     icons: {
       icon: CUP_ICON_PATH,
       apple: CUP_ICON_PATH,
@@ -57,13 +74,13 @@ export async function generateMetadata(): Promise<Metadata> {
     openGraph: {
       type: "website",
       locale: "en_PK",
-      siteName: brand.name,
-      description: brand.description,
+      siteName: HUB_NAME,
+      description: HUB_DESCRIPTION,
       images: [CUP_ICON_PATH],
     },
     twitter: {
       card: "summary",
-      description: brand.description,
+      description: HUB_DESCRIPTION,
       images: [CUP_ICON_PATH],
     },
   };
@@ -76,35 +93,47 @@ export const viewport: Viewport = {
 };
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
-  const [live, seasons, { player }, completedCount] = await Promise.all([
-    getLiveSeason(),
-    listPublicSeasons(),
-    currentPlayer(),
-    countCompletedSeasons(),
-  ]);
+  const [live, seasons, { player }, completedCount, cookieGame, dotaFeatured, pubgFeatured] =
+    await Promise.all([
+      getLiveSeason(),
+      listPublicSeasons(),
+      currentPlayer(),
+      countCompletedSeasons(),
+      readHubGameCookie(),
+      getFeaturedSeasonForGame(CUP_GAME.DOTA),
+      getFeaturedSeasonForGame(CUP_GAME.PUBG),
+    ]);
   const [enrolledInLiveSeason, auctionPay] = await Promise.all([
     player ? isPlayerEnrolledInLiveSeason(player.id) : Promise.resolve(false),
     auctionPayBlockForPlayer(player?.id),
   ]);
-  const game = isPubgSeason(live) ? "PUBG" : "DOTA";
   const seasonLabel = live
     ? liveSeasonLabel(live)
     : seasons.length > 0
       ? "Season archive"
       : liveSeasonLabel(await getCurrentSeasonSafe());
+  const dotaSeasonLabel = dotaFeatured.season
+    ? liveSeasonLabel(dotaFeatured.season)
+    : "Dota 2";
+  const pubgSeasonLabel = pubgFeatured.season
+    ? liveSeasonLabel(pubgFeatured.season)
+    : "PUBG";
 
   return (
     <html
       lang="en"
-      data-game={game === "PUBG" ? "pubg" : "dota"}
-      className={`${oxanium.variable} ${sora.variable} ${bebas.variable} dark h-full antialiased`}
+      data-game={cookieGame === "PUBG" ? "pubg" : "dota"}
+      className={`${oxanium.variable} ${sora.variable} ${bebas.variable} ${inter.variable} ${rajdhani.variable} dark h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
         <Providers>
           <NavigationLoader />
           <SiteChrome
             seasonLabel={seasonLabel}
-            game={game}
+            dotaSeasonLabel={dotaSeasonLabel}
+            pubgSeasonLabel={pubgSeasonLabel}
+            cookieGame={cookieGame}
+            liveGame={live?.game ?? null}
             showRegister={!enrolledInLiveSeason}
             showSeasons={completedCount > 0}
             auctionHref={

@@ -13,7 +13,8 @@ import {
   StatTile,
   TeamBadge,
 } from "@/components/common";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { RosterAvatar } from "@/components/avatar/roster-avatar";
+import type { TeamKit } from "@/lib/avatar/roster";
 import { Badge } from "@/components/ui/badge";
 import {
   MAX_ROSTER,
@@ -30,6 +31,8 @@ import { cn } from "@/lib/utils";
 export type TeamPlayerView = {
   id: string;
   steamName: string;
+  avatarConfig?: string;
+  teamId?: string;
   medal: string;
   rolesLabel: string;
   roleKeys: string[];
@@ -37,12 +40,6 @@ export type TeamPlayerView = {
   isCaptain: boolean;
   isSub: boolean;
 };
-
-function initials(name: string) {
-  const parts = name.replace(/[^\w\s]/g, " ").trim().split(/\s+/);
-  if (parts.length >= 2) return (parts[0]![0]! + parts[1]![0]!).toUpperCase();
-  return name.slice(0, 2).toUpperCase();
-}
 
 function starterPos(player: TeamPlayerView, index: number): number {
   for (const role of STARTING_ROLES) {
@@ -62,9 +59,11 @@ function medalLabel(medal: string) {
 function RosterPlayerRow({
   player,
   position,
+  kit,
 }: {
   player: TeamPlayerView;
   position: string;
+  kit: TeamKit;
 }) {
   return (
     <EsportsTableRow>
@@ -76,11 +75,8 @@ function RosterPlayerRow({
           href={`/players/${player.id}`}
           className="flex min-w-0 items-center gap-3 text-foreground!"
         >
-          <Avatar className="size-8 bg-[#0a0d14] ring-1 ring-white/15">
-            <AvatarFallback className="bg-transparent text-[0.62rem] font-bold tracking-[0.12em] text-foreground">
-              {initials(player.steamName)}
-            </AvatarFallback>
-          </Avatar>
+          <RosterAvatar playerId={player.id} saved={player.avatarConfig} kit={kit}
+            name={player.steamName} className="size-12 shrink-0 rounded-lg bg-[#12161d]" />
           <span className="min-w-0 truncate font-medium">
             {player.steamName}
             {player.isCaptain ? (
@@ -218,9 +214,11 @@ export function TeamProfileHero({
 export function TeamRosterBoard({
   starters,
   subs,
+  kit,
 }: {
   starters: TeamPlayerView[];
   subs: TeamPlayerView[];
+  kit: TeamKit;
 }) {
   const starterSlots = Array.from({ length: MIN_ROSTER }, (_, i) => {
     const player = starters[i] ?? null;
@@ -256,6 +254,7 @@ export function TeamRosterBoard({
                   key={slot.player.id}
                   player={slot.player}
                   position={slot.position}
+                  kit={kit}
                 />
               ) : (
                 <OpenSlotRow key={`open-starter-${i}`} position={slot.position} />
@@ -293,6 +292,7 @@ export function TeamRosterBoard({
                     key={player.id}
                     player={player}
                     position="SUB"
+                    kit={kit}
                   />
                 ) : (
                   <OpenSlotRow key={`open-sub-${i}`} position="SUB" />

@@ -2,6 +2,14 @@
  * Rebrand a copied cup from this file only.
  * Change these values, drop the logo in public/, and the site plus Discord bot follow.
  */
+
+/** Multi-game platform umbrella (homepage / chrome when not inside a cup). */
+export const HUB_NAME = "MM Tournament Hub";
+export const HUB_TAGLINE =
+  "Indoor esports tournaments in Pakistan. Pick your game, then follow the live cup.";
+export const HUB_DESCRIPTION = `${HUB_NAME} hosts MM community cups — Dota 2 and PUBG — with registration, auctions, schedules, and results in one place.`;
+export const HUB_TITLE_SUFFIX = "Indoor Esports Tournaments in Pakistan";
+
 export const CUP_NAME = "MM Dota Cup";
 /** Name of season 1 when the database is empty. Later seasons come from `/season`, not this file. */
 export const SEASON_LABEL = "Season 1";
@@ -23,6 +31,12 @@ export const PUBG_CUP_NAME = "MM PUBG Cup";
 
 export const PUBG_CUP_TAGLINE =
   "Indoor PUBG cup. Solo, duo, or squad. Placement points plus 1 point per kill.";
+
+/** Entry path for each game’s cup surface. */
+export const GAME_HOME_HREF = {
+  DOTA: "/dota",
+  PUBG: "/pubg",
+} as const;
 
 export type CupBrand = ReturnType<typeof cupBrand>;
 

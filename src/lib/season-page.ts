@@ -1,15 +1,29 @@
-import { resolveViewSeason } from "./season-view";
-import { getLiveSeason } from "./seasons";
+import type { CupGame } from "./games";
+import { resolveRequestGame } from "./site-game";
+import { listSeasonsForGame, resolveGameSeason } from "./season-view";
+import { getLiveSeason, type PublicSeasonRow } from "./seasons";
 
 /**
- * Main-site lists (players, teams, matches, …) always use the live season.
- * Past cups are on /seasons and on detail pages via explicit `?season=`.
+ * Lists follow the game the visitor is in (path, then cookie), not whichever
+ * season happens to be the global live cup. `?season=dota-2` selects one row.
  */
-export async function getPublicSeasonContext(_searchParams?: {
-  season?: string;
-}) {
-  const live = await getLiveSeason();
-  const view = await resolveViewSeason();
-  const seasonId = live?.id ?? view?.id ?? null;
-  return { view, live, seasonId };
+export async function getPublicSeasonContext(
+  searchParams?: { season?: string },
+  game?: CupGame,
+) {
+  const scoped = game ?? (await resolveRequestGame());
+  const [live, view, seasons] = await Promise.all([
+    getLiveSeason(),
+    resolveGameSeason(scoped, searchParams?.season),
+    listSeasonsForGame(scoped),
+  ]);
+  return {
+    view,
+    live,
+    seasonId: view?.id ?? null,
+    game: scoped,
+    seasons,
+  };
 }
+
+export type { PublicSeasonRow };

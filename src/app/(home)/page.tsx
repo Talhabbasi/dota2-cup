@@ -1,361 +1,48 @@
-import Link from "next/link";
-import { Suspense } from "react";
-import { auctionPayBlockForPlayer } from "@/lib/auction-payment";
-import { currentPlayer } from "@/lib/auth";
-import { MatchCard } from "@/components/match-card";
-import { EsportsCard } from "@/components/common";
-import { HomeHero } from "@/components/home-hero";
-import { LoginErrorBanner } from "@/components/login-error-banner";
-import { WeekendScheduleBlock } from "@/components/weekend-schedule";
-import { StandingsBoard } from "@/components/standings-board";
-import {
-  getStandings,
-  getRecentMatches,
-} from "@/lib/data";
-import { PlayoffGraphLazy } from "@/components/playoff-graph-lazy";
-import { getPlayoffView } from "@/lib/playoff";
-import { getActiveWeekendBundle } from "@/lib/schedule";
-import {
-  getCurrentSeasonChampion,
-  getCurrentSeasonSafe,
-  getLiveSeason,
-  listPublicSeasons,
-} from "@/lib/seasons";
-import { getHomepageHeroBanner } from "@/lib/homepage-hero";
-import { SEASON_STATUS } from "@/lib/season-constants";
-import { seasonFormatCards } from "@/lib/season-public-copy";
-import { toIso } from "@/lib/format";
-import { isPubgSeason, pubgModeLabel, rosterRules } from "@/lib/games";
-import { pubgStandings } from "@/lib/pubg-lobby";
-import { PUBG_CUP_NAME } from "@/lib/brand";
+import { HubHome } from "@/components/hub/hub-home";
+import type { ChampionSlide } from "@/components/hub/champion-slider";
+import { CUP_GAME } from "@/lib/games";
+import { HUB_DESCRIPTION, HUB_NAME, HUB_TITLE_SUFFIX } from "@/lib/brand";
+import { loadHubOverview } from "@/lib/hub-overview";
+import { championRosterArt } from "@/lib/season-champion-art";
+import { getFeaturedSeasonForGame, getSeasonHistory } from "@/lib/seasons";
+import type { Metadata } from "next";
 
 export const revalidate = 30;
 
-async function AuctionEntry() {
-  const { player } = await currentPlayer();
-  const block = await auctionPayBlockForPlayer(player?.id);
-  if (block.blocked && block.message) {
-    return (
-      <section className="mt-8">
-        <div className="section-head row">
-          <h2>Auction</h2>
-        </div>
-        <p className="mb-0 text-sm text-rose-200" role="alert">
-          {block.message}
-        </p>
-      </section>
-    );
-  }
+export const metadata: Metadata = {
+  title: {
+    absolute: `${HUB_NAME} | ${HUB_TITLE_SUFFIX}`,
+  },
+  description: HUB_DESCRIPTION,
+};
 
-  return (
-    <section className="mt-8">
-      <div className="section-head row">
-        <h2>Auction</h2>
-        <Link href="/auction" className="text-link">
-          Open the board
-        </Link>
-      </div>
-      <p className="mb-3 text-sm text-muted-foreground">
-        Bidding stays on the auction board. Captains sign in there. Everyone else can watch.
-      </p>
-      <div className="flex flex-wrap gap-3">
-        <Link href="/auction" className="btn">
-          Watch live
-        </Link>
-        <Link href="/auction/captain" className="btn btn-gold">
-          Captain desk
-        </Link>
-      </div>
-    </section>
-  );
-}
-
-function HomeGroupColumn({
-  title,
-  teams,
-}: {
-  title: string;
-  teams: { id: string; name: string }[];
-}) {
-  return (
-    <div className="home-group-col">
-      <h3>{title}</h3>
-      {teams.length === 0 ? (
-        <p className="muted">Not assigned yet.</p>
-      ) : (
-        <ul>
-          {teams.map((team) => (
-            <li key={team.id}>
-              <Link href={`/teams/${team.id}`}>{team.name}</Link>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
-
-export default async function Home() {
-  const liveFirst = await getLiveSeason();
-  if (isPubgSeason(liveFirst) && liveFirst) {
-    const rules = rosterRules(liveFirst);
-    const rows = await pubgStandings(liveFirst.id);
-    return (
-      <div className="page">
-        <header className="teams-list-hero overflow-hidden">
-          <div className="team-hero-glow" aria-hidden />
-          <div className="teams-list-hero-body">
-            <p className="eyebrow">Indoor PUBG · Pakistan · {pubgModeLabel(liveFirst.pubgMode)}</p>
-            <h1>{PUBG_CUP_NAME}</h1>
-            <p className="lede">
-              {liveFirst.name} is open. {rules.label}. Entry is Rs {rules.entryFeePkr.toLocaleString("en-PK")} PKR
-              per player, {rules.teamFeePkr.toLocaleString("en-PK")} PKR for a full{" "}
-              {pubgModeLabel(liveFirst.pubgMode).toLowerCase()}. 1st place is 10 points, and every kill is 1 point.
-            </p>
-            <div className="mt-4 flex flex-wrap gap-3">
-              <Link href="/register" className="btn btn-gold">
-                Register
-              </Link>
-              <Link href="/table" className="btn">
-                Points table
-              </Link>
-            </div>
-          </div>
-        </header>
-        <Suspense>
-          <AuctionEntry />
-        </Suspense>
-        <section className="mt-8">
-          <div className="section-head row">
-            <h2>Points</h2>
-            <Link href="/table" className="text-link">
-              Full table
-            </Link>
-          </div>
-          {rows.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No squads yet. Register, then captains fill the roster at the auction.
-            </p>
-          ) : (
-            <ol className="m-0 grid list-none gap-2 p-0">
-              {rows.slice(0, 8).map((row, index) => (
-                <li key={row.teamId} className="flex justify-between rounded-md border border-white/10 px-3 py-2 text-sm">
-                  <span>
-                    {index + 1}. {row.name}
-                  </span>
-                  <span>{row.total} pts</span>
-                </li>
-              ))}
-            </ol>
-          )}
-        </section>
-      </div>
-    );
-  }
-
-  const [
-    table,
-    matches,
-    weekend,
-    playoff,
-    season,
-    champion,
-    live,
-    publicSeasons,
-    heroBanner,
-  ] = await Promise.all([
-    getStandings(),
-    getRecentMatches(5),
-    getActiveWeekendBundle(),
-    getPlayoffView(),
-    getCurrentSeasonSafe(),
-    getCurrentSeasonChampion(),
-    getLiveSeason(),
-    listPublicSeasons(),
-    getHomepageHeroBanner(),
+export default async function HubPage() {
+  const [dota, pubg, overview, history] = await Promise.all([
+    getFeaturedSeasonForGame(CUP_GAME.DOTA),
+    getFeaturedSeasonForGame(CUP_GAME.PUBG),
+    loadHubOverview(),
+    getSeasonHistory(),
   ]);
 
-  const latest = matches[0] ?? null;
-  const recent = latest ? matches.slice(1, 5) : matches.slice(0, 4);
-  const crowned = Boolean(live && champion);
-  const siteMode = crowned ? "champion" : live ? "active" : "upcoming";
-  const plannedSeason =
-    live ??
-    publicSeasons.find(
-      (row) =>
-        row.status === SEASON_STATUS.upcoming ||
-        row.phase === "UPCOMING" ||
-        row.phase === "AUCTION_ACTIVE",
-    ) ??
-    null;
-  const seasonPlan = plannedSeason
-    ? {
-        number: plannedSeason.number,
-        name: plannedSeason.name,
-        teamCount: plannedSeason.teamCount,
-        plannedStartAt: plannedSeason.plannedStartAt
-          ? toIso(plannedSeason.plannedStartAt)
-          : null,
-        startedAt: plannedSeason.startedAt
-          ? toIso(plannedSeason.startedAt)
-          : null,
-        phase: plannedSeason.phase,
-        tournamentFormat: plannedSeason.tournamentFormat,
-      }
-    : null;
+  const champions: ChampionSlide[] = history
+    .filter((season) => season.game === CUP_GAME.DOTA)
+    .sort((a, b) => b.number - a.number)
+    .flatMap((season) => {
+      const art = championRosterArt(season.game, season.number);
+      if (!art || !season.champion) return [];
+      const captain = season.champion.players.find(
+        (player) => player.isCaptain && !player.isSub,
+      );
+      return [{
+        id: season.id,
+        href: `/seasons/dota-${season.number}`,
+        image: art.src,
+        alt: art.alt,
+        label: `Dota Season ${season.number}`,
+        team: season.champion.name,
+        player: captain?.steamName ?? null,
+      }];
+    });
 
-  return (
-    <>
-      <HomeHero
-        slides={heroBanner.slides}
-        seasonLabel={season ? `Season ${season.number}` : null}
-        seasonPlan={seasonPlan}
-      />
-
-      <div className="page home-body">
-        <Suspense>
-          <LoginErrorBanner />
-        </Suspense>
-        <Suspense>
-          <AuctionEntry />
-        </Suspense>
-
-        {siteMode === "upcoming" ? (
-          <section className="mb-8" aria-label="Between seasons">
-            <EsportsCard className="px-5 py-6 sm:px-7">
-              <p className="m-0 text-sm text-muted-foreground">
-                No live tournament right now. Browse the{" "}
-                <Link href="/seasons" className="text-link">
-                  season archive
-                </Link>{" "}
-                for champions, brackets, and match history.
-              </p>
-            </EsportsCard>
-          </section>
-        ) : crowned && champion ? (
-          <section className="mb-8" aria-label="Season champion">
-            <EsportsCard className="overflow-hidden px-5 py-6 sm:px-7">
-              <p className="m-0 font-mono text-sm font-bold tracking-[0.18em] text-amber-500 uppercase">
-                Season {champion.seasonNumber} champions
-              </p>
-              <h2 className="mt-2 mb-2 font-display text-3xl tracking-wide text-foreground uppercase sm:text-4xl">
-                <Link href={`/teams/${champion.team.id}`}>
-                  {champion.team.name}
-                </Link>
-              </h2>
-              <p className="m-0 mb-4 text-sm text-muted-foreground">
-                Tournament ended
-                {champion.finalScore
-                  ? ` · Grand Final ${champion.finalScore}`
-                  : ""}
-                . Bracket and match history stay up for the archive.
-              </p>
-              <div className="flex flex-wrap gap-3">
-                <Link href="/playoffs" className="btn btn-gold">
-                  View bracket
-                </Link>
-                <Link href="/matches" className="btn">
-                  All matches
-                </Link>
-                <Link href="/seasons" className="btn btn-ghost">
-                  Seasons
-                </Link>
-              </div>
-            </EsportsCard>
-          </section>
-        ) : (
-          <section
-            className="mb-7 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"
-            aria-label="Cup format"
-          >
-            {seasonFormatCards(seasonPlan?.teamCount ?? 8).map((card) => (
-              <EsportsCard key={card.index} className="px-5 py-5">
-                <p className="m-0 font-mono text-lg font-bold text-amber-500">
-                  {card.index}
-                </p>
-                <h2 className="mt-2 mb-1.5 font-display text-lg tracking-wide text-foreground uppercase">
-                  {card.title}
-                </h2>
-                <p className="m-0 text-sm leading-relaxed text-muted-foreground">
-                  {card.copy}
-                </p>
-              </EsportsCard>
-            ))}
-          </section>
-        )}
-
-        {siteMode === "active" && latest ? (
-          <section className="mb-8">
-            <MatchCard match={latest} showDate kicker="Latest match" />
-          </section>
-        ) : null}
-
-        {siteMode === "active" &&
-        playoff.groupA.length + playoff.groupB.length > 0 ? (
-          <section className="home-playoff-link">
-            <div className="weekend-board home-groups-board">
-              <div className="section-head row">
-                <h2>Group stage</h2>
-                <Link href="/playoffs" className="text-link">
-                  Full bracket
-                </Link>
-              </div>
-              <div className="home-groups-grid">
-                <HomeGroupColumn title="Group A" teams={playoff.groupA} />
-                <HomeGroupColumn title="Group B" teams={playoff.groupB} />
-              </div>
-              <PlayoffGraphLazy view={playoff} compact />
-            </div>
-          </section>
-        ) : null}
-
-        {siteMode === "active" && weekend ? (
-          <WeekendScheduleBlock
-            weekendIndex={weekend.weekendIndex}
-            fixtures={weekend.fixtures}
-          />
-        ) : null}
-
-        {siteMode === "active" && table.length > 0 ? (
-          <section className="home-standings">
-            <div className="section-head row">
-              <h2>Standings</h2>
-              <Link href="/table" className="text-link">
-                Full table
-              </Link>
-            </div>
-            <StandingsBoard
-              compact
-              limit={5}
-              rows={table.map((row) => ({
-                id: row.id,
-                name: row.name,
-                played: row.played,
-                wins: row.wins,
-                losses: row.losses,
-                points: row.points,
-                purse: row.purse,
-              }))}
-            />
-          </section>
-        ) : null}
-
-        {siteMode === "active" && recent.length > 0 ? (
-          <section className="home-recent">
-            <div className="section-head row">
-              <h2>Recent matches</h2>
-              <Link href="/matches" className="text-link">
-                View all
-              </Link>
-            </div>
-            <div className="vs-stack">
-              {recent.map((m) => (
-                <MatchCard key={m.id} match={m} />
-              ))}
-            </div>
-          </section>
-        ) : null}
-      </div>
-    </>
-  );
+  return <HubHome dota={dota} pubg={pubg} overview={overview} champions={champions} />;
 }
